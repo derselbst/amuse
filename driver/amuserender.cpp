@@ -1,6 +1,5 @@
 #include "amuse/amuse.hpp"
 #include "amuse/BooBackend.hpp"
-#include "athena/FileReader.hpp"
 #include "boo/boo.hpp"
 #include "boo/audiodev/IAudioVoiceEngine.hpp"
 #include "logvisor/logvisor.hpp"

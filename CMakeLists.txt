@@ -15,10 +15,12 @@ if(NOT MSVC)
     add_compile_options(-Wno-narrowing)
 endif()
 
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/boo AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/athena)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/boo)
   message(STATUS "Preparing standalone build")
   add_subdirectory(boo)
-  add_subdirectory(athena)
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/athena)
+    add_subdirectory(athena)
+  endif()
 endif()
 
 option(AMUSE_BUILD_EDITOR "Build Amuse with editor enabled (includes VST)" ON)
@@ -92,9 +94,11 @@ target_link_libraries(amuse
   ${ZLIB_LIBRARIES}
 )
 
-target_atdna(amuse atdna_AudioGroupPool.cpp include/amuse/AudioGroupPool.hpp)
-target_atdna(amuse atdna_AudioGroupProject.cpp include/amuse/AudioGroupProject.hpp)
-target_atdna(amuse atdna_AudioGroupSampleDirectory.cpp include/amuse/AudioGroupSampleDirectory.hpp)
+if(COMMAND target_atdna)
+  target_atdna(amuse atdna_AudioGroupPool.cpp include/amuse/AudioGroupPool.hpp)
+  target_atdna(amuse atdna_AudioGroupProject.cpp include/amuse/AudioGroupProject.hpp)
+  target_atdna(amuse atdna_AudioGroupSampleDirectory.cpp include/amuse/AudioGroupSampleDirectory.hpp)
+endif()
 
 if(NX)
   target_sources(amuse PRIVATE include/switch_math.hpp)
