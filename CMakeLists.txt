@@ -25,6 +25,13 @@ endif()
 
 option(AMUSE_BUILD_EDITOR "Build Amuse with editor enabled (includes VST)" ON)
 
+find_path(ATHENA_DNA_INCLUDE_DIR athena/DNA.hpp)
+if(NOT ATHENA_DNA_INCLUDE_DIR)
+  message(FATAL_ERROR
+    "Missing athena/DNA.hpp. This project currently requires a pre-f7c1cd8 Athena checkout. "
+    "Use standalone_bootstrap scripts to fetch the compatible Athena revision.")
+endif()
+
 add_library(amuse
   lib/AudioGroup.cpp
   lib/AudioGroupData.cpp
