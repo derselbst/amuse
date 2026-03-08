@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <iostream>
 
 #include "amuse/AudioGroup.hpp"
 #include "amuse/AudioGroupPool.hpp"
@@ -56,6 +57,7 @@ float SoundMacroState::Evaluator::evaluate(double time, const Voice& vox, const 
       case 132:
         /* Surround panning */
         thisValue = (vox.m_curSpan * 0.5f + 0.5f) * 127.f;
+        std::cerr<< "Surround: " << thisValue << "\n";
         break;
       case 133:
         /* Macro-starting key */
@@ -638,6 +640,11 @@ bool SoundMacro::CmdSetAdsrCtrl::Do(SoundMacroState& st, Voice& vox) const {
   st.m_midiDecay = decay;
   st.m_midiSustain = sustain;
   st.m_midiRelease = release;
+
+  std::cerr << "AttackCC" << (int)attack << "\n"
+            << "DecayCC" << (int)decay << "\n"
+            << "SustainCC" << (int)sustain << "\n"
+            << "ReleaseCC" << (int)release <<"\n";
 
   /* Bootstrap ADSR defaults here */
   if (!vox.getCtrlValue(st.m_midiSustain)) {
