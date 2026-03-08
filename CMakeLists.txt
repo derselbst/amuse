@@ -31,7 +31,7 @@ find_path(ATHENA_DNA_INCLUDE_DIR athena/DNA.hpp
 )
 if(NOT ATHENA_DNA_INCLUDE_DIR)
   message(FATAL_ERROR
-    "Missing athena/DNA.hpp. This project currently requires a pre-f7c1cd8 Athena checkout. "
+    "Missing athena/DNA.hpp. This project currently requires Athena commit fa346ac52bfb83bf51f3f55248fa07a966b356f8. "
     "Use standalone_bootstrap scripts to fetch the compatible Athena revision.")
 endif()
 
