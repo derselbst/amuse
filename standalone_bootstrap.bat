@@ -6,6 +6,6 @@ popd
 
 git clone https://github.com/libAthena/athena.git
 pushd athena
-git checkout f7c1cd8f59e522651b6cf1f8df011028940abee3~1
+git checkout fa346ac52bfb83bf51f3f55248fa07a966b356f8
 git submodule update --recursive --init
 popd

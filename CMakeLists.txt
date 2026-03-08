@@ -25,7 +25,10 @@ endif()
 
 option(AMUSE_BUILD_EDITOR "Build Amuse with editor enabled (includes VST)" ON)
 
-find_path(ATHENA_DNA_INCLUDE_DIR athena/DNA.hpp)
+find_path(ATHENA_DNA_INCLUDE_DIR athena/DNA.hpp
+  HINTS
+    ${CMAKE_CURRENT_SOURCE_DIR}/athena/include
+)
 if(NOT ATHENA_DNA_INCLUDE_DIR)
   message(FATAL_ERROR
     "Missing athena/DNA.hpp. This project currently requires a pre-f7c1cd8 Athena checkout. "
