@@ -14,6 +14,7 @@
 
 #include <athena/FileWriter.hpp>
 #include <athena/FileReader.hpp>
+#include <athena/DNAYaml.hpp>
 #include <athena/YAMLDocWriter.hpp>
 #include <athena/VectorWriter.hpp>
 

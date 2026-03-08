@@ -355,4 +355,139 @@ public:
 
 using SampleEntry = AudioGroupSampleDirectory::Entry;
 using SampleEntryData = AudioGroupSampleDirectory::EntryData;
+
+template <class Op>
+void DSPADPCMHeader::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "x0_num_samples", x0_num_samples);
+  athena::io::detail::EnumerateField<Op>(stream, "x4_num_nibbles", x4_num_nibbles);
+  athena::io::detail::EnumerateField<Op>(stream, "x8_sample_rate", x8_sample_rate);
+  athena::io::detail::EnumerateField<Op>(stream, "xc_loop_flag", xc_loop_flag);
+  athena::io::detail::EnumerateField<Op>(stream, "xe_format", xe_format);
+  athena::io::detail::EnumerateField<Op>(stream, "x10_loop_start_nibble", x10_loop_start_nibble);
+  athena::io::detail::EnumerateField<Op>(stream, "x14_loop_end_nibble", x14_loop_end_nibble);
+  athena::io::detail::EnumerateField<Op>(stream, "x18_ca", x18_ca);
+  athena::io::detail::EnumerateField<Op>(stream, "x1c_coef", x1c_coef);
+  athena::io::detail::EnumerateField<Op>(stream, "x3c_gain", x3c_gain);
+  athena::io::detail::EnumerateField<Op>(stream, "x3e_ps", x3e_ps);
+  athena::io::detail::EnumerateField<Op>(stream, "x40_hist1", x40_hist1);
+  athena::io::detail::EnumerateField<Op>(stream, "x42_hist2", x42_hist2);
+  athena::io::detail::EnumerateField<Op>(stream, "x44_loop_ps", x44_loop_ps);
+  athena::io::detail::EnumerateField<Op>(stream, "x46_loop_hist1", x46_loop_hist1);
+  athena::io::detail::EnumerateField<Op>(stream, "x48_loop_hist2", x48_loop_hist2);
+  athena::io::detail::EnumerateField<Op>(stream, "m_pitch", m_pitch);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <class Op>
+void VADPCMHeader::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "m_pitchSampleRate", m_pitchSampleRate);
+  athena::io::detail::EnumerateField<Op>(stream, "m_numSamples", m_numSamples);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopStartSample", m_loopStartSample);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopLengthSamples", m_loopLengthSamples);
+}
+
+template <class Op>
+void WAVFormatChunk::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "sampleFmt", sampleFmt);
+  athena::io::detail::EnumerateField<Op>(stream, "numChannels", numChannels);
+  athena::io::detail::EnumerateField<Op>(stream, "sampleRate", sampleRate);
+  athena::io::detail::EnumerateField<Op>(stream, "byteRate", byteRate);
+  athena::io::detail::EnumerateField<Op>(stream, "blockAlign", blockAlign);
+  athena::io::detail::EnumerateField<Op>(stream, "bitsPerSample", bitsPerSample);
+}
+
+template <class Op>
+void WAVSampleChunk::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "smplManufacturer", smplManufacturer);
+  athena::io::detail::EnumerateField<Op>(stream, "smplProduct", smplProduct);
+  athena::io::detail::EnumerateField<Op>(stream, "smplPeriod", smplPeriod);
+  athena::io::detail::EnumerateField<Op>(stream, "midiNote", midiNote);
+  athena::io::detail::EnumerateField<Op>(stream, "midiPitchFrac", midiPitchFrac);
+  athena::io::detail::EnumerateField<Op>(stream, "smpteFormat", smpteFormat);
+  athena::io::detail::EnumerateField<Op>(stream, "smpteOffset", smpteOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "numSampleLoops", numSampleLoops);
+  athena::io::detail::EnumerateField<Op>(stream, "additionalDataSize", additionalDataSize);
+}
+
+template <class Op>
+void WAVSampleLoop::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "cuePointId", cuePointId);
+  athena::io::detail::EnumerateField<Op>(stream, "loopType", loopType);
+  athena::io::detail::EnumerateField<Op>(stream, "start", start);
+  athena::io::detail::EnumerateField<Op>(stream, "end", end);
+  athena::io::detail::EnumerateField<Op>(stream, "fraction", fraction);
+  athena::io::detail::EnumerateField<Op>(stream, "playCount", playCount);
+}
+
+template <class Op>
+void WAVHeader::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "riffMagic", riffMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "wavChuckSize", wavChuckSize);
+  athena::io::detail::EnumerateField<Op>(stream, "wavMagic", wavMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "fmtMagic", fmtMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "fmtChunkSize", fmtChunkSize);
+  athena::io::detail::EnumerateField<Op>(stream, "fmtChunk", fmtChunk);
+  athena::io::detail::EnumerateField<Op>(stream, "smplMagic", smplMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "smplChunkSize", smplChunkSize);
+  athena::io::detail::EnumerateField<Op>(stream, "smplChunk", smplChunk);
+  athena::io::detail::EnumerateField<Op>(stream, "dataMagic", dataMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "dataChunkSize", dataChunkSize);
+}
+
+template <class Op>
+void WAVHeaderLoop::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "riffMagic", riffMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "wavChuckSize", wavChuckSize);
+  athena::io::detail::EnumerateField<Op>(stream, "wavMagic", wavMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "fmtMagic", fmtMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "fmtChunkSize", fmtChunkSize);
+  athena::io::detail::EnumerateField<Op>(stream, "fmtChunk", fmtChunk);
+  athena::io::detail::EnumerateField<Op>(stream, "smplMagic", smplMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "smplChunkSize", smplChunkSize);
+  athena::io::detail::EnumerateField<Op>(stream, "smplChunk", smplChunk);
+  athena::io::detail::EnumerateField<Op>(stream, "sampleLoop", sampleLoop);
+  athena::io::detail::EnumerateField<Op>(stream, "dataMagic", dataMagic);
+  athena::io::detail::EnumerateField<Op>(stream, "dataChunkSize", dataChunkSize);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void AudioGroupSampleDirectory::EntryDNA<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "m_sfxId", m_sfxId);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+  athena::io::detail::EnumerateField<Op>(stream, "m_sampleOff", m_sampleOff);
+  athena::io::detail::EnumerateField<Op>(stream, "m_unk", m_unk);
+  athena::io::detail::EnumerateField<Op>(stream, "m_pitch", m_pitch);
+  athena::io::detail::EnumerateField<Op>(stream, "pad2", pad2);
+  athena::io::detail::EnumerateField<Op>(stream, "m_sampleRate", m_sampleRate);
+  athena::io::detail::EnumerateField<Op>(stream, "m_numSamples", m_numSamples);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopStartSample", m_loopStartSample);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopLengthSamples", m_loopLengthSamples);
+  athena::io::detail::EnumerateField<Op>(stream, "m_adpcmParmOffset", m_adpcmParmOffset);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void AudioGroupSampleDirectory::MusyX1SdirEntry<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "m_sfxId", m_sfxId);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+  athena::io::detail::EnumerateField<Op>(stream, "m_sampleOff", m_sampleOff);
+  athena::io::detail::EnumerateField<Op>(stream, "m_pitchSampleRate", m_pitchSampleRate);
+  athena::io::detail::EnumerateField<Op>(stream, "m_numSamples", m_numSamples);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopStartSample", m_loopStartSample);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopLengthSamples", m_loopLengthSamples);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "m_sfxId", m_sfxId);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+  athena::io::detail::EnumerateField<Op>(stream, "m_sampleOff", m_sampleOff);
+  athena::io::detail::EnumerateField<Op>(stream, "m_unk", m_unk);
+  athena::io::detail::EnumerateField<Op>(stream, "m_pitchSampleRate", m_pitchSampleRate);
+  athena::io::detail::EnumerateField<Op>(stream, "m_numSamples", m_numSamples);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopStartSample", m_loopStartSample);
+  athena::io::detail::EnumerateField<Op>(stream, "m_loopLengthSamples", m_loopLengthSamples);
+}
 } // namespace amuse

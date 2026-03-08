@@ -8,6 +8,7 @@
 #include <athena/FileReader.hpp>
 #include <athena/FileWriter.hpp>
 #include <athena/VectorWriter.hpp>
+#include <athena/DNAYaml.hpp>
 
 namespace amuse {
 

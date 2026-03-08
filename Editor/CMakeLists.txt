@@ -144,7 +144,6 @@ target_link_libraries(amuse-gui
   Qt6::Xml
 
   amuse
-  athena-core
   boo
   ${BOO_SYS_LIBS}
   logvisor

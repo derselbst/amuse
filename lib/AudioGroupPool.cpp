@@ -8,6 +8,7 @@
 #include <athena/FileWriter.hpp>
 #include <athena/MemoryWriter.hpp>
 #include <athena/VectorWriter.hpp>
+#include <athena/DNAYaml.hpp>
 
 #include <logvisor/logvisor.hpp>
 

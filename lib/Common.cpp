@@ -13,6 +13,7 @@
 #include <Windows.h>
 #endif
 
+#include <athena/DNAYaml.hpp>
 #include <logvisor/logvisor.hpp>
 
 using namespace std::literals;

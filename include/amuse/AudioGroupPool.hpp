@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -19,6 +20,12 @@ namespace amuse {
 class AudioGroupData;
 struct SoundMacroState;
 class Voice;
+struct ADSR;
+struct ADSRDLS;
+struct ITable;
+
+template <class T, class Op>
+void EnumerateSoundMacroCmd(T& cmd, typename Op::Stream& stream);
 
 /** Header at the top of the pool file */
 template <athena::Endian DNAEn>
@@ -976,8 +983,86 @@ struct SoundMacro {
 };
 
 template <typename T>
-inline T& AccessField(SoundMacro::ICmd* cmd, const SoundMacro::CmdIntrospection::Field& field) {
-  return *reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(std::addressof(*cmd)) + field.m_offset);
+inline auto& AccessField(SoundMacro::ICmd* cmd, const SoundMacro::CmdIntrospection::Field& field) {
+  using StorageType = std::conditional_t<std::is_enum_v<T>, std::underlying_type_t<T>, T>;
+  using FieldType = std::conditional_t<std::is_arithmetic_v<T> || std::is_enum_v<T>,
+                                       athena::io::Value<StorageType, athena::Endian::Little>, T>;
+  return *reinterpret_cast<FieldType*>(reinterpret_cast<uintptr_t>(std::addressof(*cmd)) + field.m_offset);
+}
+
+template <class T, class Op>
+inline void EnumerateSoundMacroCmd(T& cmd, typename Op::Stream& stream) {
+  if constexpr (std::is_base_of_v<SoundMacro::ICmd, T>) {
+    const auto* introspection = SoundMacro::GetCmdIntrospection(cmd.Isa());
+    if (!introspection)
+      return;
+    for (const auto& field : introspection->m_fields) {
+      if (field.m_tp == SoundMacro::CmdIntrospection::Field::Type::Invalid)
+        continue;
+      if constexpr (std::is_same_v<Op, athena::io::ReadYamlOp> || std::is_same_v<Op, athena::io::WriteYamlOp>) {
+        if (field.m_name.empty())
+          continue;
+      }
+      const char* fieldName = field.m_name.empty() ? "" : field.m_name.data();
+      auto* cmdPtr = static_cast<SoundMacro::ICmd*>(std::addressof(cmd));
+      switch (field.m_tp) {
+      case SoundMacro::CmdIntrospection::Field::Type::Bool:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<bool>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::Int8:
+      case SoundMacro::CmdIntrospection::Field::Type::Choice:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<int8_t>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::UInt8:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<uint8_t>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::Int16:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<int16_t>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::UInt16:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<uint16_t>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::Int32:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<int32_t>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::UInt32:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName, AccessField<uint32_t>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::SoundMacroId:
+        athena::io::detail::EnumerateField<Op>(
+            stream, fieldName, AccessField<SoundMacroIdDNA<athena::Endian::Little>>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::SoundMacroStep:
+        athena::io::detail::EnumerateField<Op>(
+            stream, fieldName, AccessField<SoundMacroStepDNA<athena::Endian::Little>>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::TableId:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName,
+                                               AccessField<TableIdDNA<athena::Endian::Little>>(cmdPtr, field));
+        break;
+      case SoundMacro::CmdIntrospection::Field::Type::SampleId:
+        athena::io::detail::EnumerateField<Op>(stream, fieldName,
+                                               AccessField<SampleIdDNA<athena::Endian::Little>>(cmdPtr, field));
+        break;
+      default:
+        break;
+      }
+    }
+  } else if constexpr (std::is_same_v<T, ADSR>) {
+    athena::io::detail::EnumerateField<Op>(stream, "attack", cmd.attack);
+    athena::io::detail::EnumerateField<Op>(stream, "decay", cmd.decay);
+    athena::io::detail::EnumerateField<Op>(stream, "sustain", cmd.sustain);
+    athena::io::detail::EnumerateField<Op>(stream, "release", cmd.release);
+  } else if constexpr (std::is_same_v<T, ADSRDLS>) {
+    athena::io::detail::EnumerateField<Op>(stream, "attack", cmd.attack);
+    athena::io::detail::EnumerateField<Op>(stream, "decay", cmd.decay);
+    athena::io::detail::EnumerateField<Op>(stream, "sustain", cmd.sustain);
+    athena::io::detail::EnumerateField<Op>(stream, "release", cmd.release);
+    athena::io::detail::EnumerateField<Op>(stream, "velToAttack", cmd.velToAttack);
+    athena::io::detail::EnumerateField<Op>(stream, "keyToDecay", cmd.keyToDecay);
+  } else if constexpr (std::is_base_of_v<ITable, T>) {
+    return;
+  }
 }
 
 /** Converts time-cents representation to seconds */
@@ -1223,4 +1308,65 @@ public:
   AudioGroupPool(AudioGroupPool&&) = default;
   AudioGroupPool& operator=(AudioGroupPool&&) = default;
 };
+
+template <athena::Endian DNAEn>
+template <class Op>
+void PoolHeader<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "soundMacrosOffset", soundMacrosOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "tablesOffset", tablesOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "keymapsOffset", keymapsOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "layersOffset", layersOffset);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void ObjectHeader<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "size", size);
+  athena::io::detail::EnumerateField<Op>(stream, "objectId", objectId);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void KeymapDNA<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "macro", macro);
+  athena::io::detail::EnumerateField<Op>(stream, "transpose", transpose);
+  athena::io::detail::EnumerateField<Op>(stream, "pan", pan);
+  athena::io::detail::EnumerateField<Op>(stream, "prioOffset", prioOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <class Op>
+void Keymap::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "macro", macro);
+  athena::io::detail::EnumerateField<Op>(stream, "transpose", transpose);
+  athena::io::detail::EnumerateField<Op>(stream, "pan", pan);
+  athena::io::detail::EnumerateField<Op>(stream, "prioOffset", prioOffset);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void LayerMappingDNA<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "macro", macro);
+  athena::io::detail::EnumerateField<Op>(stream, "keyLo", keyLo);
+  athena::io::detail::EnumerateField<Op>(stream, "keyHi", keyHi);
+  athena::io::detail::EnumerateField<Op>(stream, "transpose", transpose);
+  athena::io::detail::EnumerateField<Op>(stream, "volume", volume);
+  athena::io::detail::EnumerateField<Op>(stream, "prioOffset", prioOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "span", span);
+  athena::io::detail::EnumerateField<Op>(stream, "pan", pan);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <class Op>
+void LayerMapping::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "macro", macro);
+  athena::io::detail::EnumerateField<Op>(stream, "keyLo", keyLo);
+  athena::io::detail::EnumerateField<Op>(stream, "keyHi", keyHi);
+  athena::io::detail::EnumerateField<Op>(stream, "transpose", transpose);
+  athena::io::detail::EnumerateField<Op>(stream, "volume", volume);
+  athena::io::detail::EnumerateField<Op>(stream, "prioOffset", prioOffset);
+  athena::io::detail::EnumerateField<Op>(stream, "span", span);
+  athena::io::detail::EnumerateField<Op>(stream, "pan", pan);
+}
 } // namespace amuse

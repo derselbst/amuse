@@ -13,6 +13,6 @@ if (WIN32 AND (EXISTS ${VST3_SDK_ROOT}))
               ${VST2_DIR}/audioeffectx.cpp
               FileOpenDialog.hpp FileOpenDialog.cpp)
   target_link_libraries(amuse-vst amuse boo soxr ${ZLIB_LIBRARIES} lzokay Winmm soxr
-                                  Msimg32 Shlwapi logvisor athena-core)
+                                  Msimg32 Shlwapi logvisor)
   set_target_properties(amuse-vst PROPERTIES LINK_FLAGS "/EXPORT:VSTPluginMain")
 endif()

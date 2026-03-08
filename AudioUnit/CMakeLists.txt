@@ -40,7 +40,7 @@ if (APPLE AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET OR CMAKE_OSX_DEPLOYMENT_TARGET VE
                        ${CMAKE_CURRENT_BINARY_DIR}/AmuseExtension.entitlements)
 
         target_link_libraries(amuse-au amuse boo soxr ${AUDIOUNIT_LIBRARY} ${COREAUDIOKIT_LIBRARY}
-                              ${AVFOUNDATION_LIBRARY} ${BOO_SYS_LIBS} logvisor athena-core)
+                              ${AVFOUNDATION_LIBRARY} ${BOO_SYS_LIBS} logvisor)
         set_target_properties(amuse-au PROPERTIES
                               MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ExtensionInfo.plist"
                               BUNDLE_EXTENSION "appex" BUNDLE TRUE
@@ -67,7 +67,7 @@ if (APPLE AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET OR CMAKE_OSX_DEPLOYMENT_TARGET VE
                                     AmuseContainingApp.mm AudioGroupFilePresenter.mm
                                     PROPERTIES COMPILE_FLAGS -fobjc-arc)
         target_link_libraries(amuse-au-container amuse boo soxr ${AUDIOUNIT_LIBRARY} ${COREAUDIOKIT_LIBRARY}
-                              ${AVFOUNDATION_LIBRARY} ${ZLIB_LIBRARIES} lzokay ${BOO_SYS_LIBS} logvisor athena-core)
+                              ${AVFOUNDATION_LIBRARY} ${ZLIB_LIBRARIES} lzokay ${BOO_SYS_LIBS} logvisor)
 
         set(APPLE_BUNDLE_ID "com.axiodl.Amuse")
         configure_file(${CMAKE_CURRENT_SOURCE_DIR}/AmuseContainer.entitlements.in

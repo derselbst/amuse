@@ -210,4 +210,90 @@ public:
   AudioGroupProject(AudioGroupProject&&) = default;
   AudioGroupProject& operator=(AudioGroupProject&&) = default;
 };
+
+template <athena::Endian DNAEn>
+template <class Op>
+void GroupHeader<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "groupEndOff", groupEndOff);
+  athena::io::detail::EnumerateField<Op>(stream, "groupId", groupId);
+  athena::io::detail::EnumerateField<Op>(stream, "type", type);
+  athena::io::detail::EnumerateField<Op>(stream, "soundMacroIdsOff", soundMacroIdsOff);
+  athena::io::detail::EnumerateField<Op>(stream, "samplIdsOff", samplIdsOff);
+  athena::io::detail::EnumerateField<Op>(stream, "tableIdsOff", tableIdsOff);
+  athena::io::detail::EnumerateField<Op>(stream, "keymapIdsOff", keymapIdsOff);
+  athena::io::detail::EnumerateField<Op>(stream, "layerIdsOff", layerIdsOff);
+  athena::io::detail::EnumerateField<Op>(stream, "pageTableOff", pageTableOff);
+  athena::io::detail::EnumerateField<Op>(stream, "drumTableOff", drumTableOff);
+  athena::io::detail::EnumerateField<Op>(stream, "midiSetupsOff", midiSetupsOff);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void SongGroupIndex::PageEntryDNA<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "objId", objId);
+  athena::io::detail::EnumerateField<Op>(stream, "priority", priority);
+  athena::io::detail::EnumerateField<Op>(stream, "maxVoices", maxVoices);
+  athena::io::detail::EnumerateField<Op>(stream, "programNo", programNo);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void SongGroupIndex::MusyX1PageEntryDNA<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "objId", objId);
+  athena::io::detail::EnumerateField<Op>(stream, "priority", priority);
+  athena::io::detail::EnumerateField<Op>(stream, "maxVoices", maxVoices);
+  athena::io::detail::EnumerateField<Op>(stream, "unk", unk);
+  athena::io::detail::EnumerateField<Op>(stream, "programNo", programNo);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <class Op>
+void SongGroupIndex::PageEntry::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "objId", objId);
+  athena::io::detail::EnumerateField<Op>(stream, "priority", priority);
+  athena::io::detail::EnumerateField<Op>(stream, "maxVoices", maxVoices);
+}
+
+template <class Op>
+void SongGroupIndex::MusyX1MIDISetup::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "programNo", programNo);
+  athena::io::detail::EnumerateField<Op>(stream, "volume", volume);
+  athena::io::detail::EnumerateField<Op>(stream, "panning", panning);
+  athena::io::detail::EnumerateField<Op>(stream, "reverb", reverb);
+  athena::io::detail::EnumerateField<Op>(stream, "chorus", chorus);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <class Op>
+void SongGroupIndex::MIDISetup::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "programNo", programNo);
+  athena::io::detail::EnumerateField<Op>(stream, "volume", volume);
+  athena::io::detail::EnumerateField<Op>(stream, "panning", panning);
+  athena::io::detail::EnumerateField<Op>(stream, "reverb", reverb);
+  athena::io::detail::EnumerateField<Op>(stream, "chorus", chorus);
+}
+
+template <athena::Endian DNAEn>
+template <class Op>
+void SFXGroupIndex::SFXEntryDNA<DNAEn>::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "sfxId", sfxId);
+  athena::io::detail::EnumerateField<Op>(stream, "objId", objId);
+  athena::io::detail::EnumerateField<Op>(stream, "priority", priority);
+  athena::io::detail::EnumerateField<Op>(stream, "maxVoices", maxVoices);
+  athena::io::detail::EnumerateField<Op>(stream, "defVel", defVel);
+  athena::io::detail::EnumerateField<Op>(stream, "panning", panning);
+  athena::io::detail::EnumerateField<Op>(stream, "defKey", defKey);
+  athena::io::detail::EnumerateField<Op>(stream, "pad", pad);
+}
+
+template <class Op>
+void SFXGroupIndex::SFXEntry::Enumerate(typename Op::Stream& stream) {
+  athena::io::detail::EnumerateField<Op>(stream, "objId", objId);
+  athena::io::detail::EnumerateField<Op>(stream, "priority", priority);
+  athena::io::detail::EnumerateField<Op>(stream, "maxVoices", maxVoices);
+  athena::io::detail::EnumerateField<Op>(stream, "defVel", defVel);
+  athena::io::detail::EnumerateField<Op>(stream, "panning", panning);
+  athena::io::detail::EnumerateField<Op>(stream, "defKey", defKey);
+}
 } // namespace amuse
