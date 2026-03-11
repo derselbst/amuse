@@ -140,7 +140,7 @@ public:
     // ── Alignment helpers ─────────────────────────────────────────────────
     void seekAlign32() {
         int64_t pos = position();
-        int64_t aligned = (pos + 31) & ~static_cast<int64_t>(31);
+        int64_t aligned = static_cast<int64_t>(ROUND_UP_32(static_cast<uint64_t>(pos)));
         if (aligned > pos) {
             static const uint8_t zeros[32]{};
             int64_t pad = aligned - pos;
