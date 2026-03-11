@@ -102,3 +102,7 @@ inline T SLittle(T v) noexcept {
     ((static_cast<uint32_t>(q) & 0x0000FF00u) <<  8u) |            \
     ((static_cast<uint32_t>(q) & 0x00FF0000u) >>  8u) |            \
     ((static_cast<uint32_t>(q) & 0xFF000000u) >> 24u))
+
+// ── ROUND_UP_32 ───────────────────────────────────────────────────────────────
+// Round x up to the nearest multiple of 32.
+#define ROUND_UP_32(x) (((x) + 31u) & ~31u)

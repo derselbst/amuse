@@ -136,6 +136,17 @@ public:
 
     void writeFloat(float val)   { uint32_t v; std::memcpy(&v, &val, 4); v = SBig(v);    writeUBytesToBuf_raw(&v, 4); }
     void writeDouble(double val) { uint64_t v; std::memcpy(&v, &val, 8); v = SBig(v);    writeUBytesToBuf_raw(&v, 8); }
+
+    // ── Alignment helpers ─────────────────────────────────────────────────
+    void seekAlign32() {
+        int64_t pos = position();
+        int64_t aligned = (pos + 31) & ~static_cast<int64_t>(31);
+        if (aligned > pos) {
+            static const uint8_t zeros[32]{};
+            int64_t pad = aligned - pos;
+            writeUBytesToBuf_raw(zeros, static_cast<uint64_t>(pad));
+        }
+    }
 };
 
 } // namespace athena::io
