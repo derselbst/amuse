@@ -87,8 +87,15 @@ add_library(amuse
 )
 
 target_include_directories(amuse PUBLIC include)
+find_library(LZO2_LIBRARY NAMES lzo2)
+find_path(LZO2_INCLUDE_DIR NAMES lzo/lzo1x.h)
+if(NOT LZO2_LIBRARY OR NOT LZO2_INCLUDE_DIR)
+  message(FATAL_ERROR "liblzo2 not found. Install liblzo2-dev (Debian/Ubuntu) or lzo-devel (Fedora).")
+endif()
+target_include_directories(amuse PRIVATE ${LZO2_INCLUDE_DIR})
+
 target_link_libraries(amuse
-  lzokay
+  ${LZO2_LIBRARY}
   logvisor
   fmt
   ${ZLIB_LIBRARIES}
