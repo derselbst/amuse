@@ -1307,7 +1307,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAuxAFXSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdAuxAFXSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0},
      {FIELD_HEAD(SoundMacro::CmdAuxAFXSelect, paramIndex), "Param Index"sv, 0, 2, 0}}}};
 bool SoundMacro::CmdAuxAFXSelect::Do(SoundMacroState& st, Voice& vox) const {
-  st.m_auxAFxSel[std::min(paramIndex, atUint8(3))].addComponent(
+  st.m_auxAFxSel[std::min(atUint8(paramIndex), atUint8(3))].addComponent(
       midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
       SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
@@ -1324,7 +1324,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAuxBFXSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdAuxBFXSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0},
      {FIELD_HEAD(SoundMacro::CmdAuxBFXSelect, paramIndex), "Param Index"sv, 0, 2, 0}}}};
 bool SoundMacro::CmdAuxBFXSelect::Do(SoundMacroState& st, Voice& vox) const {
-  st.m_auxBFxSel[std::min(paramIndex, atUint8(3))].addComponent(
+  st.m_auxBFxSel[std::min(atUint8(paramIndex), atUint8(3))].addComponent(
       midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
       SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
