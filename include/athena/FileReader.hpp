@@ -49,6 +49,13 @@ public:
             std::fclose(m_file);
     }
 
+    void close() {
+        if (m_file) {
+            std::fclose(m_file);
+            m_file = nullptr;
+        }
+    }
+
     // Non-copyable, movable
     FileReader(const FileReader&) = delete;
     FileReader& operator=(const FileReader&) = delete;

@@ -47,6 +47,14 @@ public:
             std::fclose(m_file);
     }
 
+    void close() {
+        if (m_file) {
+            if (std::fclose(m_file) != 0)
+                m_hasError = true;
+            m_file = nullptr;
+        }
+    }
+
     // Non-copyable, movable
     FileWriter(const FileWriter&) = delete;
     FileWriter& operator=(const FileWriter&) = delete;

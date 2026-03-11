@@ -18,8 +18,8 @@ template <> void DSPADPCMHeader::Enumerate<DNAOpRead>(IStreamReader& r) {
     x14_loop_end_nibble.v   = r.readUint32Big();
     x18_ca.v          = r.readUint32Big();
     for (int i = 0; i < 8; ++i) {
-        x1c_coef[i][0].v = r.readInt16Big();
-        x1c_coef[i][1].v = r.readInt16Big();
+        x1c_coef[i][0] = r.readInt16Big();
+        x1c_coef[i][1] = r.readInt16Big();
     }
     x3c_gain.v        = r.readInt16Big();
     x3e_ps.v          = r.readInt16Big();
@@ -41,8 +41,8 @@ template <> void DSPADPCMHeader::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Big(x14_loop_end_nibble.v);
     w.writeUint32Big(x18_ca.v);
     for (int i = 0; i < 8; ++i) {
-        w.writeInt16Big(x1c_coef[i][0].v);
-        w.writeInt16Big(x1c_coef[i][1].v);
+        w.writeInt16Big(x1c_coef[i][0]);
+        w.writeInt16Big(x1c_coef[i][1]);
     }
     w.writeInt16Big(x3c_gain.v);
     w.writeInt16Big(x3e_ps.v);

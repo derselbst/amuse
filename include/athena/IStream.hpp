@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -52,6 +53,13 @@ public:
     }
     void readBytesToBuf(void* buf, uint64_t len) {
         readUBytesToBuf(buf, len);
+    }
+
+    // ── Heap-allocated bulk read ──────────────────────────────────────────
+    std::unique_ptr<uint8_t[]> readUBytes(uint64_t len) {
+        auto buf = std::make_unique<uint8_t[]>(len);
+        readUBytesToBuf(buf.get(), len);
+        return buf;
     }
 
     // ── Scalar read helpers ───────────────────────────────────────────────

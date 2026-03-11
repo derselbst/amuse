@@ -22,7 +22,7 @@ struct DSPADPCMHeader : BigDNA {
   Value<atUint32> x10_loop_start_nibble = 0;
   Value<atUint32> x14_loop_end_nibble = 0;
   Value<atUint32> x18_ca = 0;
-  Value<atInt16> x1c_coef[8][2];
+  atInt16 x1c_coef[8][2]{};
   Value<atInt16> x3c_gain = 0;
   Value<atInt16> x3e_ps = 0;
   Value<atInt16> x40_hist1 = 0;
