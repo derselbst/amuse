@@ -385,4 +385,20 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athen
 template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>;
 template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>;
 
+// DNAType for template struct instantiations
+template <athena::Endian DNAE>
+std::string_view AudioGroupSampleDirectory::EntryDNA<DNAE>::DNAType() {
+    return "amuse::AudioGroupSampleDirectory::EntryDNA";
+}
+
+template <athena::Endian DNAE>
+std::string_view AudioGroupSampleDirectory::MusyX1SdirEntry<DNAE>::DNAType() {
+    return "amuse::AudioGroupSampleDirectory::MusyX1SdirEntry";
+}
+
+template <athena::Endian DNAE>
+std::string_view AudioGroupSampleDirectory::MusyX1AbsSdirEntry<DNAE>::DNAType() {
+    return "amuse::AudioGroupSampleDirectory::MusyX1AbsSdirEntry";
+}
+
 } // namespace amuse
