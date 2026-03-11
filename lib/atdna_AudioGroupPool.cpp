@@ -37,7 +37,7 @@ using namespace athena::io;
     template <> void SoundMacro::T::Enumerate<DNAOpWrite>(IStreamWriter& w) {            \
         w.writeUByte(midiControl);                                                      \
         w.writeInt16Little(scalingPercentage);                                          \
-        w.writeByte(static_cast<int8_t>(combine.v));                \
+        w.writeByte(static_cast<int8_t>(combine));                \
         w.writeBool(isVar);                                                             \
         w.writeByte(fineScaling);                                                       \
     }                                                                                    \
@@ -378,7 +378,7 @@ template <> void SoundMacro::CmdStartSample::Enumerate<DNAOpRead>(IStreamReader&
     sample.read(r); mode = static_cast<Mode>(r.readByte()); offset = r.readUint32Little();
 }
 template <> void SoundMacro::CmdStartSample::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    sample.write(w); w.writeByte(static_cast<int8_t>(mode.v));
+    sample.write(w); w.writeByte(static_cast<int8_t>(mode));
     w.writeUint32Little(offset);
 }
 template <> void SoundMacro::CmdStartSample::Enumerate<DNAOpBinarySize>(size_t& s) { s += 7; }
@@ -507,8 +507,8 @@ template <> void SoundMacro::CmdPortamento::Enumerate<DNAOpRead>(IStreamReader& 
     r.seek(2, athena::SeekOrigin::Current); msSwitch = r.readBool(); ticksOrMs = r.readUint16Little();
 }
 template <> void SoundMacro::CmdPortamento::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeByte(static_cast<int8_t>(portState.v));
-    w.writeByte(static_cast<int8_t>(portType.v));
+    w.writeByte(static_cast<int8_t>(portState));
+    w.writeByte(static_cast<int8_t>(portType));
     uint8_t pad[2] = {}; w.writeBytes(pad, 2); w.writeBool(msSwitch); w.writeUint16Little(ticksOrMs);
 }
 template <> void SoundMacro::CmdPortamento::Enumerate<DNAOpBinarySize>(size_t& s) { s += 7; }
@@ -644,7 +644,7 @@ template <> void SoundMacro::CmdTrapEvent::Enumerate<DNAOpRead>(IStreamReader& r
     event = static_cast<EventType>(r.readByte()); macro.read(r); macroStep.read(r);
 }
 template <> void SoundMacro::CmdTrapEvent::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeByte(static_cast<int8_t>(event.v)); macro.write(w); macroStep.write(w);
+    w.writeByte(static_cast<int8_t>(event)); macro.write(w); macroStep.write(w);
 }
 template <> void SoundMacro::CmdTrapEvent::Enumerate<DNAOpBinarySize>(size_t& s) { s += 5; }
 template <> void SoundMacro::CmdTrapEvent::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
@@ -657,7 +657,7 @@ template <> void SoundMacro::CmdUntrapEvent::Enumerate<DNAOpRead>(IStreamReader&
     event = static_cast<CmdTrapEvent::EventType>(r.readByte());
 }
 template <> void SoundMacro::CmdUntrapEvent::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeByte(static_cast<int8_t>(event.v));
+    w.writeByte(static_cast<int8_t>(event));
 }
 template <> void SoundMacro::CmdUntrapEvent::Enumerate<DNAOpBinarySize>(size_t& s) { s += 1; }
 template <> void SoundMacro::CmdUntrapEvent::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
@@ -831,7 +831,7 @@ template <> void SoundMacro::CmdAuxAFXSelect::Enumerate<DNAOpRead>(IStreamReader
 }
 template <> void SoundMacro::CmdAuxAFXSelect::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUByte(midiControl); w.writeInt16Little(scalingPercentage);
-    w.writeByte(static_cast<int8_t>(combine.v)); w.writeBool(isVar);
+    w.writeByte(static_cast<int8_t>(combine)); w.writeBool(isVar);
     w.writeByte(fineScaling); w.writeUByte(paramIndex);
 }
 template <> void SoundMacro::CmdAuxAFXSelect::Enumerate<DNAOpBinarySize>(size_t& s) { s += 7; }
@@ -847,7 +847,7 @@ template <> void SoundMacro::CmdAuxBFXSelect::Enumerate<DNAOpRead>(IStreamReader
 }
 template <> void SoundMacro::CmdAuxBFXSelect::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUByte(midiControl); w.writeInt16Little(scalingPercentage);
-    w.writeByte(static_cast<int8_t>(combine.v)); w.writeBool(isVar);
+    w.writeByte(static_cast<int8_t>(combine)); w.writeBool(isVar);
     w.writeByte(fineScaling); w.writeUByte(paramIndex);
 }
 template <> void SoundMacro::CmdAuxBFXSelect::Enumerate<DNAOpBinarySize>(size_t& s) { s += 7; }

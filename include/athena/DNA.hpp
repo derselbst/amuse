@@ -149,37 +149,15 @@ struct Write {
 };
 
 // ── Value<T, E> ───────────────────────────────────────────────────────────────
-// Wraps a scalar or enum field so that atdna (and hand-written Enumerate
-// bodies) can identify its storage type and endianness.  Implicit conversions
-// to and from T make it transparent at usage sites.
+// A transparent alias for T.  The endianness tag E is retained in the
+// template signature so that existing declarations (Value<uint32_t>,
+// Value<Combine>, etc.) continue to compile unchanged, but at runtime
+// Value<T,E> IS T — no wrapper, no implicit-conversion friction.
+// Endian-aware I/O is handled explicitly in the Enumerate<Op> bodies in the
+// atdna_*.cpp files.
 
 template <typename T, athena::Endian E = athena::Endian::Big>
-struct Value {
-    T v{};
-
-    // Construction / assignment
-    constexpr Value() noexcept = default;
-    constexpr Value(const Value&) noexcept = default;
-    constexpr Value& operator=(const Value&) noexcept = default;
-
-    constexpr /*implicit*/ Value(T val) noexcept : v(val) {}
-    constexpr Value& operator=(T val) noexcept { v = val; return *this; }
-
-    // Implicit conversion to the underlying type
-    constexpr operator T() const noexcept { return v; }
-    constexpr operator T&()       noexcept { return v; }
-
-    // Member access for struct/class T
-    constexpr T* operator->()       noexcept { return &v; }
-    constexpr const T* operator->() const noexcept { return &v; }
-
-    // Comparison operators are deliberately omitted – use the implicit
-    // conversion to T, which allows built-in operators to take over.
-    // Providing them here would create ambiguity with the T conversion.
-
-    // Endian tag (unused at runtime, available for template introspection)
-    static constexpr athena::Endian endian = E;
-};
+using Value = T;
 
 // ── Seek<N, Origin> ───────────────────────────────────────────────────────────
 // Zero-size field marker.  atdna translates it into a seek() call inside
