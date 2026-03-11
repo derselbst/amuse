@@ -25,7 +25,7 @@ template <> template <> void GroupHeader<athena::Endian::Big>::Enumerate<DNAOpRe
 template <> template <> void GroupHeader<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Big(groupEndOff);
     groupId.write(w);
-    w.writeUint16Big(static_cast<uint16_t>(static_cast<GroupType>(type)));
+    w.writeUint16Big(static_cast<uint16_t>(type.v));
     w.writeUint32Big(soundMacroIdsOff);
     w.writeUint32Big(samplIdsOff);
     w.writeUint32Big(tableIdsOff);
@@ -55,7 +55,7 @@ template <> template <> void GroupHeader<athena::Endian::Little>::Enumerate<DNAO
 template <> template <> void GroupHeader<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Little(groupEndOff);
     groupId.write(w);
-    w.writeUint16Little(static_cast<uint16_t>(static_cast<GroupType>(type)));
+    w.writeUint16Little(static_cast<uint16_t>(type.v));
     w.writeUint32Little(soundMacroIdsOff);
     w.writeUint32Little(samplIdsOff);
     w.writeUint32Little(tableIdsOff);
