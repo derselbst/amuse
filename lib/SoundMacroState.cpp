@@ -1105,7 +1105,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdVolSelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdVolSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdVolSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_volumeSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                              SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
+                              SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)), SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1120,7 +1120,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPanSelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdPanSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPanSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_panSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                           SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
+                           SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)), SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1135,8 +1135,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPitchWheelSelect::Introspectiv
      {FIELD_HEAD(SoundMacro::CmdPitchWheelSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPitchWheelSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_pitchWheelSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                                  SoundMacroState::Evaluator::Combine(combine),
-                                  SoundMacroState::Evaluator::VarType(isVar));
+                                  SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                                  SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1151,8 +1151,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdModWheelSelect::Introspective 
      {FIELD_HEAD(SoundMacro::CmdModWheelSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdModWheelSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_modWheelSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                                SoundMacroState::Evaluator::Combine(combine),
-                                SoundMacroState::Evaluator::VarType(isVar));
+                                SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                                SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1167,7 +1167,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPedalSelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdPedalSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPedalSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_pedalSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                             SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
+                             SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)), SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1182,8 +1182,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPortamentoSelect::Introspectiv
      {FIELD_HEAD(SoundMacro::CmdPortamentoSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPortamentoSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_portamentoSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                                  SoundMacroState::Evaluator::Combine(combine),
-                                  SoundMacroState::Evaluator::VarType(isVar));
+                                  SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                                  SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1198,7 +1198,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdReverbSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdReverbSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdReverbSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_reverbSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                              SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
+                              SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)), SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1213,7 +1213,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdSpanSelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdSpanSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdSpanSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_spanSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                            SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
+                            SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)), SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1228,8 +1228,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdDopplerSelect::Introspective =
      {FIELD_HEAD(SoundMacro::CmdDopplerSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdDopplerSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_dopplerSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                               SoundMacroState::Evaluator::Combine(combine),
-                               SoundMacroState::Evaluator::VarType(isVar));
+                               SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                               SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1244,8 +1244,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdTremoloSelect::Introspective =
      {FIELD_HEAD(SoundMacro::CmdTremoloSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdTremoloSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_tremoloSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                               SoundMacroState::Evaluator::Combine(combine),
-                               SoundMacroState::Evaluator::VarType(isVar));
+                               SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                               SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1260,8 +1260,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPreASelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdPreASelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPreASelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_preAuxASel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                               SoundMacroState::Evaluator::Combine(combine),
-                               SoundMacroState::Evaluator::VarType(isVar));
+                               SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                               SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1276,8 +1276,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPreBSelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdPreBSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPreBSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_preAuxBSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                               SoundMacroState::Evaluator::Combine(combine),
-                               SoundMacroState::Evaluator::VarType(isVar));
+                               SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+                               SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1292,7 +1292,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdPostBSelect::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdPostBSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
 bool SoundMacro::CmdPostBSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_postAuxB.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
-                             SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
+                             SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)), SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1308,8 +1308,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAuxAFXSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdAuxAFXSelect, paramIndex), "Param Index"sv, 0, 2, 0}}}};
 bool SoundMacro::CmdAuxAFXSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_auxAFxSel[std::min(paramIndex, atUint8(3))].addComponent(
-      midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(combine),
-      SoundMacroState::Evaluator::VarType(isVar));
+      midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+      SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
@@ -1325,8 +1325,8 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAuxBFXSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdAuxBFXSelect, paramIndex), "Param Index"sv, 0, 2, 0}}}};
 bool SoundMacro::CmdAuxBFXSelect::Do(SoundMacroState& st, Voice& vox) const {
   st.m_auxBFxSel[std::min(paramIndex, atUint8(3))].addComponent(
-      midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(combine),
-      SoundMacroState::Evaluator::VarType(isVar));
+      midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(SoundMacro::Combine(combine)),
+      SoundMacroState::Evaluator::VarType(bool(isVar)));
   return false;
 }
 
