@@ -79,13 +79,13 @@ Sequencer::ChannelState::ChannelState(Sequencer& parent, uint8_t chanId) : m_par
       m_setup = &m_parent->m_midiSetup[chanId];
 
       if (chanId == 9) {
-        auto it = m_parent->m_songGroup->m_drumPages.find(m_setup->programNo);
+        auto it = m_parent->m_songGroup->m_drumPages.find(uint8_t(m_setup->programNo));
         if (it != m_parent->m_songGroup->m_drumPages.cend()) {
           m_page = &it->second;
           m_curProgram = m_setup->programNo;
         }
       } else {
-        auto it = m_parent->m_songGroup->m_normPages.find(m_setup->programNo);
+        auto it = m_parent->m_songGroup->m_normPages.find(uint8_t(m_setup->programNo));
         if (it != m_parent->m_songGroup->m_normPages.cend()) {
           m_page = &it->second;
           m_curProgram = m_setup->programNo;
