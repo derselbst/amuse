@@ -40,6 +40,12 @@ using LittleDNA = athena::io::DNA<athena::Endian::Little>;
 using BigDNAV = athena::io::DNAVYaml<athena::Endian::Big>;
 using LittleDNAV = athena::io::DNAVYaml<athena::Endian::Little>;
 
+// Bring Value<> and Seek<> into the amuse namespace so that DNA-derived
+// structs can reference them without full qualification (matching the
+// original athena API surface).
+using athena::io::Value;
+using athena::io::Seek;
+
 /** Common ID structure statically tagging
  *  SoundMacros, Tables, Keymaps, Layers, Samples, SFX, Songs */
 struct ObjectId {
