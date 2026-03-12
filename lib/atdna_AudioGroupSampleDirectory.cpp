@@ -3,400 +3,398 @@
 
 #include "amuse/AudioGroupSampleDirectory.hpp"
 
-using namespace athena::io;
-
 namespace amuse {
 
 // ── DSPADPCMHeader ────────────────────────────────────────────────────────────
-template <> void DSPADPCMHeader::Enumerate<DNAOpRead>(IStreamReader& r) {
-    x0_num_samples  = r.readUint32Big();
-    x4_num_nibbles  = r.readUint32Big();
-    x8_sample_rate  = r.readUint32Big();
-    xc_loop_flag    = r.readUint16Big();
-    xe_format       = r.readUint16Big();
-    x10_loop_start_nibble = r.readUint32Big();
-    x14_loop_end_nibble   = r.readUint32Big();
-    x18_ca          = r.readUint32Big();
+void DSPADPCMHeader::read(std::istream& r) {
+    x0_num_samples  = amuse::io::readUint32Big(r);
+    x4_num_nibbles  = amuse::io::readUint32Big(r);
+    x8_sample_rate  = amuse::io::readUint32Big(r);
+    xc_loop_flag    = amuse::io::readUint16Big(r);
+    xe_format       = amuse::io::readUint16Big(r);
+    x10_loop_start_nibble = amuse::io::readUint32Big(r);
+    x14_loop_end_nibble   = amuse::io::readUint32Big(r);
+    x18_ca          = amuse::io::readUint32Big(r);
     for (int i = 0; i < 8; ++i) {
-        x1c_coef[i][0] = r.readInt16Big();
-        x1c_coef[i][1] = r.readInt16Big();
+        x1c_coef[i][0] = amuse::io::readInt16Big(r);
+        x1c_coef[i][1] = amuse::io::readInt16Big(r);
     }
-    x3c_gain        = r.readInt16Big();
-    x3e_ps          = r.readInt16Big();
-    x40_hist1       = r.readInt16Big();
-    x42_hist2       = r.readInt16Big();
-    x44_loop_ps     = r.readInt16Big();
-    x46_loop_hist1  = r.readInt16Big();
-    x48_loop_hist2  = r.readInt16Big();
-    m_pitch         = r.readUByte();
-    r.seek(21, athena::SeekOrigin::Current);
+    x3c_gain        = amuse::io::readInt16Big(r);
+    x3e_ps          = amuse::io::readInt16Big(r);
+    x40_hist1       = amuse::io::readInt16Big(r);
+    x42_hist2       = amuse::io::readInt16Big(r);
+    x44_loop_ps     = amuse::io::readInt16Big(r);
+    x46_loop_hist1  = amuse::io::readInt16Big(r);
+    x48_loop_hist2  = amuse::io::readInt16Big(r);
+    m_pitch         = amuse::io::readUByte(r);
+    r.seekg(21, std::ios_base::cur);
 }
-template <> void DSPADPCMHeader::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint32Big(x0_num_samples);
-    w.writeUint32Big(x4_num_nibbles);
-    w.writeUint32Big(x8_sample_rate);
-    w.writeUint16Big(xc_loop_flag);
-    w.writeUint16Big(xe_format);
-    w.writeUint32Big(x10_loop_start_nibble);
-    w.writeUint32Big(x14_loop_end_nibble);
-    w.writeUint32Big(x18_ca);
+void DSPADPCMHeader::write(std::ostream& w) const {
+    amuse::io::writeUint32Big(w, x0_num_samples);
+    amuse::io::writeUint32Big(w, x4_num_nibbles);
+    amuse::io::writeUint32Big(w, x8_sample_rate);
+    amuse::io::writeUint16Big(w, xc_loop_flag);
+    amuse::io::writeUint16Big(w, xe_format);
+    amuse::io::writeUint32Big(w, x10_loop_start_nibble);
+    amuse::io::writeUint32Big(w, x14_loop_end_nibble);
+    amuse::io::writeUint32Big(w, x18_ca);
     for (int i = 0; i < 8; ++i) {
-        w.writeInt16Big(x1c_coef[i][0]);
-        w.writeInt16Big(x1c_coef[i][1]);
+        amuse::io::writeInt16Big(w, x1c_coef[i][0]);
+        amuse::io::writeInt16Big(w, x1c_coef[i][1]);
     }
-    w.writeInt16Big(x3c_gain);
-    w.writeInt16Big(x3e_ps);
-    w.writeInt16Big(x40_hist1);
-    w.writeInt16Big(x42_hist2);
-    w.writeInt16Big(x44_loop_ps);
-    w.writeInt16Big(x46_loop_hist1);
-    w.writeInt16Big(x48_loop_hist2);
-    w.writeUByte(m_pitch);
+    amuse::io::writeInt16Big(w, x3c_gain);
+    amuse::io::writeInt16Big(w, x3e_ps);
+    amuse::io::writeInt16Big(w, x40_hist1);
+    amuse::io::writeInt16Big(w, x42_hist2);
+    amuse::io::writeInt16Big(w, x44_loop_ps);
+    amuse::io::writeInt16Big(w, x46_loop_hist1);
+    amuse::io::writeInt16Big(w, x48_loop_hist2);
+    amuse::io::writeUByte(w, m_pitch);
     uint8_t pad[21] = {};
-    w.writeBytes(pad, 21);
+    amuse::io::writeBytes(w, pad, 21);
 }
-template <> void DSPADPCMHeader::Enumerate<DNAOpBinarySize>(size_t& s) { s += 96; }
-template <> void DSPADPCMHeader::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void DSPADPCMHeader::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t DSPADPCMHeader::binarySize(size_t s) const { s += 96; return s; }
+void DSPADPCMHeader::readYaml(amuse::io::YAMLDocReader&) {}
+void DSPADPCMHeader::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view DSPADPCMHeader::DNAType() { return "amuse::DSPADPCMHeader"; }
 
 // ── VADPCMHeader ──────────────────────────────────────────────────────────────
-template <> void VADPCMHeader::Enumerate<DNAOpRead>(IStreamReader& r) {
-    m_pitchSampleRate   = r.readUint32Big();
-    m_numSamples        = r.readUint32Big();
-    m_loopStartSample   = r.readUint32Big();
-    m_loopLengthSamples = r.readUint32Big();
+void VADPCMHeader::read(std::istream& r) {
+    m_pitchSampleRate   = amuse::io::readUint32Big(r);
+    m_numSamples        = amuse::io::readUint32Big(r);
+    m_loopStartSample   = amuse::io::readUint32Big(r);
+    m_loopLengthSamples = amuse::io::readUint32Big(r);
 }
-template <> void VADPCMHeader::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint32Big(m_pitchSampleRate);
-    w.writeUint32Big(m_numSamples);
-    w.writeUint32Big(m_loopStartSample);
-    w.writeUint32Big(m_loopLengthSamples);
+void VADPCMHeader::write(std::ostream& w) const {
+    amuse::io::writeUint32Big(w, m_pitchSampleRate);
+    amuse::io::writeUint32Big(w, m_numSamples);
+    amuse::io::writeUint32Big(w, m_loopStartSample);
+    amuse::io::writeUint32Big(w, m_loopLengthSamples);
 }
-template <> void VADPCMHeader::Enumerate<DNAOpBinarySize>(size_t& s) { s += 16; }
-template <> void VADPCMHeader::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void VADPCMHeader::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t VADPCMHeader::binarySize(size_t s) const { s += 16; return s; }
+void VADPCMHeader::readYaml(amuse::io::YAMLDocReader&) {}
+void VADPCMHeader::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view VADPCMHeader::DNAType() { return "amuse::VADPCMHeader"; }
 
 // ── WAVFormatChunk ────────────────────────────────────────────────────────────
-template <> void WAVFormatChunk::Enumerate<DNAOpRead>(IStreamReader& r) {
-    sampleFmt    = r.readUint16Little();
-    numChannels  = r.readUint16Little();
-    sampleRate   = r.readUint32Little();
-    byteRate     = r.readUint32Little();
-    blockAlign   = r.readUint16Little();
-    bitsPerSample = r.readUint16Little();
+void WAVFormatChunk::read(std::istream& r) {
+    sampleFmt    = amuse::io::readUint16Little(r);
+    numChannels  = amuse::io::readUint16Little(r);
+    sampleRate   = amuse::io::readUint32Little(r);
+    byteRate     = amuse::io::readUint32Little(r);
+    blockAlign   = amuse::io::readUint16Little(r);
+    bitsPerSample = amuse::io::readUint16Little(r);
 }
-template <> void WAVFormatChunk::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint16Little(sampleFmt);
-    w.writeUint16Little(numChannels);
-    w.writeUint32Little(sampleRate);
-    w.writeUint32Little(byteRate);
-    w.writeUint16Little(blockAlign);
-    w.writeUint16Little(bitsPerSample);
+void WAVFormatChunk::write(std::ostream& w) const {
+    amuse::io::writeUint16Little(w, sampleFmt);
+    amuse::io::writeUint16Little(w, numChannels);
+    amuse::io::writeUint32Little(w, sampleRate);
+    amuse::io::writeUint32Little(w, byteRate);
+    amuse::io::writeUint16Little(w, blockAlign);
+    amuse::io::writeUint16Little(w, bitsPerSample);
 }
-template <> void WAVFormatChunk::Enumerate<DNAOpBinarySize>(size_t& s) { s += 16; }
-template <> void WAVFormatChunk::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void WAVFormatChunk::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t WAVFormatChunk::binarySize(size_t s) const { s += 16; return s; }
+void WAVFormatChunk::readYaml(amuse::io::YAMLDocReader&) {}
+void WAVFormatChunk::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view WAVFormatChunk::DNAType() { return "amuse::WAVFormatChunk"; }
 
 // ── WAVSampleChunk ────────────────────────────────────────────────────────────
-template <> void WAVSampleChunk::Enumerate<DNAOpRead>(IStreamReader& r) {
-    smplManufacturer  = r.readUint32Little();
-    smplProduct       = r.readUint32Little();
-    smplPeriod        = r.readUint32Little();
-    midiNote          = r.readUint32Little();
-    midiPitchFrac     = r.readUint32Little();
-    smpteFormat       = r.readUint32Little();
-    smpteOffset       = r.readUint32Little();
-    numSampleLoops    = r.readUint32Little();
-    additionalDataSize = r.readUint32Little();
+void WAVSampleChunk::read(std::istream& r) {
+    smplManufacturer  = amuse::io::readUint32Little(r);
+    smplProduct       = amuse::io::readUint32Little(r);
+    smplPeriod        = amuse::io::readUint32Little(r);
+    midiNote          = amuse::io::readUint32Little(r);
+    midiPitchFrac     = amuse::io::readUint32Little(r);
+    smpteFormat       = amuse::io::readUint32Little(r);
+    smpteOffset       = amuse::io::readUint32Little(r);
+    numSampleLoops    = amuse::io::readUint32Little(r);
+    additionalDataSize = amuse::io::readUint32Little(r);
 }
-template <> void WAVSampleChunk::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint32Little(smplManufacturer);
-    w.writeUint32Little(smplProduct);
-    w.writeUint32Little(smplPeriod);
-    w.writeUint32Little(midiNote);
-    w.writeUint32Little(midiPitchFrac);
-    w.writeUint32Little(smpteFormat);
-    w.writeUint32Little(smpteOffset);
-    w.writeUint32Little(numSampleLoops);
-    w.writeUint32Little(additionalDataSize);
+void WAVSampleChunk::write(std::ostream& w) const {
+    amuse::io::writeUint32Little(w, smplManufacturer);
+    amuse::io::writeUint32Little(w, smplProduct);
+    amuse::io::writeUint32Little(w, smplPeriod);
+    amuse::io::writeUint32Little(w, midiNote);
+    amuse::io::writeUint32Little(w, midiPitchFrac);
+    amuse::io::writeUint32Little(w, smpteFormat);
+    amuse::io::writeUint32Little(w, smpteOffset);
+    amuse::io::writeUint32Little(w, numSampleLoops);
+    amuse::io::writeUint32Little(w, additionalDataSize);
 }
-template <> void WAVSampleChunk::Enumerate<DNAOpBinarySize>(size_t& s) { s += 36; }
-template <> void WAVSampleChunk::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void WAVSampleChunk::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t WAVSampleChunk::binarySize(size_t s) const { s += 36; return s; }
+void WAVSampleChunk::readYaml(amuse::io::YAMLDocReader&) {}
+void WAVSampleChunk::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view WAVSampleChunk::DNAType() { return "amuse::WAVSampleChunk"; }
 
 // ── WAVSampleLoop ─────────────────────────────────────────────────────────────
-template <> void WAVSampleLoop::Enumerate<DNAOpRead>(IStreamReader& r) {
-    cuePointId = r.readUint32Little();
-    loopType   = r.readUint32Little();
-    start      = r.readUint32Little();
-    end        = r.readUint32Little();
-    fraction   = r.readUint32Little();
-    playCount  = r.readUint32Little();
+void WAVSampleLoop::read(std::istream& r) {
+    cuePointId = amuse::io::readUint32Little(r);
+    loopType   = amuse::io::readUint32Little(r);
+    start      = amuse::io::readUint32Little(r);
+    end        = amuse::io::readUint32Little(r);
+    fraction   = amuse::io::readUint32Little(r);
+    playCount  = amuse::io::readUint32Little(r);
 }
-template <> void WAVSampleLoop::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint32Little(cuePointId);
-    w.writeUint32Little(loopType);
-    w.writeUint32Little(start);
-    w.writeUint32Little(end);
-    w.writeUint32Little(fraction);
-    w.writeUint32Little(playCount);
+void WAVSampleLoop::write(std::ostream& w) const {
+    amuse::io::writeUint32Little(w, cuePointId);
+    amuse::io::writeUint32Little(w, loopType);
+    amuse::io::writeUint32Little(w, start);
+    amuse::io::writeUint32Little(w, end);
+    amuse::io::writeUint32Little(w, fraction);
+    amuse::io::writeUint32Little(w, playCount);
 }
-template <> void WAVSampleLoop::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> void WAVSampleLoop::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void WAVSampleLoop::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t WAVSampleLoop::binarySize(size_t s) const { s += 24; return s; }
+void WAVSampleLoop::readYaml(amuse::io::YAMLDocReader&) {}
+void WAVSampleLoop::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view WAVSampleLoop::DNAType() { return "amuse::WAVSampleLoop"; }
 
 // ── WAVHeader ─────────────────────────────────────────────────────────────────
-template <> void WAVHeader::Enumerate<DNAOpRead>(IStreamReader& r) {
-    riffMagic    = r.readUint32Little();
-    wavChuckSize = r.readUint32Little();
-    wavMagic     = r.readUint32Little();
-    fmtMagic     = r.readUint32Little();
-    fmtChunkSize = r.readUint32Little();
+void WAVHeader::read(std::istream& r) {
+    riffMagic    = amuse::io::readUint32Little(r);
+    wavChuckSize = amuse::io::readUint32Little(r);
+    wavMagic     = amuse::io::readUint32Little(r);
+    fmtMagic     = amuse::io::readUint32Little(r);
+    fmtChunkSize = amuse::io::readUint32Little(r);
     fmtChunk.read(r);
-    smplMagic    = r.readUint32Little();
-    smplChunkSize = r.readUint32Little();
+    smplMagic    = amuse::io::readUint32Little(r);
+    smplChunkSize = amuse::io::readUint32Little(r);
     smplChunk.read(r);
-    dataMagic    = r.readUint32Little();
-    dataChunkSize = r.readUint32Little();
+    dataMagic    = amuse::io::readUint32Little(r);
+    dataChunkSize = amuse::io::readUint32Little(r);
 }
-template <> void WAVHeader::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint32Little(riffMagic);
-    w.writeUint32Little(wavChuckSize);
-    w.writeUint32Little(wavMagic);
-    w.writeUint32Little(fmtMagic);
-    w.writeUint32Little(fmtChunkSize);
+void WAVHeader::write(std::ostream& w) const {
+    amuse::io::writeUint32Little(w, riffMagic);
+    amuse::io::writeUint32Little(w, wavChuckSize);
+    amuse::io::writeUint32Little(w, wavMagic);
+    amuse::io::writeUint32Little(w, fmtMagic);
+    amuse::io::writeUint32Little(w, fmtChunkSize);
     fmtChunk.write(w);
-    w.writeUint32Little(smplMagic);
-    w.writeUint32Little(smplChunkSize);
+    amuse::io::writeUint32Little(w, smplMagic);
+    amuse::io::writeUint32Little(w, smplChunkSize);
     smplChunk.write(w);
-    w.writeUint32Little(dataMagic);
-    w.writeUint32Little(dataChunkSize);
+    amuse::io::writeUint32Little(w, dataMagic);
+    amuse::io::writeUint32Little(w, dataChunkSize);
 }
-template <> void WAVHeader::Enumerate<DNAOpBinarySize>(size_t& s) { s += 12 + 8 + 16 + 8 + 36 + 8; }
-template <> void WAVHeader::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void WAVHeader::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t WAVHeader::binarySize(size_t s) const { s += 12 + 8 + 16 + 8 + 36 + 8; return s; }
+void WAVHeader::readYaml(amuse::io::YAMLDocReader&) {}
+void WAVHeader::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view WAVHeader::DNAType() { return "amuse::WAVHeader"; }
 
 // ── WAVHeaderLoop ─────────────────────────────────────────────────────────────
-template <> void WAVHeaderLoop::Enumerate<DNAOpRead>(IStreamReader& r) {
-    riffMagic    = r.readUint32Little();
-    wavChuckSize = r.readUint32Little();
-    wavMagic     = r.readUint32Little();
-    fmtMagic     = r.readUint32Little();
-    fmtChunkSize = r.readUint32Little();
+void WAVHeaderLoop::read(std::istream& r) {
+    riffMagic    = amuse::io::readUint32Little(r);
+    wavChuckSize = amuse::io::readUint32Little(r);
+    wavMagic     = amuse::io::readUint32Little(r);
+    fmtMagic     = amuse::io::readUint32Little(r);
+    fmtChunkSize = amuse::io::readUint32Little(r);
     fmtChunk.read(r);
-    smplMagic    = r.readUint32Little();
-    smplChunkSize = r.readUint32Little();
+    smplMagic    = amuse::io::readUint32Little(r);
+    smplChunkSize = amuse::io::readUint32Little(r);
     smplChunk.read(r);
     sampleLoop.read(r);
-    dataMagic    = r.readUint32Little();
-    dataChunkSize = r.readUint32Little();
+    dataMagic    = amuse::io::readUint32Little(r);
+    dataChunkSize = amuse::io::readUint32Little(r);
 }
-template <> void WAVHeaderLoop::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeUint32Little(riffMagic);
-    w.writeUint32Little(wavChuckSize);
-    w.writeUint32Little(wavMagic);
-    w.writeUint32Little(fmtMagic);
-    w.writeUint32Little(fmtChunkSize);
+void WAVHeaderLoop::write(std::ostream& w) const {
+    amuse::io::writeUint32Little(w, riffMagic);
+    amuse::io::writeUint32Little(w, wavChuckSize);
+    amuse::io::writeUint32Little(w, wavMagic);
+    amuse::io::writeUint32Little(w, fmtMagic);
+    amuse::io::writeUint32Little(w, fmtChunkSize);
     fmtChunk.write(w);
-    w.writeUint32Little(smplMagic);
-    w.writeUint32Little(smplChunkSize);
+    amuse::io::writeUint32Little(w, smplMagic);
+    amuse::io::writeUint32Little(w, smplChunkSize);
     smplChunk.write(w);
     sampleLoop.write(w);
-    w.writeUint32Little(dataMagic);
-    w.writeUint32Little(dataChunkSize);
+    amuse::io::writeUint32Little(w, dataMagic);
+    amuse::io::writeUint32Little(w, dataChunkSize);
 }
-template <> void WAVHeaderLoop::Enumerate<DNAOpBinarySize>(size_t& s) { s += 12 + 8 + 16 + 8 + 36 + 24 + 8; }
-template <> void WAVHeaderLoop::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void WAVHeaderLoop::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+size_t WAVHeaderLoop::binarySize(size_t s) const { s += 12 + 8 + 16 + 8 + 36 + 24 + 8; return s; }
+void WAVHeaderLoop::readYaml(amuse::io::YAMLDocReader&) {}
+void WAVHeaderLoop::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view WAVHeaderLoop::DNAType() { return "amuse::WAVHeaderLoop"; }
 
 // ── EntryDNA<Big> ─────────────────────────────────────────────────────────────
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::read(std::istream& r) {
     m_sfxId.read(r);
-    r.seek(2, athena::SeekOrigin::Current);
-    m_sampleOff    = r.readUint32Big();
-    m_unk          = r.readUint32Big();
-    m_pitch        = r.readUByte();
-    r.seek(1, athena::SeekOrigin::Current);
-    m_sampleRate   = r.readUint16Big();
-    m_numSamples   = r.readUint32Big();
-    m_loopStartSample   = r.readUint32Big();
-    m_loopLengthSamples = r.readUint32Big();
-    m_adpcmParmOffset   = r.readUint32Big();
+    r.seekg(2, std::ios_base::cur);
+    m_sampleOff    = amuse::io::readUint32Big(r);
+    m_unk          = amuse::io::readUint32Big(r);
+    m_pitch        = amuse::io::readUByte(r);
+    r.seekg(1, std::ios_base::cur);
+    m_sampleRate   = amuse::io::readUint16Big(r);
+    m_numSamples   = amuse::io::readUint32Big(r);
+    m_loopStartSample   = amuse::io::readUint32Big(r);
+    m_loopLengthSamples = amuse::io::readUint32Big(r);
+    m_adpcmParmOffset   = amuse::io::readUint32Big(r);
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad2[2] = {};
-    w.writeBytes(pad2, 2);
-    w.writeUint32Big(m_sampleOff);
-    w.writeUint32Big(m_unk);
-    w.writeUByte(m_pitch);
+    amuse::io::writeBytes(w, pad2, 2);
+    amuse::io::writeUint32Big(w, m_sampleOff);
+    amuse::io::writeUint32Big(w, m_unk);
+    amuse::io::writeUByte(w, m_pitch);
     uint8_t pad1[1] = {};
-    w.writeBytes(pad1, 1);
-    w.writeUint16Big(m_sampleRate);
-    w.writeUint32Big(m_numSamples);
-    w.writeUint32Big(m_loopStartSample);
-    w.writeUint32Big(m_loopLengthSamples);
-    w.writeUint32Big(m_adpcmParmOffset);
+    amuse::io::writeBytes(w, pad1, 1);
+    amuse::io::writeUint16Big(w, m_sampleRate);
+    amuse::io::writeUint32Big(w, m_numSamples);
+    amuse::io::writeUint32Big(w, m_loopStartSample);
+    amuse::io::writeUint32Big(w, m_loopLengthSamples);
+    amuse::io::writeUint32Big(w, m_adpcmParmOffset);
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> size_t AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::read(std::istream& r) {
     m_sfxId.read(r);
-    r.seek(2, athena::SeekOrigin::Current);
-    m_sampleOff    = r.readUint32Little();
-    m_unk          = r.readUint32Little();
-    m_pitch        = r.readUByte();
-    r.seek(1, athena::SeekOrigin::Current);
-    m_sampleRate   = r.readUint16Little();
-    m_numSamples   = r.readUint32Little();
-    m_loopStartSample   = r.readUint32Little();
-    m_loopLengthSamples = r.readUint32Little();
-    m_adpcmParmOffset   = r.readUint32Little();
+    r.seekg(2, std::ios_base::cur);
+    m_sampleOff    = amuse::io::readUint32Little(r);
+    m_unk          = amuse::io::readUint32Little(r);
+    m_pitch        = amuse::io::readUByte(r);
+    r.seekg(1, std::ios_base::cur);
+    m_sampleRate   = amuse::io::readUint16Little(r);
+    m_numSamples   = amuse::io::readUint32Little(r);
+    m_loopStartSample   = amuse::io::readUint32Little(r);
+    m_loopLengthSamples = amuse::io::readUint32Little(r);
+    m_adpcmParmOffset   = amuse::io::readUint32Little(r);
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad2[2] = {};
-    w.writeBytes(pad2, 2);
-    w.writeUint32Little(m_sampleOff);
-    w.writeUint32Little(m_unk);
-    w.writeUByte(m_pitch);
+    amuse::io::writeBytes(w, pad2, 2);
+    amuse::io::writeUint32Little(w, m_sampleOff);
+    amuse::io::writeUint32Little(w, m_unk);
+    amuse::io::writeUByte(w, m_pitch);
     uint8_t pad1[1] = {};
-    w.writeBytes(pad1, 1);
-    w.writeUint16Little(m_sampleRate);
-    w.writeUint32Little(m_numSamples);
-    w.writeUint32Little(m_loopStartSample);
-    w.writeUint32Little(m_loopLengthSamples);
-    w.writeUint32Little(m_adpcmParmOffset);
+    amuse::io::writeBytes(w, pad1, 1);
+    amuse::io::writeUint16Little(w, m_sampleRate);
+    amuse::io::writeUint32Little(w, m_numSamples);
+    amuse::io::writeUint32Little(w, m_loopStartSample);
+    amuse::io::writeUint32Little(w, m_loopLengthSamples);
+    amuse::io::writeUint32Little(w, m_adpcmParmOffset);
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-template struct AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>;
-template struct AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>;
+template <> size_t AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template struct AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>;
+template struct AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>;
 
 // ── MusyX1SdirEntry<Big/Little> ───────────────────────────────────────────────
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::read(std::istream& r) {
     m_sfxId.read(r);
-    r.seek(2, athena::SeekOrigin::Current);
-    m_sampleOff       = r.readUint32Big();
-    m_pitchSampleRate = r.readUint32Big();
-    m_numSamples      = r.readUint32Big();
-    m_loopStartSample = r.readUint32Big();
-    m_loopLengthSamples = r.readUint32Big();
+    r.seekg(2, std::ios_base::cur);
+    m_sampleOff       = amuse::io::readUint32Big(r);
+    m_pitchSampleRate = amuse::io::readUint32Big(r);
+    m_numSamples      = amuse::io::readUint32Big(r);
+    m_loopStartSample = amuse::io::readUint32Big(r);
+    m_loopLengthSamples = amuse::io::readUint32Big(r);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
-    w.writeBytes(pad, 2);
-    w.writeUint32Big(m_sampleOff);
-    w.writeUint32Big(m_pitchSampleRate);
-    w.writeUint32Big(m_numSamples);
-    w.writeUint32Big(m_loopStartSample);
-    w.writeUint32Big(m_loopLengthSamples);
+    amuse::io::writeBytes(w, pad, 2);
+    amuse::io::writeUint32Big(w, m_sampleOff);
+    amuse::io::writeUint32Big(w, m_pitchSampleRate);
+    amuse::io::writeUint32Big(w, m_numSamples);
+    amuse::io::writeUint32Big(w, m_loopStartSample);
+    amuse::io::writeUint32Big(w, m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> size_t AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::read(std::istream& r) {
     m_sfxId.read(r);
-    r.seek(2, athena::SeekOrigin::Current);
-    m_sampleOff       = r.readUint32Little();
-    m_pitchSampleRate = r.readUint32Little();
-    m_numSamples      = r.readUint32Little();
-    m_loopStartSample = r.readUint32Little();
-    m_loopLengthSamples = r.readUint32Little();
+    r.seekg(2, std::ios_base::cur);
+    m_sampleOff       = amuse::io::readUint32Little(r);
+    m_pitchSampleRate = amuse::io::readUint32Little(r);
+    m_numSamples      = amuse::io::readUint32Little(r);
+    m_loopStartSample = amuse::io::readUint32Little(r);
+    m_loopLengthSamples = amuse::io::readUint32Little(r);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
-    w.writeBytes(pad, 2);
-    w.writeUint32Little(m_sampleOff);
-    w.writeUint32Little(m_pitchSampleRate);
-    w.writeUint32Little(m_numSamples);
-    w.writeUint32Little(m_loopStartSample);
-    w.writeUint32Little(m_loopLengthSamples);
+    amuse::io::writeBytes(w, pad, 2);
+    amuse::io::writeUint32Little(w, m_sampleOff);
+    amuse::io::writeUint32Little(w, m_pitchSampleRate);
+    amuse::io::writeUint32Little(w, m_numSamples);
+    amuse::io::writeUint32Little(w, m_loopStartSample);
+    amuse::io::writeUint32Little(w, m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-template struct AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>;
-template struct AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>;
+template <> size_t AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template struct AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>;
+template struct AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>;
 
 // ── MusyX1AbsSdirEntry<Big/Little> ────────────────────────────────────────────
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::read(std::istream& r) {
     m_sfxId.read(r);
-    r.seek(2, athena::SeekOrigin::Current);
-    m_sampleOff       = r.readUint32Big();
-    m_unk             = r.readUint32Big();
-    m_pitchSampleRate = r.readUint32Big();
-    m_numSamples      = r.readUint32Big();
-    m_loopStartSample = r.readUint32Big();
-    m_loopLengthSamples = r.readUint32Big();
+    r.seekg(2, std::ios_base::cur);
+    m_sampleOff       = amuse::io::readUint32Big(r);
+    m_unk             = amuse::io::readUint32Big(r);
+    m_pitchSampleRate = amuse::io::readUint32Big(r);
+    m_numSamples      = amuse::io::readUint32Big(r);
+    m_loopStartSample = amuse::io::readUint32Big(r);
+    m_loopLengthSamples = amuse::io::readUint32Big(r);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
-    w.writeBytes(pad, 2);
-    w.writeUint32Big(m_sampleOff);
-    w.writeUint32Big(m_unk);
-    w.writeUint32Big(m_pitchSampleRate);
-    w.writeUint32Big(m_numSamples);
-    w.writeUint32Big(m_loopStartSample);
-    w.writeUint32Big(m_loopLengthSamples);
+    amuse::io::writeBytes(w, pad, 2);
+    amuse::io::writeUint32Big(w, m_sampleOff);
+    amuse::io::writeUint32Big(w, m_unk);
+    amuse::io::writeUint32Big(w, m_pitchSampleRate);
+    amuse::io::writeUint32Big(w, m_numSamples);
+    amuse::io::writeUint32Big(w, m_loopStartSample);
+    amuse::io::writeUint32Big(w, m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 28; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> size_t AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::binarySize(size_t s) const { s += 28; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::read(std::istream& r) {
     m_sfxId.read(r);
-    r.seek(2, athena::SeekOrigin::Current);
-    m_sampleOff       = r.readUint32Little();
-    m_unk             = r.readUint32Little();
-    m_pitchSampleRate = r.readUint32Little();
-    m_numSamples      = r.readUint32Little();
-    m_loopStartSample = r.readUint32Little();
-    m_loopLengthSamples = r.readUint32Little();
+    r.seekg(2, std::ios_base::cur);
+    m_sampleOff       = amuse::io::readUint32Little(r);
+    m_unk             = amuse::io::readUint32Little(r);
+    m_pitchSampleRate = amuse::io::readUint32Little(r);
+    m_numSamples      = amuse::io::readUint32Little(r);
+    m_loopStartSample = amuse::io::readUint32Little(r);
+    m_loopLengthSamples = amuse::io::readUint32Little(r);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
-    w.writeBytes(pad, 2);
-    w.writeUint32Little(m_sampleOff);
-    w.writeUint32Little(m_unk);
-    w.writeUint32Little(m_pitchSampleRate);
-    w.writeUint32Little(m_numSamples);
-    w.writeUint32Little(m_loopStartSample);
-    w.writeUint32Little(m_loopLengthSamples);
+    amuse::io::writeBytes(w, pad, 2);
+    amuse::io::writeUint32Little(w, m_sampleOff);
+    amuse::io::writeUint32Little(w, m_unk);
+    amuse::io::writeUint32Little(w, m_pitchSampleRate);
+    amuse::io::writeUint32Little(w, m_numSamples);
+    amuse::io::writeUint32Little(w, m_loopStartSample);
+    amuse::io::writeUint32Little(w, m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 28; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>;
-template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>;
+template <> size_t AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::binarySize(size_t s) const { s += 28; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>;
+template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>;
 
 // DNAType for template struct instantiations
-template <athena::Endian DNAE>
+template <amuse::Endian DNAE>
 std::string_view AudioGroupSampleDirectory::EntryDNA<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::EntryDNA";
 }
 
-template <athena::Endian DNAE>
+template <amuse::Endian DNAE>
 std::string_view AudioGroupSampleDirectory::MusyX1SdirEntry<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::MusyX1SdirEntry";
 }
 
-template <athena::Endian DNAE>
+template <amuse::Endian DNAE>
 std::string_view AudioGroupSampleDirectory::MusyX1AbsSdirEntry<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::MusyX1AbsSdirEntry";
 }
