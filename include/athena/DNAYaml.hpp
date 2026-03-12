@@ -103,7 +103,7 @@ public:
 // ── YAMLDocWriter ─────────────────────────────────────────────────────────────
 class YAMLDocWriter {
 public:
-    explicit YAMLDocWriter(std::string_view /*type*/) {}
+    explicit YAMLDocWriter(std::string_view /*type*/ = {}) {}
 
     void setStyle(YAMLNodeStyle /*style*/) {}
 
