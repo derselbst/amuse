@@ -32,6 +32,7 @@ enum class YAMLNodeStyle { Default, Flow, Block };
 
 // ── Minimal YAML node ────────────────────────────────────────────────────────
 struct YAMLNode {
+    std::string m_scalarString;
     std::vector<std::pair<std::string, std::shared_ptr<YAMLNode>>> m_mapChildren;
 };
 
@@ -98,6 +99,9 @@ public:
 
     // Returns pointer to a dummy (empty) node – m_mapChildren is empty.
     YAMLNode* getCurNode() { return &m_dummy; }
+
+    // Returns pointer to the root node (same as the dummy in the stub).
+    YAMLNode* getRootNode() { return &m_dummy; }
 };
 
 // ── YAMLDocWriter ─────────────────────────────────────────────────────────────
