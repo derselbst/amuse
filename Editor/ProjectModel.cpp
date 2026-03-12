@@ -1444,6 +1444,7 @@ ProjectModel::SoundMacroNode* ProjectModel::newSoundMacro(GroupNode* group, QStr
   auto dataNode = amuse::MakeObj<amuse::SoundMacro>();
   if (templ) {
     athena::io::MemoryReader r(templ->m_data, templ->m_length);
+    /* Sound macro templates are serialized in MusyX big-endian command format. */
     dataNode->readCmds<athena::Endian::Big>(r, templ->m_length);
   }
 

@@ -286,15 +286,35 @@ inline T parseIntegral(std::string_view in, T fallback = 0) {
   in = trim(in);
   if (in.empty())
     return fallback;
+  if (in.size() > 2 && in[0] == '0' && (in[1] == 'x' || in[1] == 'X')) {
+    T out = 0;
+    auto [ptr, ec] = std::from_chars(in.data() + 2, in.data() + in.size(), out, 16);
+    if (ec == std::errc() && ptr == in.data() + in.size())
+      return out;
+  }
   T out = 0;
   auto [ptr, ec] = std::from_chars(in.data(), in.data() + in.size(), out);
   if (ec == std::errc() && ptr == in.data() + in.size())
     return out;
-  return static_cast<T>(std::strtoll(std::string(in).c_str(), nullptr, 0));
+  return fallback;
 }
 
-inline float parseFloat(std::string_view in) { return std::strtof(std::string(trim(in)).c_str(), nullptr); }
-inline double parseDouble(std::string_view in) { return std::strtod(std::string(trim(in)).c_str(), nullptr); }
+inline float parseFloat(std::string_view in) {
+  in = trim(in);
+  float out = 0.0f;
+  auto [ptr, ec] = std::from_chars(in.data(), in.data() + in.size(), out);
+  if (ec == std::errc() && ptr == in.data() + in.size())
+    return out;
+  return 0.0f;
+}
+inline double parseDouble(std::string_view in) {
+  in = trim(in);
+  double out = 0.0;
+  auto [ptr, ec] = std::from_chars(in.data(), in.data() + in.size(), out);
+  if (ec == std::errc() && ptr == in.data() + in.size())
+    return out;
+  return 0.0;
+}
 
 struct ReaderSubGuard {
   ::athena::io::YAMLDocReader* m_reader = nullptr;
