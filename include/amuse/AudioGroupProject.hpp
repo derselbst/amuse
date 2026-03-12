@@ -14,23 +14,23 @@ class AudioGroupData;
 class AudioGroupPool;
 class AudioGroupSampleDirectory;
 
-enum class GroupType : atUint16 { Song, SFX };
+enum class GroupType : uint16_t { Song, SFX };
 
 /** Header at top of project file */
 template <athena::Endian DNAEn>
 struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) GroupHeader : BigDNA {
   AT_DECL_DNA
-  Value<atUint32, DNAEn> groupEndOff;
+  Value<uint32_t, DNAEn> groupEndOff;
   GroupIdDNA<DNAEn> groupId;
   Value<GroupType, DNAEn> type;
-  Value<atUint32, DNAEn> soundMacroIdsOff;
-  Value<atUint32, DNAEn> samplIdsOff;
-  Value<atUint32, DNAEn> tableIdsOff;
-  Value<atUint32, DNAEn> keymapIdsOff;
-  Value<atUint32, DNAEn> layerIdsOff;
-  Value<atUint32, DNAEn> pageTableOff;
-  Value<atUint32, DNAEn> drumTableOff;
-  Value<atUint32, DNAEn> midiSetupsOff;
+  Value<uint32_t, DNAEn> soundMacroIdsOff;
+  Value<uint32_t, DNAEn> samplIdsOff;
+  Value<uint32_t, DNAEn> tableIdsOff;
+  Value<uint32_t, DNAEn> keymapIdsOff;
+  Value<uint32_t, DNAEn> layerIdsOff;
+  Value<uint32_t, DNAEn> pageTableOff;
+  Value<uint32_t, DNAEn> drumTableOff;
+  Value<uint32_t, DNAEn> midiSetupsOff;
 };
 
 /** Common index members of SongGroups and SFXGroups */
@@ -43,26 +43,26 @@ struct SongGroupIndex : AudioGroupIndex {
   struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) PageEntryDNA : BigDNA {
     AT_DECL_DNA_YAML
     PageObjectIdDNA<DNAEn> objId;
-    Value<atUint8> priority;
-    Value<atUint8> maxVoices;
-    Value<atUint8> programNo;
+    Value<uint8_t> priority;
+    Value<uint8_t> maxVoices;
+    Value<uint8_t> programNo;
     Seek<1, athena::SeekOrigin::Current> pad;
   };
   template <athena::Endian DNAEn>
   struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) MusyX1PageEntryDNA : BigDNA {
     AT_DECL_DNA
     PageObjectIdDNA<DNAEn> objId;
-    Value<atUint8> priority;
-    Value<atUint8> maxVoices;
-    Value<atUint8> unk;
-    Value<atUint8> programNo;
+    Value<uint8_t> priority;
+    Value<uint8_t> maxVoices;
+    Value<uint8_t> unk;
+    Value<uint8_t> programNo;
     Seek<2, athena::SeekOrigin::Current> pad;
   };
   struct PageEntry : BigDNA {
     AT_DECL_DNA_YAML
     PageObjectIdDNA<athena::Endian::Big> objId;
-    Value<atUint8> priority = 0;
-    Value<atUint8> maxVoices = 255;
+    Value<uint8_t> priority = 0;
+    Value<uint8_t> maxVoices = 255;
 
     PageEntry() = default;
 
@@ -89,20 +89,20 @@ struct SongGroupIndex : AudioGroupIndex {
   /** Maps SongID to 16 MIDI channel numbers to GM program numbers and settings */
   struct MusyX1MIDISetup : BigDNA {
     AT_DECL_DNA_YAML
-    Value<atUint8> programNo;
-    Value<atUint8> volume;
-    Value<atUint8> panning;
-    Value<atUint8> reverb;
-    Value<atUint8> chorus;
+    Value<uint8_t> programNo;
+    Value<uint8_t> volume;
+    Value<uint8_t> panning;
+    Value<uint8_t> reverb;
+    Value<uint8_t> chorus;
     Seek<3, athena::SeekOrigin::Current> pad;
   };
   struct MIDISetup : BigDNA {
     AT_DECL_DNA_YAML
-    Value<atUint8> programNo = 0;
-    Value<atUint8> volume = 127;
-    Value<atUint8> panning = 64;
-    Value<atUint8> reverb = 0;
-    Value<atUint8> chorus = 0;
+    Value<uint8_t> programNo = 0;
+    Value<uint8_t> volume = 127;
+    Value<uint8_t> panning = 64;
+    Value<uint8_t> reverb = 0;
+    Value<uint8_t> chorus = 0;
     MIDISetup() = default;
     MIDISetup(const MusyX1MIDISetup& setup)
     : programNo(setup.programNo)
@@ -125,21 +125,21 @@ struct SFXGroupIndex : AudioGroupIndex {
     AT_DECL_DNA
     SFXIdDNA<DNAEn> sfxId;
     PageObjectIdDNA<DNAEn> objId;
-    Value<atUint8> priority;
-    Value<atUint8> maxVoices;
-    Value<atUint8> defVel;
-    Value<atUint8> panning;
-    Value<atUint8> defKey;
+    Value<uint8_t> priority;
+    Value<uint8_t> maxVoices;
+    Value<uint8_t> defVel;
+    Value<uint8_t> panning;
+    Value<uint8_t> defKey;
     Seek<1, athena::SeekOrigin::Current> pad;
   };
   struct SFXEntry : BigDNA {
     AT_DECL_DNA_YAML
     PageObjectIdDNA<athena::Endian::Big> objId;
-    Value<atUint8> priority = 0;
-    Value<atUint8> maxVoices = 255;
-    Value<atUint8> defVel = 127;
-    Value<atUint8> panning = 64;
-    Value<atUint8> defKey = 60;
+    Value<uint8_t> priority = 0;
+    Value<uint8_t> maxVoices = 255;
+    Value<uint8_t> defVel = 127;
+    Value<uint8_t> panning = 64;
+    Value<uint8_t> defKey = 60;
 
     SFXEntry() = default;
 

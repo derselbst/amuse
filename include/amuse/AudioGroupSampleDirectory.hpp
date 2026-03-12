@@ -14,23 +14,23 @@ class AudioGroupDatabase;
 
 struct DSPADPCMHeader : BigDNA {
   AT_DECL_DNA
-  Value<atUint32> x0_num_samples;
-  Value<atUint32> x4_num_nibbles;
-  Value<atUint32> x8_sample_rate;
-  Value<atUint16> xc_loop_flag = 0;
-  Value<atUint16> xe_format = 0; /* 0 for ADPCM */
-  Value<atUint32> x10_loop_start_nibble = 0;
-  Value<atUint32> x14_loop_end_nibble = 0;
-  Value<atUint32> x18_ca = 0;
-  atInt16 x1c_coef[8][2]{};
-  Value<atInt16> x3c_gain = 0;
-  Value<atInt16> x3e_ps = 0;
-  Value<atInt16> x40_hist1 = 0;
-  Value<atInt16> x42_hist2 = 0;
-  Value<atInt16> x44_loop_ps = 0;
-  Value<atInt16> x46_loop_hist1 = 0;
-  Value<atInt16> x48_loop_hist2 = 0;
-  Value<atUint8> m_pitch = 0; // Stash this in the padding
+  Value<uint32_t> x0_num_samples;
+  Value<uint32_t> x4_num_nibbles;
+  Value<uint32_t> x8_sample_rate;
+  Value<uint16_t> xc_loop_flag = 0;
+  Value<uint16_t> xe_format = 0; /* 0 for ADPCM */
+  Value<uint32_t> x10_loop_start_nibble = 0;
+  Value<uint32_t> x14_loop_end_nibble = 0;
+  Value<uint32_t> x18_ca = 0;
+  int16_t x1c_coef[8][2]{};
+  Value<int16_t> x3c_gain = 0;
+  Value<int16_t> x3e_ps = 0;
+  Value<int16_t> x40_hist1 = 0;
+  Value<int16_t> x42_hist2 = 0;
+  Value<int16_t> x44_loop_ps = 0;
+  Value<int16_t> x46_loop_hist1 = 0;
+  Value<int16_t> x48_loop_hist2 = 0;
+  Value<uint8_t> m_pitch = 0; // Stash this in the padding
   Seek<21, athena::SeekOrigin::Current> pad;
 };
 
@@ -44,72 +44,72 @@ struct VADPCMHeader : BigDNA {
 
 struct WAVFormatChunk : LittleDNA {
   AT_DECL_DNA
-  Value<atUint16> sampleFmt = 1;
-  Value<atUint16> numChannels = 1;
-  Value<atUint32> sampleRate;
-  Value<atUint32> byteRate;       // sampleRate * numChannels * bitsPerSample/8
-  Value<atUint16> blockAlign = 2; // numChannels * bitsPerSample/8
-  Value<atUint16> bitsPerSample = 16;
+  Value<uint16_t> sampleFmt = 1;
+  Value<uint16_t> numChannels = 1;
+  Value<uint32_t> sampleRate;
+  Value<uint32_t> byteRate;       // sampleRate * numChannels * bitsPerSample/8
+  Value<uint16_t> blockAlign = 2; // numChannels * bitsPerSample/8
+  Value<uint16_t> bitsPerSample = 16;
 };
 
 struct WAVSampleChunk : LittleDNA {
   AT_DECL_DNA
-  Value<atUint32> smplManufacturer = 0;
-  Value<atUint32> smplProduct = 0;
-  Value<atUint32> smplPeriod; // 1 / sampleRate in nanoseconds
-  Value<atUint32> midiNote;   // native MIDI note of sample
-  Value<atUint32> midiPitchFrac = 0;
-  Value<atUint32> smpteFormat = 0;
-  Value<atUint32> smpteOffset = 0;
-  Value<atUint32> numSampleLoops = 0;
-  Value<atUint32> additionalDataSize = 0;
+  Value<uint32_t> smplManufacturer = 0;
+  Value<uint32_t> smplProduct = 0;
+  Value<uint32_t> smplPeriod; // 1 / sampleRate in nanoseconds
+  Value<uint32_t> midiNote;   // native MIDI note of sample
+  Value<uint32_t> midiPitchFrac = 0;
+  Value<uint32_t> smpteFormat = 0;
+  Value<uint32_t> smpteOffset = 0;
+  Value<uint32_t> numSampleLoops = 0;
+  Value<uint32_t> additionalDataSize = 0;
 };
 
 struct WAVSampleLoop : LittleDNA {
   AT_DECL_DNA
-  Value<atUint32> cuePointId = 0;
-  Value<atUint32> loopType = 0; // 0: forward loop
-  Value<atUint32> start;
-  Value<atUint32> end;
-  Value<atUint32> fraction = 0;
-  Value<atUint32> playCount = 0;
+  Value<uint32_t> cuePointId = 0;
+  Value<uint32_t> loopType = 0; // 0: forward loop
+  Value<uint32_t> start;
+  Value<uint32_t> end;
+  Value<uint32_t> fraction = 0;
+  Value<uint32_t> playCount = 0;
 };
 
 struct WAVHeader : LittleDNA {
   AT_DECL_DNA
-  Value<atUint32> riffMagic = SBIG('RIFF');
-  Value<atUint32> wavChuckSize; // everything - 8
-  Value<atUint32> wavMagic = SBIG('WAVE');
+  Value<uint32_t> riffMagic = SBIG('RIFF');
+  Value<uint32_t> wavChuckSize; // everything - 8
+  Value<uint32_t> wavMagic = SBIG('WAVE');
 
-  Value<atUint32> fmtMagic = SBIG('fmt ');
-  Value<atUint32> fmtChunkSize = 16;
+  Value<uint32_t> fmtMagic = SBIG('fmt ');
+  Value<uint32_t> fmtChunkSize = 16;
   WAVFormatChunk fmtChunk;
 
-  Value<atUint32> smplMagic = SBIG('smpl');
-  Value<atUint32> smplChunkSize = 36; // 36 + numSampleLoops*24
+  Value<uint32_t> smplMagic = SBIG('smpl');
+  Value<uint32_t> smplChunkSize = 36; // 36 + numSampleLoops*24
   WAVSampleChunk smplChunk;
 
-  Value<atUint32> dataMagic = SBIG('data');
-  Value<atUint32> dataChunkSize; // numSamples * numChannels * bitsPerSample/8
+  Value<uint32_t> dataMagic = SBIG('data');
+  Value<uint32_t> dataChunkSize; // numSamples * numChannels * bitsPerSample/8
 };
 
 struct WAVHeaderLoop : LittleDNA {
   AT_DECL_DNA
-  Value<atUint32> riffMagic = SBIG('RIFF');
-  Value<atUint32> wavChuckSize; // everything - 8
-  Value<atUint32> wavMagic = SBIG('WAVE');
+  Value<uint32_t> riffMagic = SBIG('RIFF');
+  Value<uint32_t> wavChuckSize; // everything - 8
+  Value<uint32_t> wavMagic = SBIG('WAVE');
 
-  Value<atUint32> fmtMagic = SBIG('fmt ');
-  Value<atUint32> fmtChunkSize = 16;
+  Value<uint32_t> fmtMagic = SBIG('fmt ');
+  Value<uint32_t> fmtChunkSize = 16;
   WAVFormatChunk fmtChunk;
 
-  Value<atUint32> smplMagic = SBIG('smpl');
-  Value<atUint32> smplChunkSize = 60; // 36 + numSampleLoops*24
+  Value<uint32_t> smplMagic = SBIG('smpl');
+  Value<uint32_t> smplChunkSize = 60; // 36 + numSampleLoops*24
   WAVSampleChunk smplChunk;
   WAVSampleLoop sampleLoop;
 
-  Value<atUint32> dataMagic = SBIG('data');
-  Value<atUint32> dataChunkSize; // numSamples * numChannels * bitsPerSample/8
+  Value<uint32_t> dataMagic = SBIG('data');
+  Value<uint32_t> dataChunkSize; // numSamples * numChannels * bitsPerSample/8
 };
 
 enum class SampleFormat : uint8_t {
@@ -157,32 +157,32 @@ public:
     AT_DECL_DNA
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, athena::SeekOrigin::Current> pad;
-    Value<atUint32, DNAEn> m_sampleOff;
-    Value<atUint32, DNAEn> m_unk;
-    Value<atUint8, DNAEn> m_pitch;
+    Value<uint32_t, DNAEn> m_sampleOff;
+    Value<uint32_t, DNAEn> m_unk;
+    Value<uint8_t, DNAEn> m_pitch;
     Seek<1, athena::SeekOrigin::Current> pad2;
-    Value<atUint16, DNAEn> m_sampleRate;
-    Value<atUint32, DNAEn> m_numSamples; // Top 8 bits is SampleFormat
-    Value<atUint32, DNAEn> m_loopStartSample;
-    Value<atUint32, DNAEn> m_loopLengthSamples;
-    Value<atUint32, DNAEn> m_adpcmParmOffset;
+    Value<uint16_t, DNAEn> m_sampleRate;
+    Value<uint32_t, DNAEn> m_numSamples; // Top 8 bits is SampleFormat
+    Value<uint32_t, DNAEn> m_loopStartSample;
+    Value<uint32_t, DNAEn> m_loopLengthSamples;
+    Value<uint32_t, DNAEn> m_adpcmParmOffset;
 
-    void _setLoopStartSample(atUint32 sample) {
+    void _setLoopStartSample(uint32_t sample) {
       m_loopLengthSamples += m_loopStartSample - sample;
       m_loopStartSample = sample;
     }
-    void setLoopEndSample(atUint32 sample) { m_loopLengthSamples = sample + 1 - m_loopStartSample; }
+    void setLoopEndSample(uint32_t sample) { m_loopLengthSamples = sample + 1 - m_loopStartSample; }
   };
   template <athena::Endian DNAEn>
   struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) MusyX1SdirEntry : BigDNA {
     AT_DECL_DNA
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, athena::SeekOrigin::Current> pad;
-    Value<atUint32, DNAEn> m_sampleOff;
-    Value<atUint32, DNAEn> m_pitchSampleRate;
-    Value<atUint32, DNAEn> m_numSamples;
-    Value<atUint32, DNAEn> m_loopStartSample;
-    Value<atUint32, DNAEn> m_loopLengthSamples;
+    Value<uint32_t, DNAEn> m_sampleOff;
+    Value<uint32_t, DNAEn> m_pitchSampleRate;
+    Value<uint32_t, DNAEn> m_numSamples;
+    Value<uint32_t, DNAEn> m_loopStartSample;
+    Value<uint32_t, DNAEn> m_loopLengthSamples;
   };
   template <athena::Endian DNAEn>
   struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) MusyX1AbsSdirEntry : BigDNA {
@@ -197,14 +197,14 @@ public:
     Value<uint32_t, DNAEn> m_loopLengthSamples;
   };
   struct EntryData {
-    atUint32 m_sampleOff = 0;
-    atUint32 m_unk = 0;
-    atUint8 m_pitch = 0;
-    atUint16 m_sampleRate = 0;
-    atUint32 m_numSamples = 0; // Top 8 bits is SampleFormat
-    atUint32 m_loopStartSample = 0;
-    atUint32 m_loopLengthSamples = 0;
-    atUint32 m_adpcmParmOffset = 0;
+    uint32_t m_sampleOff = 0;
+    uint32_t m_unk = 0;
+    uint8_t m_pitch = 0;
+    uint16_t m_sampleRate = 0;
+    uint32_t m_numSamples = 0; // Top 8 bits is SampleFormat
+    uint32_t m_loopStartSample = 0;
+    uint32_t m_loopLengthSamples = 0;
+    uint32_t m_adpcmParmOffset = 0;
 
     /* Stored out-of-band in a platform-dependent way */
     ADPCMParms m_ADPCMParms;
@@ -216,8 +216,8 @@ public:
     std::unique_ptr<uint8_t[]> m_looseData;
 
     /* Use middle C when pitch is (impossibly low) default */
-    atUint8 getPitch() const { return m_pitch == 0 ? atUint8(60) : m_pitch; }
-    atUint32 getNumSamples() const { return m_numSamples & 0xffffff; }
+    uint8_t getPitch() const { return m_pitch == 0 ? uint8_t(60) : m_pitch; }
+    uint32_t getNumSamples() const { return m_numSamples & 0xffffff; }
     SampleFormat getSampleFormat() const { return SampleFormat(m_numSamples >> 24); }
     bool isFormatDSP() const {
       SampleFormat fmt = getSampleFormat();
@@ -226,14 +226,14 @@ public:
 
     bool isLooped() const { return m_loopLengthSamples != 0 && m_loopStartSample != 0xffffffff; }
 
-    void _setLoopStartSample(atUint32 sample) {
+    void _setLoopStartSample(uint32_t sample) {
       m_loopLengthSamples += m_loopStartSample - sample;
       m_loopStartSample = sample;
     }
-    void setLoopStartSample(atUint32 sample);
-    atUint32 getLoopStartSample() const { return m_loopStartSample; }
-    void setLoopEndSample(atUint32 sample) { m_loopLengthSamples = sample + 1 - m_loopStartSample; }
-    atUint32 getLoopEndSample() const { return m_loopStartSample + m_loopLengthSamples - 1; }
+    void setLoopStartSample(uint32_t sample);
+    uint32_t getLoopStartSample() const { return m_loopStartSample; }
+    void setLoopEndSample(uint32_t sample) { m_loopLengthSamples = sample + 1 - m_loopStartSample; }
+    uint32_t getLoopEndSample() const { return m_loopStartSample + m_loopLengthSamples - 1; }
 
     EntryData() = default;
 

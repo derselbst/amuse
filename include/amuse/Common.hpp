@@ -135,7 +135,7 @@ struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) SoundMac
 
 struct LittleUInt24 : LittleDNA {
   AT_DECL_EXPLICIT_DNA_YAML
-  atUint32 val{};
+  uint32_t val{};
   constexpr operator uint32_t() const noexcept { return val; }
   constexpr LittleUInt24() noexcept = default;
   constexpr LittleUInt24(uint32_t valIn) noexcept : val(valIn) {}
@@ -486,13 +486,13 @@ constexpr uint32_t SBig(uint32_t val) noexcept { return bswap32(val); }
 constexpr int64_t SBig(int64_t val) noexcept { return bswap64(val); }
 constexpr uint64_t SBig(uint64_t val) noexcept { return bswap64(val); }
 constexpr float SBig(float val) noexcept {
-  union { float f; atInt32 i; } uval1 = {val};
-  union { atInt32 i; float f; } uval2 = {bswap32(uval1.i)};
+  union { float f; int32_t i; } uval1 = {val};
+  union { int32_t i; float f; } uval2 = {bswap32(uval1.i)};
   return uval2.f;
 }
 constexpr double SBig(double val) noexcept {
-  union { double f; atInt64 i; } uval1 = {val};
-  union { atInt64 i; double f; } uval2 = {bswap64(uval1.i)};
+  union { double f; int64_t i; } uval1 = {val};
+  union { int64_t i; double f; } uval2 = {bswap64(uval1.i)};
   return uval2.f;
 }
 #ifndef SBIG

@@ -4,18 +4,6 @@
 #include <cstring>
 #include <type_traits>
 
-// ── Primitive type aliases ────────────────────────────────────────────────────
-using atUint8  = uint8_t;
-using atUint16 = uint16_t;
-using atUint32 = uint32_t;
-using atUint64 = uint64_t;
-using atInt8   = int8_t;
-using atInt16  = int16_t;
-using atInt32  = int32_t;
-using atInt64  = int64_t;
-using atFloat  = float;
-using atDouble = double;
-
 // ── Endianness detection ──────────────────────────────────────────────────────
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #  define ATHENA_IS_LITTLE_ENDIAN 0
@@ -96,7 +84,7 @@ inline T SLittle(T v) noexcept {
 // Unconditionally byte-swaps a 4-char integer literal so that the in-memory
 // representation (on any platform) stores the characters in big-endian order.
 // Used to initialise magic-number fields in little-endian structs, e.g.:
-//   Value<atUint32> riffMagic = SBIG('RIFF');
+//   Value<uint32_t> riffMagic = SBIG('RIFF');
 #define SBIG(q) static_cast<uint32_t>(                              \
     ((static_cast<uint32_t>(q) & 0x000000FFu) << 24u) |            \
     ((static_cast<uint32_t>(q) & 0x0000FF00u) <<  8u) |            \

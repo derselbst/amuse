@@ -150,17 +150,3 @@ public:
 };
 
 } // namespace athena::io
-
-// ── athena::utility – endian constants ───────────────────────────────────────
-// Mirrors the real athena Utility.hpp: SystemEndian is the native platform
-// endianness; NotSystemEndian is its opposite.  Used as template arguments for
-// readCmds<E>/writeCmds<E> where game data (big-endian) differs from host.
-namespace athena::utility {
-#if ATHENA_IS_LITTLE_ENDIAN
-constexpr ::athena::Endian SystemEndian    = ::athena::Endian::Little;
-constexpr ::athena::Endian NotSystemEndian = ::athena::Endian::Big;
-#else
-constexpr ::athena::Endian SystemEndian    = ::athena::Endian::Big;
-constexpr ::athena::Endian NotSystemEndian = ::athena::Endian::Little;
-#endif
-} // namespace athena::utility

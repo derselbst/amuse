@@ -1444,7 +1444,7 @@ ProjectModel::SoundMacroNode* ProjectModel::newSoundMacro(GroupNode* group, QStr
   auto dataNode = amuse::MakeObj<amuse::SoundMacro>();
   if (templ) {
     athena::io::MemoryReader r(templ->m_data, templ->m_length);
-    dataNode->readCmds<athena::utility::NotSystemEndian>(r, templ->m_length);
+    dataNode->readCmds<athena::Endian::Big>(r, templ->m_length);
   }
 
   auto node = amuse::MakeObj<SoundMacroNode>(std::move(name), std::move(dataNode));
@@ -1706,7 +1706,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(athena::
 template <class NT>
 void ProjectModel::loadMimeData(const QMimeData* data, const QString& mimeType, GroupNode* gn) {
   auto d = data->data(mimeType);
-  athena::io::MemoryReader mr(d.data(), atUint64(d.length()));
+  athena::io::MemoryReader mr(d.data(), uint64_t(d.length()));
   athena::io::YAMLDocReader r;
   if (r.parse(&mr)) {
     QString newName = MakeDedupedName(QString::fromStdString(r.readString("name")), GetNameDB<NT>());
