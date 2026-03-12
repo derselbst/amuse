@@ -9,7 +9,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include <athena/DNA.hpp>
+#include <amuse/DNA.hpp>
+#include <amuse/IO.hpp>
 #include <logvisor/logvisor.hpp>
 
 #ifndef _WIN32
@@ -35,17 +36,6 @@ constexpr float NativeSampleRate = 32000.0f;
 namespace amuse {
 struct NameDB;
 
-using BigDNA = athena::io::DNA<athena::Endian::Big>;
-using LittleDNA = athena::io::DNA<athena::Endian::Little>;
-using BigDNAV = athena::io::DNAVYaml<athena::Endian::Big>;
-using LittleDNAV = athena::io::DNAVYaml<athena::Endian::Little>;
-
-// Bring Value<> and Seek<> into the amuse namespace so that DNA-derived
-// structs can reference them without full qualification (matching the
-// original athena API surface).
-using athena::io::Value;
-using athena::io::Seek;
-
 /** Common ID structure statically tagging
  *  SoundMacros, Tables, Keymaps, Layers, Samples, SFX, Songs */
 struct ObjectId {
@@ -62,11 +52,11 @@ struct ObjectId {
   constexpr bool operator>(const ObjectId& other) const noexcept { return id > other.id; }
   static thread_local NameDB* CurNameDB;
 };
-template <athena::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) ObjectIdDNA : BigDNA {
+template <amuse::Endian DNAEn>
+struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) ObjectIdDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
-  void _read(athena::io::YAMLDocReader& r);
-  void _write(athena::io::YAMLDocWriter& w);
+  void _read(amuse::io::YAMLDocReader& r);
+  void _write(amuse::io::YAMLDocWriter& w);
   ObjectId id;
   constexpr ObjectIdDNA() noexcept = default;
   constexpr ObjectIdDNA(ObjectId idIn) noexcept : id(idIn) {}
@@ -80,11 +70,11 @@ struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) ObjectId
     constexpr type(const ObjectId& idIn) noexcept : ObjectId(idIn) {}                                                  \
     static thread_local NameDB* CurNameDB;                                                                             \
   };                                                                                                                   \
-  template <athena::Endian DNAEn>                                                                                      \
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) type##DNA : BigDNA {                         \
+  template <amuse::Endian DNAEn>                                                                                      \
+  struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) type##DNA : BigDNA {                           \
     AT_DECL_EXPLICIT_DNA_YAML                                                                                          \
-    void _read(athena::io::YAMLDocReader& r);                                                                          \
-    void _write(athena::io::YAMLDocWriter& w);                                                                         \
+    void _read(amuse::io::YAMLDocReader& r);                                                                           \
+    void _write(amuse::io::YAMLDocWriter& w);                                                                          \
     type id;                                                                                                           \
     constexpr type##DNA() noexcept = default;                                                                          \
     constexpr type##DNA(type idIn) noexcept : id(idIn) {}                                                              \
@@ -102,11 +92,11 @@ DECL_ID_TYPE(GroupId)
 /* MusyX has object polymorphism between Keymaps and Layers when
  * referenced by a song group's page object. When the upper bit is set,
  * this indicates a layer type. */
-template <athena::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) PageObjectIdDNA : BigDNA {
+template <amuse::Endian DNAEn>
+struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) PageObjectIdDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
-  void _read(athena::io::YAMLDocReader& r);
-  void _write(athena::io::YAMLDocWriter& w);
+  void _read(amuse::io::YAMLDocReader& r);
+  void _write(amuse::io::YAMLDocWriter& w);
   ObjectId id;
   constexpr PageObjectIdDNA() noexcept = default;
   constexpr PageObjectIdDNA(ObjectId idIn) noexcept : id(idIn) {}
@@ -124,8 +114,8 @@ struct SoundMacroStep {
   }
 };
 
-template <athena::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) SoundMacroStepDNA : BigDNA {
+template <amuse::Endian DNAEn>
+struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) SoundMacroStepDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
   SoundMacroStep step;
   constexpr SoundMacroStepDNA() noexcept = default;
@@ -135,7 +125,7 @@ struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) SoundMac
 
 struct LittleUInt24 : LittleDNA {
   AT_DECL_EXPLICIT_DNA_YAML
-  atUint32 val{};
+  uint32_t val{};
   constexpr operator uint32_t() const noexcept { return val; }
   constexpr LittleUInt24() noexcept = default;
   constexpr LittleUInt24(uint32_t valIn) noexcept : val(valIn) {}
@@ -434,113 +424,6 @@ inline void Unlink(const char* file) {
 }
 
 bool Copy(const char* from, const char* to);
-
-#undef bswap16
-#undef bswap32
-#undef bswap64
-
-/* Type-sensitive byte swappers */
-template <typename T>
-constexpr T bswap16(T val) noexcept {
-#if __GNUC__
-  return __builtin_bswap16(val);
-#elif _WIN32
-  return _byteswap_ushort(val);
-#else
-  return (val = (val << 8) | ((val >> 8) & 0xFF));
-#endif
-}
-
-template <typename T>
-constexpr T bswap32(T val) noexcept {
-#if __GNUC__
-  return __builtin_bswap32(val);
-#elif _WIN32
-  return _byteswap_ulong(val);
-#else
-  val = (val & 0x0000FFFF) << 16 | (val & 0xFFFF0000) >> 16;
-  val = (val & 0x00FF00FF) << 8 | (val & 0xFF00FF00) >> 8;
-  return val;
-#endif
-}
-
-template <typename T>
-constexpr T bswap64(T val) noexcept {
-#if __GNUC__
-  return __builtin_bswap64(val);
-#elif _WIN32
-  return _byteswap_uint64(val);
-#else
-  return ((val & 0xFF00000000000000ULL) >> 56) | ((val & 0x00FF000000000000ULL) >> 40) |
-         ((val & 0x0000FF0000000000ULL) >> 24) | ((val & 0x000000FF00000000ULL) >> 8) |
-         ((val & 0x00000000FF000000ULL) << 8) | ((val & 0x0000000000FF0000ULL) << 24) |
-         ((val & 0x000000000000FF00ULL) << 40) | ((val & 0x00000000000000FFULL) << 56);
-#endif
-}
-
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-constexpr int16_t SBig(int16_t val) noexcept { return bswap16(val); }
-constexpr uint16_t SBig(uint16_t val) noexcept { return bswap16(val); }
-constexpr int32_t SBig(int32_t val) noexcept { return bswap32(val); }
-constexpr uint32_t SBig(uint32_t val) noexcept { return bswap32(val); }
-constexpr int64_t SBig(int64_t val) noexcept { return bswap64(val); }
-constexpr uint64_t SBig(uint64_t val) noexcept { return bswap64(val); }
-constexpr float SBig(float val) noexcept {
-  union { float f; atInt32 i; } uval1 = {val};
-  union { atInt32 i; float f; } uval2 = {bswap32(uval1.i)};
-  return uval2.f;
-}
-constexpr double SBig(double val) noexcept {
-  union { double f; atInt64 i; } uval1 = {val};
-  union { atInt64 i; double f; } uval2 = {bswap64(uval1.i)};
-  return uval2.f;
-}
-#ifndef SBIG
-#define SBIG(q) (((q)&0x000000FF) << 24 | ((q)&0x0000FF00) << 8 | ((q)&0x00FF0000) >> 8 | ((q)&0xFF000000) >> 24)
-#endif
-
-constexpr int16_t SLittle(int16_t val) noexcept { return val; }
-constexpr uint16_t SLittle(uint16_t val) noexcept { return val; }
-constexpr int32_t SLittle(int32_t val) noexcept { return val; }
-constexpr uint32_t SLittle(uint32_t val) noexcept { return val; }
-constexpr int64_t SLittle(int64_t val) noexcept { return val; }
-constexpr uint64_t SLittle(uint64_t val) noexcept { return val; }
-constexpr float SLittle(float val) noexcept { return val; }
-constexpr double SLittle(double val) noexcept { return val; }
-#ifndef SLITTLE
-#define SLITTLE(q) (q)
-#endif
-#else
-constexpr int16_t SLittle(int16_t val) noexcept { return bswap16(val); }
-constexpr uint16_t SLittle(uint16_t val) noexcept { return bswap16(val); }
-constexpr int32_t SLittle(int32_t val) noexcept { return bswap32(val); }
-constexpr uint32_t SLittle(uint32_t val) noexcept { return bswap32(val); }
-constexpr int64_t SLittle(int64_t val) noexcept { return bswap64(val); }
-constexpr uint64_t SLittle(uint64_t val) noexcept { return bswap64(val); }
-constexpr float SLittle(float val) noexcept {
-  int32_t ival = bswap32(*((int32_t*)(&val)));
-  return *((float*)(&ival));
-}
-constexpr double SLittle(double val) noexcept {
-  int64_t ival = bswap64(*((int64_t*)(&val)));
-  return *((double*)(&ival));
-}
-#ifndef SLITTLE
-#define SLITTLE(q) (((q)&0x000000FF) << 24 | ((q)&0x0000FF00) << 8 | ((q)&0x00FF0000) >> 8 | ((q)&0xFF000000) >> 24)
-#endif
-
-constexpr int16_t SBig(int16_t val) noexcept { return val; }
-constexpr uint16_t SBig(uint16_t val) noexcept { return val; }
-constexpr int32_t SBig(int32_t val) noexcept { return val; }
-constexpr uint32_t SBig(uint32_t val) noexcept { return val; }
-constexpr int64_t SBig(int64_t val) noexcept { return val; }
-constexpr uint64_t SBig(uint64_t val) noexcept { return val; }
-constexpr float SBig(float val) noexcept { return val; }
-constexpr double SBig(double val) noexcept { return val; }
-#ifndef SBIG
-#define SBIG(q) (q)
-#endif
-#endif
 
 /** Versioned data format to interpret */
 enum class DataFormat { GCN, N64, PC };
