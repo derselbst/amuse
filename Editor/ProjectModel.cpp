@@ -12,10 +12,10 @@
 #include <amuse/ContainerRegistry.hpp>
 #include <amuse/SongConverter.hpp>
 
-#include <athena/FileWriter.hpp>
-#include <athena/FileReader.hpp>
-#include <athena/YAMLDocWriter.hpp>
-#include <athena/VectorWriter.hpp>
+#include "athena/FileWriter.hpp"
+#include "athena/FileReader.hpp"
+#include "athena/DNAYaml.hpp"
+#include "athena/VectorWriter.hpp"
 
 QIcon ProjectModel::GroupNode::Icon;
 QIcon ProjectModel::SongGroupNode::Icon;
