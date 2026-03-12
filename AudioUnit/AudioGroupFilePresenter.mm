@@ -1,5 +1,5 @@
 #include "AudioGroupFilePresenter.hpp"
-#include <athena/FileReader.hpp>
+#include <fstream>
 #include <amuse/AudioGroupProject.hpp>
 #import "AmuseContainingApp.hpp"
 #import "AudioUnitBackend.hpp"
@@ -400,7 +400,7 @@ bool AudioGroupDataCollection::loadProj(AudioGroupFilePresenter* presenter)
         options:NSFileCoordinatorReadingResolvesSymbolicLink error:&err
         byAccessor:^(NSURL* newUrl)
      {
-         athena::io::FileReader r([[newUrl path] UTF8String], 1024 * 32, false);
+         std::ifstream r([[newUrl path] UTF8String], 1024 * 32, false);
          if (r.hasError())
              return;
          size_t len = r.length();
@@ -423,7 +423,7 @@ bool AudioGroupDataCollection::loadPool(AudioGroupFilePresenter* presenter)
                               options:NSFileCoordinatorReadingResolvesSymbolicLink error:&err
                            byAccessor:^(NSURL* newUrl)
      {
-         athena::io::FileReader r([[newUrl path] UTF8String], 1024 * 32, false);
+         std::ifstream r([[newUrl path] UTF8String], 1024 * 32, false);
          if (r.hasError())
              return;
          size_t len = r.length();
@@ -446,7 +446,7 @@ bool AudioGroupDataCollection::loadSdir(AudioGroupFilePresenter* presenter)
                               options:NSFileCoordinatorReadingResolvesSymbolicLink error:&err
                            byAccessor:^(NSURL* newUrl)
      {
-         athena::io::FileReader r([[newUrl path] UTF8String], 1024 * 32, false);
+         std::ifstream r([[newUrl path] UTF8String], 1024 * 32, false);
          if (r.hasError())
              return;
          size_t len = r.length();
@@ -469,7 +469,7 @@ bool AudioGroupDataCollection::loadSamp(AudioGroupFilePresenter* presenter)
                               options:NSFileCoordinatorReadingResolvesSymbolicLink error:&err
                            byAccessor:^(NSURL* newUrl)
      {
-         athena::io::FileReader r([[newUrl path] UTF8String], 1024 * 32, false);
+         std::ifstream r([[newUrl path] UTF8String], 1024 * 32, false);
          if (r.hasError())
              return;
          size_t len = r.length();
@@ -492,7 +492,7 @@ bool AudioGroupDataCollection::loadMeta(AudioGroupFilePresenter* presenter)
                               options:NSFileCoordinatorReadingResolvesSymbolicLink error:&err
                            byAccessor:^(NSURL* newUrl)
      {
-         athena::io::FileReader r([[newUrl path] UTF8String], 1024 * 32, false);
+         std::ifstream r([[newUrl path] UTF8String], 1024 * 32, false);
          if (r.hasError())
              return;
          ret.emplace(r);

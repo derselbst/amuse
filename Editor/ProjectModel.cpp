@@ -12,10 +12,10 @@
 #include <amuse/ContainerRegistry.hpp>
 #include <amuse/SongConverter.hpp>
 
-#include "athena/FileWriter.hpp"
-#include "athena/FileReader.hpp"
-#include "athena/DNAYaml.hpp"
-#include "athena/VectorWriter.hpp"
+#include <fstream>
+#include <fstream>
+#include <amuse/DNAYaml.hpp>
+
 
 QIcon ProjectModel::GroupNode::Icon;
 QIcon ProjectModel::SongGroupNode::Icon;
@@ -67,19 +67,19 @@ static void VisitObjectFields(ProjectModel::SoundMacroNode* n,
         break;
       switch (field.m_tp) {
       case amuse::SoundMacro::CmdIntrospection::Field::Type::SoundMacroId:
-        if (!func(amuse::AccessField<amuse::SoundMacroIdDNA<athena::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::SoundMacroIdDNA<amuse::Endian::Little>>(p.get(), field).id,
                   amuse::SoundMacroId::CurNameDB)) {
           return;
         }
         break;
       case amuse::SoundMacro::CmdIntrospection::Field::Type::TableId:
-        if (!func(amuse::AccessField<amuse::TableIdDNA<athena::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::TableIdDNA<amuse::Endian::Little>>(p.get(), field).id,
                   amuse::TableId::CurNameDB)) {
           return;
         }
         break;
       case amuse::SoundMacro::CmdIntrospection::Field::Type::SampleId:
-        if (!func(amuse::AccessField<amuse::SampleIdDNA<athena::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::SampleIdDNA<amuse::Endian::Little>>(p.get(), field).id,
                   amuse::SampleId::CurNameDB)) {
           return;
         }
@@ -550,9 +550,9 @@ void ProjectModel::openSongsData() {
   m_midiFiles.clear();
   QFileInfo songsFile(m_dir, QStringLiteral("!songs.yaml"));
   if (songsFile.exists()) {
-    athena::io::FileReader r(QStringToUTF8(songsFile.filePath()));
+    std::ifstream r(QStringToUTF8(songsFile.filePath()));
     if (!r.hasError()) {
-      athena::io::YAMLDocReader dr;
+      amuse::io::YAMLDocReader dr;
       if (dr.parse(&r)) {
         m_midiFiles.reserve(dr.getRootNode()->m_mapChildren.size());
         for (auto& p : dr.getRootNode()->m_mapChildren) {
@@ -637,14 +637,14 @@ bool ProjectModel::importGroupData(const QString& groupName, const amuse::AudioG
 
   {
     auto proj = grp.getProj().toYAML();
-    athena::io::FileWriter fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!project.yaml")).filePath()));
+    std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!project.yaml")).filePath()));
     if (fo.hasError())
       return false;
     fo.writeUBytes(proj.data(), proj.size());
   }
   {
     auto pool = grp.getPool().toYAML();
-    athena::io::FileWriter fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!pool.yaml")).filePath()));
+    std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!pool.yaml")).filePath()));
     if (fo.hasError())
       return false;
     fo.writeUBytes(pool.data(), pool.size());
@@ -657,10 +657,10 @@ bool ProjectModel::importGroupData(const QString& groupName, const amuse::AudioG
 void ProjectModel::saveSongsIndex() {
   if (!m_midiFiles.empty()) {
     QFileInfo songsFile(m_dir, QStringLiteral("!songs.yaml"));
-    athena::io::YAMLDocWriter dw("amuse::Songs");
+    amuse::io::YAMLDocWriter dw("amuse::Songs");
     for (auto& p : amuse::SortUnorderedMap(m_midiFiles))
       dw.writeString(fmt::format(FMT_STRING("{}"), p.first), p.second.get().m_path.toUtf8().data());
-    athena::io::FileWriter w(QStringToUTF8(songsFile.filePath()));
+    std::ofstream w(QStringToUTF8(songsFile.filePath()));
     if (!w.hasError())
       dw.finish(&w);
   }
@@ -678,14 +678,14 @@ bool ProjectModel::saveToFile(UIMessenger& messenger) {
       return false;
     {
       auto proj = g.second->getProj().toYAML();
-      athena::io::FileWriter fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!project.yaml")).filePath()));
+      std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!project.yaml")).filePath()));
       if (fo.hasError())
         return false;
       fo.writeUBytes(proj.data(), proj.size());
     }
     {
       auto pool = g.second->getPool().toYAML();
-      athena::io::FileWriter fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!pool.yaml")).filePath()));
+      std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!pool.yaml")).filePath()));
       if (fo.hasError())
         return false;
       fo.writeUBytes(pool.data(), pool.size());
@@ -720,7 +720,7 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
   QString basePath = QFileInfo(QDir(path), groupName).filePath();
   {
     auto proj = group.getProj().toGCNData(group.getPool(), group.getSdir());
-    athena::io::FileWriter fo(QStringToUTF8(basePath + QStringLiteral(".proj")));
+    std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".proj")));
     if (fo.hasError()) {
       messenger.critical(tr("Export Error"), tr("Unable to export %1.proj").arg(groupName));
       return false;
@@ -728,8 +728,8 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
     fo.writeUBytes(proj.data(), proj.size());
   }
   {
-    auto pool = group.getPool().toData<athena::Endian::Big>();
-    athena::io::FileWriter fo(QStringToUTF8(basePath + QStringLiteral(".pool")));
+    auto pool = group.getPool().toData<amuse::Endian::Big>();
+    std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".pool")));
     if (fo.hasError()) {
       messenger.critical(tr("Export Error"), tr("Unable to export %1.pool").arg(groupName));
       return false;
@@ -739,7 +739,7 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
   {
     auto sdirSamp = group.getSdir().toGCNData(group);
     {
-      athena::io::FileWriter fo(QStringToUTF8(basePath + QStringLiteral(".sdir")));
+      std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".sdir")));
       if (fo.hasError()) {
         messenger.critical(tr("Export Error"), tr("Unable to export %1.sdir").arg(groupName));
         return false;
@@ -747,7 +747,7 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
       fo.writeUBytes(sdirSamp.first.data(), sdirSamp.first.size());
     }
     {
-      athena::io::FileWriter fo(QStringToUTF8(basePath + QStringLiteral(".samp")));
+      std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".samp")));
       if (fo.hasError()) {
         messenger.critical(tr("Export Error"), tr("Unable to export %1.samp").arg(groupName));
         return false;
@@ -1443,8 +1443,8 @@ ProjectModel::SoundMacroNode* ProjectModel::newSoundMacro(GroupNode* group, QStr
 
   auto dataNode = amuse::MakeObj<amuse::SoundMacro>();
   if (templ) {
-    athena::io::MemoryReader r(templ->m_data, templ->m_length);
-    dataNode->readCmds<athena::utility::NotSystemEndian>(r, templ->m_length);
+    amuse::io::MemoryInputStream r(templ->m_data, templ->m_length);
+    dataNode->readCmds<amuse::Endian::Big>(r, templ->m_length);
   }
 
   auto node = amuse::MakeObj<SoundMacroNode>(std::move(name), std::move(dataNode));
@@ -1589,29 +1589,29 @@ QStringList ProjectModel::mimeTypes() const {
           QStringLiteral("application/x-amuse-samplepath")};
 }
 
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::SongGroupNode* n) { n->m_index->toYAML(w); }
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::SoundGroupNode* n) { n->m_index->toYAML(w); }
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::SoundMacroNode* n) {
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::SongGroupNode* n) { n->m_index->toYAML(w); }
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::SoundGroupNode* n) { n->m_index->toYAML(w); }
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::SoundMacroNode* n) {
   if (auto __r2 = w.enterSubVector("cmds"))
     n->m_obj->toYAML(w);
 }
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::ADSRNode* n) { n->m_obj->get()->write(w); }
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::CurveNode* n) { n->m_obj->get()->write(w); }
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::KeymapNode* n) {
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::ADSRNode* n) { n->m_obj->get()->write(w); }
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::CurveNode* n) { n->m_obj->get()->write(w); }
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::KeymapNode* n) {
   if (auto __v = w.enterSubVector("entries")) {
     for (const auto& km : *n->m_obj) {
       if (auto __r2 = w.enterSubRecord()) {
-        w.setStyle(athena::io::YAMLNodeStyle::Flow);
+        w.setStyle(amuse::io::YAMLNodeStyle::Flow);
         km.write(w);
       }
     }
   }
 }
-static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::LayersNode* n) {
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::LayersNode* n) {
   if (auto __v = w.enterSubVector("entries")) {
     for (const auto& lm : *n->m_obj) {
       if (auto __r2 = w.enterSubRecord()) {
-        w.setStyle(athena::io::YAMLNodeStyle::Flow);
+        w.setStyle(amuse::io::YAMLNodeStyle::Flow);
         lm.write(w);
       }
     }
@@ -1619,11 +1619,11 @@ static void WriteMimeYAML(athena::io::YAMLDocWriter& w, ProjectModel::LayersNode
 }
 
 template <class NT>
-EditorUndoCommand* ProjectModel::readMimeYAML(athena::io::YAMLDocReader& r, const QString& name, GroupNode* gn) {
+EditorUndoCommand* ProjectModel::readMimeYAML(amuse::io::YAMLDocReader& r, const QString& name, GroupNode* gn) {
   return nullptr;
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SongGroupNode>(athena::io::YAMLDocReader& r,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SongGroupNode>(amuse::io::YAMLDocReader& r,
                                                                            const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<amuse::SongGroupIndex>();
   dataNode->fromYAML(r);
@@ -1631,7 +1631,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SongGroupNode>(athen
   return new NodeAddUndoCommand<SongGroupNode>(ProjectModel::tr("Add Song Group %1"), node.get(), gn);
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SoundGroupNode>(athena::io::YAMLDocReader& r,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SoundGroupNode>(amuse::io::YAMLDocReader& r,
                                                                             const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<amuse::SFXGroupIndex>();
   dataNode->fromYAML(r);
@@ -1639,7 +1639,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SoundGroupNode>(athe
   return new NodeAddUndoCommand<SoundGroupNode>(ProjectModel::tr("Add Sound Group %1"), node.get(), gn);
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SoundMacroNode>(athena::io::YAMLDocReader& r,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SoundMacroNode>(amuse::io::YAMLDocReader& r,
                                                                             const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<amuse::SoundMacro>();
   size_t cmdCount;
@@ -1649,7 +1649,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::SoundMacroNode>(athe
   return new NodeAddUndoCommand<SoundMacroNode>(ProjectModel::tr("Add SoundMacro %1"), node.get(), gn);
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::ADSRNode>(athena::io::YAMLDocReader& r, const QString& name,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::ADSRNode>(amuse::io::YAMLDocReader& r, const QString& name,
                                                                       GroupNode* gn) {
   amuse::ObjToken<std::unique_ptr<amuse::ITable>> dataNode;
   if (auto __vta = r.enterSubRecord("velToAttack")) {
@@ -1664,7 +1664,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::ADSRNode>(athena::io
   return new NodeAddUndoCommand<ADSRNode>(ProjectModel::tr("Add ADSR %1"), node.get(), gn);
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::CurveNode>(athena::io::YAMLDocReader& r,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::CurveNode>(amuse::io::YAMLDocReader& r,
                                                                        const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<std::unique_ptr<amuse::ITable>>(std::make_unique<amuse::Curve>());
   static_cast<amuse::Curve&>(**dataNode).read(r);
@@ -1672,7 +1672,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::CurveNode>(athena::i
   return new NodeAddUndoCommand<CurveNode>(ProjectModel::tr("Add Curve %1"), node.get(), gn);
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::KeymapNode>(athena::io::YAMLDocReader& r,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::KeymapNode>(amuse::io::YAMLDocReader& r,
                                                                         const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<std::array<amuse::Keymap, 128>>();
   size_t entryCount;
@@ -1687,7 +1687,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::KeymapNode>(athena::
   return new NodeAddUndoCommand<KeymapNode>(ProjectModel::tr("Add Keymap %1"), node.get(), gn);
 }
 template <>
-EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(athena::io::YAMLDocReader& r,
+EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(amuse::io::YAMLDocReader& r,
                                                                         const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<std::vector<amuse::LayerMapping>>();
   size_t entryCount;
@@ -1706,8 +1706,8 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(athena::
 template <class NT>
 void ProjectModel::loadMimeData(const QMimeData* data, const QString& mimeType, GroupNode* gn) {
   auto d = data->data(mimeType);
-  athena::io::MemoryReader mr(d.data(), atUint64(d.length()));
-  athena::io::YAMLDocReader r;
+  amuse::io::MemoryInputStream mr(d.data(), uint64_t(d.length()));
+  amuse::io::YAMLDocReader r;
   if (r.parse(&mr)) {
     QString newName = MakeDedupedName(QString::fromStdString(r.readString("name")), GetNameDB<NT>());
     g_MainWindow->pushUndoCommand(readMimeYAML<NT>(r, newName, gn));
@@ -1717,8 +1717,8 @@ void ProjectModel::loadMimeData(const QMimeData* data, const QString& mimeType, 
 template <class NT>
 QMimeData* MakeMimeData(NT* n, const QString& mimeType) {
   QMimeData* data = new QMimeData;
-  athena::io::VectorWriter vw;
-  athena::io::YAMLDocWriter w;
+  amuse::io::VectorOutputStream vw;
+  amuse::io::YAMLDocWriter w;
   w.writeString("name", n->name().toStdString());
   WriteMimeYAML(w, n);
   w.finish(&vw);

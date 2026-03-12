@@ -4,10 +4,10 @@
 #include "amuse/Common.hpp"
 #include "amuse/Entity.hpp"
 
-#include <athena/FileReader.hpp>
-#include <athena/FileWriter.hpp>
-#include <athena/MemoryWriter.hpp>
-#include <athena/VectorWriter.hpp>
+#include <fstream>
+#include <fstream>
+
+
 
 #include <logvisor/logvisor.hpp>
 
@@ -69,7 +69,7 @@ struct MakeDefaultCmdOp {
         case amuse::SoundMacro::CmdIntrospection::Field::Type::SoundMacroStep:
         case amuse::SoundMacro::CmdIntrospection::Field::Type::TableId:
         case amuse::SoundMacro::CmdIntrospection::Field::Type::SampleId:
-          AccessField<SoundMacroIdDNA<athena::Endian::Little>>(ret.get(), field).id = uint16_t(field.m_default);
+          AccessField<SoundMacroIdDNA<amuse::Endian::Little>>(ret.get(), field).id = uint16_t(field.m_default);
           break;
         default:
           break;
@@ -87,24 +87,24 @@ struct IntrospectCmdOp {
   }
 };
 
-static bool AtEnd(athena::io::IStreamReader& r) {
-  uint32_t v = r.readUint32Big();
-  r.seek(-4, athena::SeekOrigin::Current);
+static bool AtEnd(std::istream& r) {
+  uint32_t v = amuse::io::readUint32Big(r);
+  r.seekg(-4, std::ios_base::cur);
   return v == 0xffffffff;
 }
 
-template <athena::Endian DNAE>
-AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
+template <amuse::Endian DNAE>
+AudioGroupPool AudioGroupPool::_AudioGroupPool(std::istream& r) {
   AudioGroupPool ret;
 
   PoolHeader<DNAE> head;
   head.read(r);
 
   if (head.soundMacrosOffset) {
-    r.seek(head.soundMacrosOffset, athena::SeekOrigin::Begin);
+    r.seekg(head.soundMacrosOffset, std::ios_base::beg);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.tellg();
       objHead.read(r);
       if (SoundMacroId::CurNameDB)
         SoundMacroId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::SoundMacro),
@@ -112,15 +112,15 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
       auto& macro = ret.m_soundMacros[objHead.objectId.id];
       macro = MakeObj<SoundMacro>();
       macro->template readCmds<DNAE>(r, objHead.size - 8);
-      r.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      r.seekg(startPos + objHead.size, std::ios_base::beg);
     }
   }
 
   if (head.tablesOffset) {
-    r.seek(head.tablesOffset, athena::SeekOrigin::Begin);
+    r.seekg(head.tablesOffset, std::ios_base::beg);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.tellg();
       objHead.read(r);
       if (TableId::CurNameDB)
         TableId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::Table), objHead.objectId);
@@ -137,18 +137,18 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
       default:
         ptr = MakeObj<std::unique_ptr<ITable>>(std::make_unique<Curve>());
         static_cast<Curve&>(**ptr).data.resize(objHead.size - 8);
-        r.readUBytesToBuf(&static_cast<Curve&>(**ptr).data[0], objHead.size - 8);
+        amuse::io::readBytes(r, &static_cast<Curve&>(**ptr).data[0], objHead.size - 8);
         break;
       }
-      r.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      r.seekg(startPos + objHead.size, std::ios_base::beg);
     }
   }
 
   if (head.keymapsOffset) {
-    r.seek(head.keymapsOffset, athena::SeekOrigin::Begin);
+    r.seekg(head.keymapsOffset, std::ios_base::beg);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.tellg();
       objHead.read(r);
       if (KeymapId::CurNameDB)
         KeymapId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::Keymap),
@@ -160,15 +160,15 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
         kmData.read(r);
         (*km)[i] = kmData;
       }
-      r.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      r.seekg(startPos + objHead.size, std::ios_base::beg);
     }
   }
 
   if (head.layersOffset) {
-    r.seek(head.layersOffset, athena::SeekOrigin::Begin);
+    r.seekg(head.layersOffset, std::ios_base::beg);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.tellg();
       objHead.read(r);
       if (LayersId::CurNameDB)
         LayersId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::Layer),
@@ -176,31 +176,31 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
       auto& lm = ret.m_layers[objHead.objectId.id];
       lm = MakeObj<std::vector<LayerMapping>>();
       uint32_t count;
-      athena::io::Read<athena::io::PropType::None>::Do<decltype(count), DNAE>({}, count, r);
+      amuse::io::ReadVal<decltype(count), DNAE>({}, count, r);
       lm->reserve(count);
       for (uint32_t i = 0; i < count; ++i) {
         LayerMappingDNA<DNAE> lmData;
         lmData.read(r);
         lm->push_back(lmData);
       }
-      r.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      r.seekg(startPos + objHead.size, std::ios_base::beg);
     }
   }
 
   return ret;
 }
-template AudioGroupPool AudioGroupPool::_AudioGroupPool<athena::Endian::Big>(athena::io::IStreamReader& r);
-template AudioGroupPool AudioGroupPool::_AudioGroupPool<athena::Endian::Little>(athena::io::IStreamReader& r);
+template AudioGroupPool AudioGroupPool::_AudioGroupPool<amuse::Endian::Big>(std::istream& r);
+template AudioGroupPool AudioGroupPool::_AudioGroupPool<amuse::Endian::Little>(std::istream& r);
 
 AudioGroupPool AudioGroupPool::CreateAudioGroupPool(const AudioGroupData& data) {
   if (data.getPoolSize() < 16)
     return {};
-  athena::io::MemoryReader r(data.getPool(), data.getPoolSize());
+  amuse::io::MemoryInputStream r(data.getPool(), data.getPoolSize());
   switch (data.getDataFormat()) {
   case DataFormat::PC:
-    return _AudioGroupPool<athena::Endian::Little>(r);
+    return _AudioGroupPool<amuse::Endian::Little>(r);
   default:
-    return _AudioGroupPool<athena::Endian::Big>(r);
+    return _AudioGroupPool<amuse::Endian::Big>(r);
   }
 }
 
@@ -208,10 +208,10 @@ AudioGroupPool AudioGroupPool::CreateAudioGroupPool(std::string_view groupPath) 
   AudioGroupPool ret;
   std::string poolPath(groupPath);
   poolPath += "/!pool.yaml";
-  athena::io::FileReader fi(poolPath, 32 * 1024, false);
+  std::ifstream fi(poolPath, 32 * 1024, false);
 
-  if (!fi.hasError()) {
-    athena::io::YAMLDocReader r;
+  if (!fi.fail()) {
+    amuse::io::YAMLDocReader r;
     if (r.parse(&fi) && r.readString("DNAType") == "amuse::Pool") {
       if (auto __r = r.enterSubRecord("soundMacros")) {
         for (const auto& sm : r.getCurNode()->m_mapChildren) {
@@ -329,32 +329,32 @@ int SoundMacro::assertPC(int pc) const {
   return pc;
 }
 
-template <athena::Endian DNAE>
-void SoundMacro::readCmds(athena::io::IStreamReader& r, uint32_t size) {
+template <amuse::Endian DNAE>
+void SoundMacro::readCmds(std::istream& r, uint32_t size) {
   uint32_t numCmds = size / 8;
   m_cmds.reserve(numCmds);
   for (uint32_t i = 0; i < numCmds; ++i) {
     uint32_t data[2];
-    athena::io::Read<athena::io::PropType::None>::Do<decltype(data), DNAE>({}, data, r);
-    athena::io::MemoryReader mr(data, sizeof(data));
+    amuse::io::ReadVal<decltype(data), DNAE>({}, data, r);
+    amuse::io::MemoryInputStream mr(data, sizeof(data));
     m_cmds.push_back(CmdDo<MakeCmdOp, std::unique_ptr<ICmd>>(mr));
   }
 }
-template void SoundMacro::readCmds<athena::Endian::Big>(athena::io::IStreamReader& r, uint32_t size);
-template void SoundMacro::readCmds<athena::Endian::Little>(athena::io::IStreamReader& r, uint32_t size);
+template void SoundMacro::readCmds<amuse::Endian::Big>(std::istream& r, uint32_t size);
+template void SoundMacro::readCmds<amuse::Endian::Little>(std::istream& r, uint32_t size);
 
-template <athena::Endian DNAE>
-void SoundMacro::writeCmds(athena::io::IStreamWriter& w) const {
+template <amuse::Endian DNAE>
+void SoundMacro::writeCmds(std::ostream& w) const {
   for (const auto& cmd : m_cmds) {
     uint32_t data[2];
-    athena::io::MemoryWriter mw(reinterpret_cast<uint8_t*>(data), sizeof(data));
-    mw.writeUByte(uint8_t(cmd->Isa()));
+    amuse::io::VectorOutputStream mw(reinterpret_cast<uint8_t*>(data), sizeof(data));
+    amuse::io::writeUByte(mw, uint8_t(cmd->Isa()));
     cmd->write(mw);
-    athena::io::Write<athena::io::PropType::None>::Do<decltype(data), DNAE>({}, data, w);
+    amuse::io::WriteVal<decltype(data), DNAE>({}, data, w);
   }
 }
-template void SoundMacro::writeCmds<athena::Endian::Big>(athena::io::IStreamWriter& w) const;
-template void SoundMacro::writeCmds<athena::Endian::Little>(athena::io::IStreamWriter& w) const;
+template void SoundMacro::writeCmds<amuse::Endian::Big>(std::ostream& w) const;
+template void SoundMacro::writeCmds<amuse::Endian::Little>(std::ostream& w) const;
 
 void SoundMacro::buildFromPrototype(const SoundMacro& other) {
   m_cmds.reserve(other.m_cmds.size());
@@ -362,17 +362,17 @@ void SoundMacro::buildFromPrototype(const SoundMacro& other) {
     m_cmds.push_back(CmdDo<MakeCopyCmdOp, std::unique_ptr<SoundMacro::ICmd>>(*cmd));
 }
 
-void SoundMacro::toYAML(athena::io::YAMLDocWriter& w) const {
+void SoundMacro::toYAML(amuse::io::YAMLDocWriter& w) const {
   for (const auto& c : m_cmds) {
     if (auto __r2 = w.enterSubRecord()) {
-      w.setStyle(athena::io::YAMLNodeStyle::Flow);
+      w.setStyle(amuse::io::YAMLNodeStyle::Flow);
       w.writeString("cmdOp", SoundMacro::CmdOpToStr(c->Isa()));
       c->write(w);
     }
   }
 }
 
-void SoundMacro::fromYAML(athena::io::YAMLDocReader& r, size_t cmdCount) {
+void SoundMacro::fromYAML(amuse::io::YAMLDocReader& r, size_t cmdCount) {
   m_cmds.reserve(cmdCount);
   for (size_t c = 0; c < cmdCount; ++c)
     if (auto __r2 = r.enterSubRecord())
@@ -421,9 +421,9 @@ const Curve* AudioGroupPool::tableAsCurves(ObjectId id) const {
   return static_cast<const Curve*>((*search->second).get());
 }
 
-static SoundMacro::CmdOp _ReadCmdOp(athena::io::MemoryReader& r) { return SoundMacro::CmdOp(r.readUByte()); }
+static SoundMacro::CmdOp _ReadCmdOp(amuse::io::MemoryInputStream& r) { return SoundMacro::CmdOp(amuse::io::readUByte(r)); }
 
-static SoundMacro::CmdOp _ReadCmdOp(athena::io::YAMLDocReader& r) {
+static SoundMacro::CmdOp _ReadCmdOp(amuse::io::YAMLDocReader& r) {
   return SoundMacro::CmdStrToOp(r.readString("cmdOp"));
 }
 
@@ -599,8 +599,8 @@ O SoundMacro::CmdDo(_Args&&... args) {
     return {};
   }
 }
-template std::unique_ptr<SoundMacro::ICmd> SoundMacro::CmdDo<MakeCmdOp>(athena::io::MemoryReader& r);
-template std::unique_ptr<SoundMacro::ICmd> SoundMacro::CmdDo<MakeCmdOp>(athena::io::YAMLDocReader& r);
+template std::unique_ptr<SoundMacro::ICmd> SoundMacro::CmdDo<MakeCmdOp>(amuse::io::MemoryInputStream& r);
+template std::unique_ptr<SoundMacro::ICmd> SoundMacro::CmdDo<MakeCmdOp>(amuse::io::YAMLDocReader& r);
 template std::unique_ptr<SoundMacro::ICmd> SoundMacro::CmdDo<MakeDefaultCmdOp>(SoundMacro::CmdOp& r);
 template const SoundMacro::CmdIntrospection* SoundMacro::CmdDo<IntrospectCmdOp>(SoundMacro::CmdOp& op);
 
@@ -944,7 +944,7 @@ SoundMacro::CmdOp SoundMacro::CmdStrToOp(std::string_view op) {
 }
 
 std::vector<uint8_t> AudioGroupPool::toYAML() const {
-  athena::io::YAMLDocWriter w("amuse::Pool");
+  amuse::io::YAMLDocWriter w("amuse::Pool");
 
   if (!m_soundMacros.empty()) {
     if (auto __r = w.enterSubRecord("soundMacros")) {
@@ -960,7 +960,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
     if (auto __r = w.enterSubRecord("tables")) {
       for (const auto& p : SortUnorderedMap(m_tables)) {
         if (auto __v = w.enterSubRecord(TableId::CurNameDB->resolveNameFromId(p.first))) {
-          w.setStyle(athena::io::YAMLNodeStyle::Flow);
+          w.setStyle(amuse::io::YAMLNodeStyle::Flow);
           (*p.second.get())->write(w);
         }
       }
@@ -973,7 +973,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
         if (auto __v = w.enterSubVector(KeymapId::CurNameDB->resolveNameFromId(p.first))) {
           for (const auto& km : *p.second.get()) {
             if (auto __r2 = w.enterSubRecord()) {
-              w.setStyle(athena::io::YAMLNodeStyle::Flow);
+              w.setStyle(amuse::io::YAMLNodeStyle::Flow);
               km.write(w);
             }
           }
@@ -988,7 +988,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
         if (auto __v = w.enterSubVector(LayersId::CurNameDB->resolveNameFromId(p.first))) {
           for (const auto& lm : *p.second.get()) {
             if (auto __r2 = w.enterSubRecord()) {
-              w.setStyle(athena::io::YAMLNodeStyle::Flow);
+              w.setStyle(amuse::io::YAMLNodeStyle::Flow);
               lm.write(w);
             }
           }
@@ -997,14 +997,14 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
     }
   }
 
-  athena::io::VectorWriter fo;
+  amuse::io::VectorOutputStream fo;
   w.finish(&fo);
   return fo.data();
 }
 
-template <athena::Endian DNAE>
+template <amuse::Endian DNAE>
 std::vector<uint8_t> AudioGroupPool::toData() const {
-  athena::io::VectorWriter fo;
+  amuse::io::VectorOutputStream fo;
 
   PoolHeader<DNAE> head = {};
   head.write(fo);
@@ -1012,25 +1012,25 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
   const uint32_t term = 0xffffffff;
 
   if (!m_soundMacros.empty()) {
-    head.soundMacrosOffset = fo.position();
+    head.soundMacrosOffset = fo.tellg();
     for (const auto& p : m_soundMacros) {
-      auto startPos = fo.position();
+      auto startPos = fo.tellg();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       p.second->template writeCmds<DNAE>(fo);
-      objHead.size = fo.position() - startPos;
+      objHead.size = fo.tellg() - startPos;
       objHead.objectId = p.first;
-      fo.seek(startPos, athena::SeekOrigin::Begin);
+      fo.seekg(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      fo.seekg(startPos + objHead.size, std::ios_base::beg);
     }
-    athena::io::Write<athena::io::PropType::None>::Do<decltype(term), DNAE>({}, term, fo);
+    amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
   if (!m_tables.empty()) {
-    head.tablesOffset = fo.position();
+    head.tablesOffset = fo.tellg();
     for (const auto& p : m_tables) {
-      auto startPos = fo.position();
+      auto startPos = fo.tellg();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       switch ((*p.second)->Isa()) {
@@ -1042,76 +1042,76 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
         break;
       case ITable::Type::Curve: {
         const auto& data = static_cast<Curve*>(p.second->get())->data;
-        fo.writeUBytes(data.data(), data.size());
+        amuse::io::writeBytes(fo, data.data(), data.size());
         break;
       }
       default:
         break;
       }
-      objHead.size = fo.position() - startPos;
+      objHead.size = fo.tellg() - startPos;
       objHead.objectId = p.first;
-      fo.seek(startPos, athena::SeekOrigin::Begin);
+      fo.seekg(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      fo.seekg(startPos + objHead.size, std::ios_base::beg);
     }
-    athena::io::Write<athena::io::PropType::None>::Do<decltype(term), DNAE>({}, term, fo);
+    amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
   if (!m_keymaps.empty()) {
-    head.keymapsOffset = fo.position();
+    head.keymapsOffset = fo.tellg();
     for (const auto& p : m_keymaps) {
-      auto startPos = fo.position();
+      auto startPos = fo.tellg();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       for (const auto& km : *p.second) {
         KeymapDNA<DNAE> kmData = km.toDNA<DNAE>();
         kmData.write(fo);
       }
-      objHead.size = fo.position() - startPos;
+      objHead.size = fo.tellg() - startPos;
       objHead.objectId = p.first;
-      fo.seek(startPos, athena::SeekOrigin::Begin);
+      fo.seekg(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      fo.seekg(startPos + objHead.size, std::ios_base::beg);
     }
-    athena::io::Write<athena::io::PropType::None>::Do<decltype(term), DNAE>({}, term, fo);
+    amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
   if (!m_layers.empty()) {
-    head.layersOffset = fo.position();
+    head.layersOffset = fo.tellg();
     for (const auto& p : m_layers) {
-      auto startPos = fo.position();
+      auto startPos = fo.tellg();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       uint32_t count = p.second->size();
-      athena::io::Write<athena::io::PropType::None>::Do<decltype(count), DNAE>({}, count, fo);
+      amuse::io::WriteVal<decltype(count), DNAE>({}, count, fo);
       for (const auto& lm : *p.second) {
         LayerMappingDNA<DNAE> lmData = lm.toDNA<DNAE>();
         lmData.write(fo);
       }
-      objHead.size = fo.position() - startPos;
+      objHead.size = fo.tellg() - startPos;
       objHead.objectId = p.first;
-      fo.seek(startPos, athena::SeekOrigin::Begin);
+      fo.seekg(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seek(startPos + objHead.size, athena::SeekOrigin::Begin);
+      fo.seekg(startPos + objHead.size, std::ios_base::beg);
     }
-    athena::io::Write<athena::io::PropType::None>::Do<decltype(term), DNAE>({}, term, fo);
+    amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
-  fo.seek(0, athena::SeekOrigin::Begin);
+  fo.seekg(0, std::ios_base::beg);
   head.write(fo);
 
   return fo.data();
 }
-template std::vector<uint8_t> AudioGroupPool::toData<athena::Endian::Big>() const;
-template std::vector<uint8_t> AudioGroupPool::toData<athena::Endian::Little>() const;
+template std::vector<uint8_t> AudioGroupPool::toData<amuse::Endian::Big>() const;
+template std::vector<uint8_t> AudioGroupPool::toData<amuse::Endian::Little>() const;
 
 template <>
-void amuse::Curve::Enumerate<LittleDNA::Read>(athena::io::IStreamReader& r) {
+void amuse::Curve::Enumerate<LittleDNA::Read>(std::istream& r) {
   Log.report(logvisor::Fatal, FMT_STRING("Curve binary DNA read not supported"));
 }
 
 template <>
-void amuse::Curve::Enumerate<LittleDNA::Write>(athena::io::IStreamWriter& w) {
+void amuse::Curve::Enumerate<LittleDNA::Write>(std::ostream& w) {
   Log.report(logvisor::Fatal, FMT_STRING("Curve binary DNA write not supported"));
 }
 
@@ -1121,12 +1121,12 @@ void amuse::Curve::Enumerate<LittleDNA::BinarySize>(size_t& sz) {
 }
 
 template <>
-void amuse::Curve::Enumerate<LittleDNA::ReadYaml>(athena::io::YAMLDocReader& r) {
+void amuse::Curve::Enumerate<LittleDNA::ReadYaml>(amuse::io::YAMLDocReader& r) {
   r.enumerate("data", data);
 }
 
 template <>
-void amuse::Curve::Enumerate<LittleDNA::WriteYaml>(athena::io::YAMLDocWriter& w) {
+void amuse::Curve::Enumerate<LittleDNA::WriteYaml>(amuse::io::YAMLDocWriter& w) {
   w.enumerate("data", data);
 }
 

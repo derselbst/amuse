@@ -4,38 +4,38 @@
 #include "amuse/AudioGroupSampleDirectory.hpp"
 #include "amuse/AudioGroupData.hpp"
 
-#include <athena/MemoryReader.hpp>
-#include <athena/FileReader.hpp>
-#include <athena/FileWriter.hpp>
-#include <athena/VectorWriter.hpp>
+
+#include <fstream>
+#include <fstream>
+
 
 namespace amuse {
 
-static bool AtEnd64(athena::io::IStreamReader& r) {
-  uint64_t v = r.readUint64Big();
-  r.seek(-8, athena::SeekOrigin::Current);
+static bool AtEnd64(std::istream& r) {
+  uint64_t v = amuse::io::readUint64Big(r);
+  r.seekg(-8, std::ios_base::cur);
   return v == 0xffffffffffffffff;
 }
 
-static bool AtEnd32(athena::io::IStreamReader& r) {
-  uint32_t v = r.readUint32Big();
-  r.seek(-4, athena::SeekOrigin::Current);
+static bool AtEnd32(std::istream& r) {
+  uint32_t v = amuse::io::readUint32Big(r);
+  r.seekg(-4, std::ios_base::cur);
   return v == 0xffffffff;
 }
 
-static bool AtEnd16(athena::io::IStreamReader& r) {
-  uint16_t v = r.readUint16Big();
-  r.seek(-2, athena::SeekOrigin::Current);
+static bool AtEnd16(std::istream& r) {
+  uint16_t v = amuse::io::readUint16Big(r);
+  r.seekg(-2, std::ios_base::cur);
   return v == 0xffff;
 }
 
-template <athena::Endian DNAE>
-static void ReadRangedObjectIds(NameDB* db, athena::io::IStreamReader& r, NameDB::Type tp) {
+template <amuse::Endian DNAE>
+static void ReadRangedObjectIds(NameDB* db, std::istream& r, NameDB::Type tp) {
   uint16_t id;
-  athena::io::Read<athena::io::PropType::None>::Do<decltype(id), DNAE>({}, id, r);
+  amuse::io::ReadVal<decltype(id), DNAE>({}, id, r);
   if ((id & 0x8000) == 0x8000) {
     uint16_t endId;
-    athena::io::Read<athena::io::PropType::None>::Do<decltype(endId), DNAE>({}, endId, r);
+    amuse::io::ReadVal<decltype(endId), DNAE>({}, endId, r);
     for (uint16_t i = uint16_t(id & 0x7fff); i <= uint16_t(endId & 0x7fff); ++i) {
       ObjectId useId = i;
       if (tp == NameDB::Type::Layer)
@@ -55,11 +55,11 @@ static void ReadRangedObjectIds(NameDB* db, athena::io::IStreamReader& r, NameDB
   }
 }
 
-template <athena::Endian DNAE, class T>
-static void WriteRangedObjectIds(athena::io::IStreamWriter& w, const T& list) {
+template <amuse::Endian DNAE, class T>
+static void WriteRangedObjectIds(std::ostream& w, const T& list) {
   if (list.cbegin() == list.cend()) {
     uint16_t term = 0xffff;
-    athena::io::Write<athena::io::PropType::None>::Do<decltype(term), DNAE>({}, term, w);
+    amuse::io::WriteVal<decltype(term), DNAE>({}, term, w);
     return;
   }
   bool inRange = false;
@@ -70,22 +70,22 @@ static void WriteRangedObjectIds(athena::io::IStreamWriter& w, const T& list) {
       if (!inRange) {
         inRange = true;
         lastId |= 0x8000;
-        athena::io::Write<athena::io::PropType::None>::Do<decltype(lastId), DNAE>({}, lastId, w);
+        amuse::io::WriteVal<decltype(lastId), DNAE>({}, lastId, w);
       }
     } else {
       inRange = false;
-      athena::io::Write<athena::io::PropType::None>::Do<decltype(lastId), DNAE>({}, lastId, w);
+      amuse::io::WriteVal<decltype(lastId), DNAE>({}, lastId, w);
     }
     lastId = thisId;
   }
-  athena::io::Write<athena::io::PropType::None>::Do<decltype(lastId), DNAE>({}, lastId, w);
+  amuse::io::WriteVal<decltype(lastId), DNAE>({}, lastId, w);
   uint16_t term = 0xffff;
-  athena::io::Write<athena::io::PropType::None>::Do<decltype(term), DNAE>({}, term, w);
+  amuse::io::WriteVal<decltype(term), DNAE>({}, term, w);
 }
 
-AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
+AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    GroupHeader<athena::Endian::Big> header;
+    GroupHeader<amuse::Endian::Big> header;
     header.read(r);
 
     if (GroupId::CurNameDB)
@@ -93,33 +93,33 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
 
 #if 0
     /* Sound Macros */
-    r.seek(header.soundMacroIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.soundMacroIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
+      ReadRangedObjectIds<amuse::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
     }
 
     /* Samples */
-    r.seek(header.samplIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.samplIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
+      ReadRangedObjectIds<amuse::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
-    r.seek(header.tableIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.tableIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
+      ReadRangedObjectIds<amuse::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
-    r.seek(header.keymapIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.keymapIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
+      ReadRangedObjectIds<amuse::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
-    r.seek(header.layerIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.layerIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
+      ReadRangedObjectIds<amuse::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
 #endif
 
@@ -128,26 +128,26 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
       idx = MakeObj<SongGroupIndex>();
 
       /* Normal pages */
-      r.seek(header.pageTableOff, athena::SeekOrigin::Begin);
+      r.seekg(header.pageTableOff, std::ios_base::beg);
       while (!AtEnd64(r)) {
-        SongGroupIndex::PageEntryDNA<athena::Endian::Big> entry;
+        SongGroupIndex::PageEntryDNA<amuse::Endian::Big> entry;
         entry.read(r);
         idx->m_normPages[entry.programNo] = entry;
       }
 
       /* Drum pages */
-      r.seek(header.drumTableOff, athena::SeekOrigin::Begin);
+      r.seekg(header.drumTableOff, std::ios_base::beg);
       while (!AtEnd64(r)) {
-        SongGroupIndex::PageEntryDNA<athena::Endian::Big> entry;
+        SongGroupIndex::PageEntryDNA<amuse::Endian::Big> entry;
         entry.read(r);
         idx->m_drumPages[entry.programNo] = entry;
       }
 
       /* MIDI setups */
-      r.seek(header.midiSetupsOff, athena::SeekOrigin::Begin);
-      while (r.position() < header.groupEndOff) {
-        uint16_t songId = r.readUint16Big();
-        r.seek(2, athena::SeekOrigin::Current);
+      r.seekg(header.midiSetupsOff, std::ios_base::beg);
+      while (r.tellg() < header.groupEndOff) {
+        uint16_t songId = amuse::io::readUint16Big(r);
+        r.seekg(2, std::ios_base::cur);
         std::array<SongGroupIndex::MIDISetup, 16>& setup = idx->m_midiSetups[songId];
         for (int i = 0; i < 16; ++i) {
           setup[i].read(r);
@@ -161,12 +161,12 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
       idx = MakeObj<SFXGroupIndex>();
 
       /* SFX entries */
-      r.seek(header.pageTableOff, athena::SeekOrigin::Begin);
-      uint16_t count = r.readUint16Big();
-      r.seek(2, athena::SeekOrigin::Current);
+      r.seekg(header.pageTableOff, std::ios_base::beg);
+      uint16_t count = amuse::io::readUint16Big(r);
+      r.seekg(2, std::ios_base::cur);
       idx->m_sfxEntries.reserve(count);
       for (int i = 0; i < count; ++i) {
-        SFXGroupIndex::SFXEntryDNA<athena::Endian::Big> entry;
+        SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big> entry;
         entry.read(r);
         idx->m_sfxEntries[entry.sfxId.id] = entry;
         if (SFXId::CurNameDB)
@@ -174,17 +174,17 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
       }
     }
 
-    r.seek(header.groupEndOff, athena::SeekOrigin::Begin);
+    r.seekg(header.groupEndOff, std::ios_base::beg);
   }
 }
 
-template <athena::Endian DNAE>
-AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReader& r, bool absOffs) {
+template <amuse::Endian DNAE>
+AudioGroupProject AudioGroupProject::_AudioGroupProject(std::istream& r, bool absOffs) {
   AudioGroupProject ret;
 
   while (!AtEnd32(r)) {
-    atInt64 groupBegin = r.position();
-    atInt64 subDataOff = absOffs ? 0 : groupBegin + 8;
+    int64_t groupBegin = r.tellg();
+    int64_t subDataOff = absOffs ? 0 : groupBegin + 8;
     GroupHeader<DNAE> header;
     header.read(r);
 
@@ -192,31 +192,31 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
 
 #if 0
     /* Sound Macros */
-    r.seek(subDataOff + header.soundMacroIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.soundMacroIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
     }
 
     /* Samples */
-    r.seek(subDataOff + header.samplIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.samplIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
-    r.seek(subDataOff + header.tableIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.tableIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
-    r.seek(subDataOff + header.keymapIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.keymapIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
-    r.seek(subDataOff + header.layerIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.layerIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
@@ -228,7 +228,7 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
 
       if (absOffs) {
         /* Normal pages */
-        r.seek(header.pageTableOff, athena::SeekOrigin::Begin);
+        r.seekg(header.pageTableOff, std::ios_base::beg);
         while (!AtEnd16(r)) {
           SongGroupIndex::PageEntryDNA<DNAE> entry;
           entry.read(r);
@@ -236,7 +236,7 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
         }
 
         /* Drum pages */
-        r.seek(header.drumTableOff, athena::SeekOrigin::Begin);
+        r.seekg(header.drumTableOff, std::ios_base::beg);
         while (!AtEnd16(r)) {
           SongGroupIndex::PageEntryDNA<DNAE> entry;
           entry.read(r);
@@ -244,11 +244,11 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
         }
 
         /* MIDI setups */
-        r.seek(header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (r.position() < header.groupEndOff) {
+        r.seekg(header.midiSetupsOff, std::ios_base::beg);
+        while (r.tellg() < header.groupEndOff) {
           uint16_t songId;
-          athena::io::Read<athena::io::PropType::None>::Do<decltype(songId), DNAE>({}, songId, r);
-          r.seek(2, athena::SeekOrigin::Current);
+          amuse::io::ReadVal<decltype(songId), DNAE>({}, songId, r);
+          r.seekg(2, std::ios_base::cur);
           std::array<SongGroupIndex::MIDISetup, 16>& setup = idx->m_midiSetups[songId];
           for (int i = 0; i < 16; ++i) {
             setup[i].read(r);
@@ -257,7 +257,7 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
         }
       } else {
         /* Normal pages */
-        r.seek(subDataOff + header.pageTableOff, athena::SeekOrigin::Begin);
+        r.seekg(subDataOff + header.pageTableOff, std::ios_base::beg);
         while (!AtEnd16(r)) {
           SongGroupIndex::MusyX1PageEntryDNA<DNAE> entry;
           entry.read(r);
@@ -265,7 +265,7 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
         }
 
         /* Drum pages */
-        r.seek(subDataOff + header.drumTableOff, athena::SeekOrigin::Begin);
+        r.seekg(subDataOff + header.drumTableOff, std::ios_base::beg);
         while (!AtEnd16(r)) {
           SongGroupIndex::MusyX1PageEntryDNA<DNAE> entry;
           entry.read(r);
@@ -273,11 +273,11 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
         }
 
         /* MIDI setups */
-        r.seek(subDataOff + header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (atInt64(r.position() + 4) < groupBegin + header.groupEndOff) {
+        r.seekg(subDataOff + header.midiSetupsOff, std::ios_base::beg);
+        while (int64_t(r.tellg() + 4) < groupBegin + header.groupEndOff) {
           uint16_t songId;
-          athena::io::Read<athena::io::PropType::None>::Do<decltype(songId), DNAE>({}, songId, r);
-          r.seek(2, athena::SeekOrigin::Current);
+          amuse::io::ReadVal<decltype(songId), DNAE>({}, songId, r);
+          r.seekg(2, std::ios_base::cur);
           std::array<SongGroupIndex::MIDISetup, 16>& setup = idx->m_midiSetups[songId];
           for (int i = 0; i < 16; ++i) {
             SongGroupIndex::MusyX1MIDISetup ent;
@@ -292,24 +292,24 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
       idx = MakeObj<SFXGroupIndex>();
 
       /* SFX entries */
-      r.seek(subDataOff + header.pageTableOff, athena::SeekOrigin::Begin);
+      r.seekg(subDataOff + header.pageTableOff, std::ios_base::beg);
       uint16_t count;
-      athena::io::Read<athena::io::PropType::None>::Do<decltype(count), DNAE>({}, count, r);
-      r.seek(2, athena::SeekOrigin::Current);
+      amuse::io::ReadVal<decltype(count), DNAE>({}, count, r);
+      r.seekg(2, std::ios_base::cur);
       idx->m_sfxEntries.reserve(count);
       for (int i = 0; i < count; ++i) {
         SFXGroupIndex::SFXEntryDNA<DNAE> entry;
         entry.read(r);
-        r.seek(2, athena::SeekOrigin::Current);
+        r.seekg(2, std::ios_base::cur);
         idx->m_sfxEntries[entry.sfxId.id] = entry;
         SFXId::CurNameDB->registerPair(NameDB::generateName(entry.sfxId.id, NameDB::Type::SFX), entry.sfxId.id);
       }
     }
 
     if (absOffs)
-      r.seek(header.groupEndOff, athena::SeekOrigin::Begin);
+      r.seekg(header.groupEndOff, std::ios_base::beg);
     else
-      r.seek(groupBegin + header.groupEndOff, athena::SeekOrigin::Begin);
+      r.seekg(groupBegin + header.groupEndOff, std::ios_base::beg);
   }
 
   return ret;
@@ -318,15 +318,15 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
 AudioGroupProject AudioGroupProject::CreateAudioGroupProject(const AudioGroupData& data) {
   if (data.getProjSize() < 4)
     return {};
-  athena::io::MemoryReader r(data.getProj(), data.getProjSize());
+  amuse::io::MemoryInputStream r(data.getProj(), data.getProjSize());
   switch (data.getDataFormat()) {
   case DataFormat::GCN:
   default:
     return AudioGroupProject(r, GCNDataTag{});
   case DataFormat::N64:
-    return _AudioGroupProject<athena::Endian::Big>(r, data.getAbsoluteProjOffsets());
+    return _AudioGroupProject<amuse::Endian::Big>(r, data.getAbsoluteProjOffsets());
   case DataFormat::PC:
-    return _AudioGroupProject<athena::Endian::Little>(r, data.getAbsoluteProjOffsets());
+    return _AudioGroupProject<amuse::Endian::Little>(r, data.getAbsoluteProjOffsets());
   }
 }
 
@@ -338,7 +338,7 @@ std::string ParseStringSlashId(const std::string& str, uint16_t& idOut) {
   return {str.begin(), str.begin() + slashPos};
 }
 
-void SongGroupIndex::fromYAML(athena::io::YAMLDocReader& r) {
+void SongGroupIndex::fromYAML(amuse::io::YAMLDocReader& r) {
   if (auto __v2 = r.enterSubRecord("normPages")) {
     m_normPages.reserve(r.getCurNode()->m_mapChildren.size());
     for (const auto& pg : r.getCurNode()->m_mapChildren)
@@ -371,7 +371,7 @@ void SongGroupIndex::fromYAML(athena::io::YAMLDocReader& r) {
   }
 }
 
-void SFXGroupIndex::fromYAML(athena::io::YAMLDocReader& r) {
+void SFXGroupIndex::fromYAML(amuse::io::YAMLDocReader& r) {
   for (const auto& sfx : r.getCurNode()->m_mapChildren)
     if (auto __r2 = r.enterSubRecord(sfx.first.c_str())) {
       uint16_t sfxId;
@@ -387,10 +387,10 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(std::string_view gr
   AudioGroupProject ret;
   std::string projPath(groupPath);
   projPath += "/!project.yaml";
-  athena::io::FileReader fi(projPath, 32 * 1024, false);
+  std::ifstream fi(projPath, 32 * 1024, false);
 
-  if (!fi.hasError()) {
-    athena::io::YAMLDocReader r;
+  if (!fi.fail()) {
+    amuse::io::YAMLDocReader r;
     if (r.parse(&fi) && r.readString("DNAType") == "amuse::Project") {
       if (auto __v = r.enterSubRecord("songGroups")) {
         ret.m_songGroups.reserve(r.getCurNode()->m_mapChildren.size());
@@ -460,102 +460,102 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(const AudioGroupPro
   return ret;
 }
 
-void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, GCNDataTag) {
+void AudioGroupProject::BootstrapObjectIDs(std::istream& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    GroupHeader<athena::Endian::Big> header;
+    GroupHeader<amuse::Endian::Big> header;
     header.read(r);
 
     GroupId::CurNameDB->registerPair(NameDB::generateName(header.groupId, NameDB::Type::Group), header.groupId);
 
     /* Sound Macros */
-    r.seek(header.soundMacroIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.soundMacroIdsOff, std::ios_base::beg);
     while (!AtEnd16(r))
-      ReadRangedObjectIds<athena::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
+      ReadRangedObjectIds<amuse::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
 
     /* Samples */
-    r.seek(header.samplIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.samplIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
+      ReadRangedObjectIds<amuse::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
-    r.seek(header.tableIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.tableIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
+      ReadRangedObjectIds<amuse::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
-    r.seek(header.keymapIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.keymapIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
+      ReadRangedObjectIds<amuse::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
-    r.seek(header.layerIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(header.layerIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
+      ReadRangedObjectIds<amuse::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
 
     if (header.type == GroupType::Song) {
       /* MIDI setups */
-      r.seek(header.midiSetupsOff, athena::SeekOrigin::Begin);
-      while (r.position() < header.groupEndOff) {
-        uint16_t id = r.readUint16Big();
+      r.seekg(header.midiSetupsOff, std::ios_base::beg);
+      while (r.tellg() < header.groupEndOff) {
+        uint16_t id = amuse::io::readUint16Big(r);
         SongId::CurNameDB->registerPair(NameDB::generateName(id, NameDB::Type::Song), id);
-        r.seek(2 + 5 * 16, athena::SeekOrigin::Current);
+        r.seekg(2 + 5 * 16, std::ios_base::cur);
       }
     } else if (header.type == GroupType::SFX) {
       /* SFX entries */
-      r.seek(header.pageTableOff, athena::SeekOrigin::Begin);
-      uint16_t count = r.readUint16Big();
-      r.seek(2, athena::SeekOrigin::Current);
+      r.seekg(header.pageTableOff, std::ios_base::beg);
+      uint16_t count = amuse::io::readUint16Big(r);
+      r.seekg(2, std::ios_base::cur);
       for (int i = 0; i < count; ++i) {
-        SFXGroupIndex::SFXEntryDNA<athena::Endian::Big> entry;
+        SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big> entry;
         entry.read(r);
         SFXId::CurNameDB->registerPair(NameDB::generateName(entry.sfxId.id, NameDB::Type::SFX), entry.sfxId.id);
       }
     }
 
-    r.seek(header.groupEndOff, athena::SeekOrigin::Begin);
+    r.seekg(header.groupEndOff, std::ios_base::beg);
   }
 }
 
-template <athena::Endian DNAE>
-void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, bool absOffs) {
+template <amuse::Endian DNAE>
+void AudioGroupProject::BootstrapObjectIDs(std::istream& r, bool absOffs) {
   while (!AtEnd32(r)) {
-    atInt64 groupBegin = r.position();
-    atInt64 subDataOff = absOffs ? 0 : groupBegin + 8;
+    int64_t groupBegin = r.tellg();
+    int64_t subDataOff = absOffs ? 0 : groupBegin + 8;
     GroupHeader<DNAE> header;
     header.read(r);
 
     GroupId::CurNameDB->registerPair(NameDB::generateName(header.groupId, NameDB::Type::Group), header.groupId);
 
     /* Sound Macros */
-    r.seek(subDataOff + header.soundMacroIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.soundMacroIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
     }
 
     /* Samples */
-    r.seek(subDataOff + header.samplIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.samplIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
-    r.seek(subDataOff + header.tableIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.tableIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
-    r.seek(subDataOff + header.keymapIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.keymapIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
-    r.seek(subDataOff + header.layerIdsOff, athena::SeekOrigin::Begin);
+    r.seekg(subDataOff + header.layerIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
       ReadRangedObjectIds<DNAE>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
@@ -563,56 +563,56 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, bool ab
     if (header.type == GroupType::Song) {
       /* MIDI setups */
       if (absOffs) {
-        r.seek(header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (r.position() < header.groupEndOff) {
+        r.seekg(header.midiSetupsOff, std::ios_base::beg);
+        while (r.tellg() < header.groupEndOff) {
           uint16_t id;
-          athena::io::Read<athena::io::PropType::None>::Do<decltype(id), DNAE>({}, id, r);
+          amuse::io::ReadVal<decltype(id), DNAE>({}, id, r);
           SongId::CurNameDB->registerPair(NameDB::generateName(id, NameDB::Type::Song), id);
-          r.seek(2 + 5 * 16, athena::SeekOrigin::Current);
+          r.seekg(2 + 5 * 16, std::ios_base::cur);
         }
       } else {
-        r.seek(subDataOff + header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (atInt64(r.position()) < groupBegin + header.groupEndOff) {
+        r.seekg(subDataOff + header.midiSetupsOff, std::ios_base::beg);
+        while (int64_t(r.tellg()) < groupBegin + header.groupEndOff) {
           uint16_t id;
-          athena::io::Read<athena::io::PropType::None>::Do<decltype(id), DNAE>({}, id, r);
+          amuse::io::ReadVal<decltype(id), DNAE>({}, id, r);
           SongId::CurNameDB->registerPair(NameDB::generateName(id, NameDB::Type::Song), id);
-          r.seek(2 + 8 * 16, athena::SeekOrigin::Current);
+          r.seekg(2 + 8 * 16, std::ios_base::cur);
         }
       }
     } else if (header.type == GroupType::SFX) {
       /* SFX entries */
-      r.seek(subDataOff + header.pageTableOff, athena::SeekOrigin::Begin);
+      r.seekg(subDataOff + header.pageTableOff, std::ios_base::beg);
       uint16_t count;
-      athena::io::Read<athena::io::PropType::None>::Do<decltype(count), DNAE>({}, count, r);
-      r.seek(2, athena::SeekOrigin::Current);
+      amuse::io::ReadVal<decltype(count), DNAE>({}, count, r);
+      r.seekg(2, std::ios_base::cur);
       for (int i = 0; i < count; ++i) {
         SFXGroupIndex::SFXEntryDNA<DNAE> entry;
         entry.read(r);
-        r.seek(2, athena::SeekOrigin::Current);
+        r.seekg(2, std::ios_base::cur);
         SFXId::CurNameDB->registerPair(NameDB::generateName(entry.sfxId.id, NameDB::Type::SFX), entry.sfxId.id);
       }
     }
 
     if (absOffs) {
-      r.seek(header.groupEndOff, athena::SeekOrigin::Begin);
+      r.seekg(header.groupEndOff, std::ios_base::beg);
     } else {
-      r.seek(groupBegin + header.groupEndOff, athena::SeekOrigin::Begin);
+      r.seekg(groupBegin + header.groupEndOff, std::ios_base::beg);
     }
   }
 }
 
 void AudioGroupProject::BootstrapObjectIDs(const AudioGroupData& data) {
-  athena::io::MemoryReader r(data.getProj(), data.getProjSize());
+  amuse::io::MemoryInputStream r(data.getProj(), data.getProjSize());
   switch (data.getDataFormat()) {
   case DataFormat::GCN:
   default:
     BootstrapObjectIDs(r, GCNDataTag{});
     break;
   case DataFormat::N64:
-    BootstrapObjectIDs<athena::Endian::Big>(r, data.getAbsoluteProjOffsets());
+    BootstrapObjectIDs<amuse::Endian::Big>(r, data.getAbsoluteProjOffsets());
     break;
   case DataFormat::PC:
-    BootstrapObjectIDs<athena::Endian::Little>(r, data.getAbsoluteProjOffsets());
+    BootstrapObjectIDs<amuse::Endian::Little>(r, data.getAbsoluteProjOffsets());
     break;
   }
 }
@@ -631,12 +631,12 @@ const SFXGroupIndex* AudioGroupProject::getSFXGroupIndex(GroupId groupId) const 
   return nullptr;
 }
 
-void SongGroupIndex::toYAML(athena::io::YAMLDocWriter& w) const {
+void SongGroupIndex::toYAML(amuse::io::YAMLDocWriter& w) const {
   if (!m_normPages.empty()) {
     if (auto __v2 = w.enterSubRecord("normPages")) {
       for (const auto& pg : SortUnorderedMap(m_normPages)) {
         if (auto __r2 = w.enterSubRecord(fmt::format(FMT_STRING("{}"), pg.first))) {
-          w.setStyle(athena::io::YAMLNodeStyle::Flow);
+          w.setStyle(amuse::io::YAMLNodeStyle::Flow);
           pg.second.get().write(w);
         }
       }
@@ -646,7 +646,7 @@ void SongGroupIndex::toYAML(athena::io::YAMLDocWriter& w) const {
     if (auto __v2 = w.enterSubRecord("drumPages")) {
       for (const auto& pg : SortUnorderedMap(m_drumPages)) {
         if (auto __r2 = w.enterSubRecord(fmt::format(FMT_STRING("{}"), pg.first))) {
-          w.setStyle(athena::io::YAMLNodeStyle::Flow);
+          w.setStyle(amuse::io::YAMLNodeStyle::Flow);
           pg.second.get().write(w);
         }
       }
@@ -660,7 +660,7 @@ void SongGroupIndex::toYAML(athena::io::YAMLDocWriter& w) const {
         if (auto __v3 = w.enterSubVector(songString))
           for (int i = 0; i < 16; ++i)
             if (auto __r2 = w.enterSubRecord()) {
-              w.setStyle(athena::io::YAMLNodeStyle::Flow);
+              w.setStyle(amuse::io::YAMLNodeStyle::Flow);
               song.second.get()[i].write(w);
             }
       }
@@ -668,19 +668,19 @@ void SongGroupIndex::toYAML(athena::io::YAMLDocWriter& w) const {
   }
 }
 
-void SFXGroupIndex::toYAML(athena::io::YAMLDocWriter& w) const {
+void SFXGroupIndex::toYAML(amuse::io::YAMLDocWriter& w) const {
   for (const auto& sfx : SortUnorderedMap(m_sfxEntries)) {
     std::string sfxString = fmt::format(FMT_STRING("{}/0x{}"),
         SFXId::CurNameDB->resolveNameFromId(sfx.first), sfx.first);
     if (auto __r2 = w.enterSubRecord(sfxString)) {
-      w.setStyle(athena::io::YAMLNodeStyle::Flow);
+      w.setStyle(amuse::io::YAMLNodeStyle::Flow);
       sfx.second.get().write(w);
     }
   }
 }
 
 std::vector<uint8_t> AudioGroupProject::toYAML() const {
-  athena::io::YAMLDocWriter w("amuse::Project");
+  amuse::io::YAMLDocWriter w("amuse::Project");
 
   if (!m_songGroups.empty()) {
     if (auto __v = w.enterSubRecord("songGroups")) {
@@ -706,7 +706,7 @@ std::vector<uint8_t> AudioGroupProject::toYAML() const {
     }
   }
 
-  athena::io::VectorWriter fo;
+  amuse::io::VectorOutputStream fo;
   w.finish(&fo);
   return fo.data();
 }
@@ -823,9 +823,9 @@ struct ObjectIdPool
 
 std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
                                                   const AudioGroupSampleDirectory& sdir) const {
-  constexpr athena::Endian DNAE = athena::Endian::Big;
+  constexpr amuse::Endian DNAE = amuse::Endian::Big;
 
-  athena::io::VectorWriter fo;
+  amuse::io::VectorOutputStream fo;
 
   std::vector<GroupId> groupIds;
   groupIds.reserve(m_songGroups.size() + m_sfxGroups.size());
@@ -843,95 +843,95 @@ std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
     if (search != m_songGroups.end()) {
       const SongGroupIndex& index = *search->second;
 
-      auto groupStart = fo.position();
+      auto groupStart = fo.tellg();
       GroupHeader<DNAE> header = {};
       header.write(fo);
 
       header.groupId = id;
       header.type = GroupType::Song;
 
-      header.soundMacroIdsOff = fo.position();
+      header.soundMacroIdsOff = fo.tellg();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.soundMacros()));
-      header.samplIdsOff = fo.position();
+      header.samplIdsOff = fo.tellg();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(sdir.sampleEntries()));
-      header.tableIdsOff = fo.position();
+      header.tableIdsOff = fo.tellg();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.tables()));
-      header.keymapIdsOff = fo.position();
+      header.keymapIdsOff = fo.tellg();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.keymaps()));
-      header.layerIdsOff = fo.position();
+      header.layerIdsOff = fo.tellg();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.layers()));
 
-      header.pageTableOff = fo.position();
+      header.pageTableOff = fo.tellg();
       for (auto& p : SortUnorderedMap(index.m_normPages)) {
         SongGroupIndex::PageEntryDNA<DNAE> entry = p.second.get().toDNA<DNAE>(p.first);
         entry.write(fo);
       }
-      athena::io::Write<athena::io::PropType::None>::Do<decltype(term64), DNAE>({}, term64, fo);
+      amuse::io::WriteVal<decltype(term64), DNAE>({}, term64, fo);
 
-      header.drumTableOff = fo.position();
+      header.drumTableOff = fo.tellg();
       for (auto& p : SortUnorderedMap(index.m_drumPages)) {
         SongGroupIndex::PageEntryDNA<DNAE> entry = p.second.get().toDNA<DNAE>(p.first);
         entry.write(fo);
       }
-      athena::io::Write<athena::io::PropType::None>::Do<decltype(term64), DNAE>({}, term64, fo);
+      amuse::io::WriteVal<decltype(term64), DNAE>({}, term64, fo);
 
-      header.midiSetupsOff = fo.position();
+      header.midiSetupsOff = fo.tellg();
       for (auto& p : SortUnorderedMap(index.m_midiSetups)) {
         uint16_t songId = p.first.id;
-        athena::io::Write<athena::io::PropType::None>::Do<decltype(songId), DNAE>({}, songId, fo);
-        athena::io::Write<athena::io::PropType::None>::Do<decltype(padding), DNAE>({}, padding, fo);
+        amuse::io::WriteVal<decltype(songId), DNAE>({}, songId, fo);
+        amuse::io::WriteVal<decltype(padding), DNAE>({}, padding, fo);
 
         const std::array<SongGroupIndex::MIDISetup, 16>& setup = p.second.get();
         for (int i = 0; i < 16; ++i)
           setup[i].write(fo);
       }
 
-      header.groupEndOff = fo.position();
-      fo.seek(groupStart, athena::SeekOrigin::Begin);
+      header.groupEndOff = fo.tellg();
+      fo.seekg(groupStart, std::ios_base::beg);
       header.write(fo);
-      fo.seek(header.groupEndOff, athena::SeekOrigin::Begin);
+      fo.seekg(header.groupEndOff, std::ios_base::beg);
     } else {
       auto search2 = m_sfxGroups.find(id);
       if (search2 != m_sfxGroups.end()) {
         const SFXGroupIndex& index = *search2->second;
 
-        auto groupStart = fo.position();
+        auto groupStart = fo.tellg();
         GroupHeader<DNAE> header = {};
         header.write(fo);
 
         header.groupId = id;
         header.type = GroupType::SFX;
 
-        header.soundMacroIdsOff = fo.position();
+        header.soundMacroIdsOff = fo.tellg();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.soundMacros()));
-        header.samplIdsOff = fo.position();
+        header.samplIdsOff = fo.tellg();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(sdir.sampleEntries()));
-        header.tableIdsOff = fo.position();
+        header.tableIdsOff = fo.tellg();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.tables()));
-        header.keymapIdsOff = fo.position();
+        header.keymapIdsOff = fo.tellg();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.keymaps()));
-        header.layerIdsOff = fo.position();
+        header.layerIdsOff = fo.tellg();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.layers()));
 
-        header.pageTableOff = fo.position();
+        header.pageTableOff = fo.tellg();
         uint16_t count = index.m_sfxEntries.size();
-        athena::io::Write<athena::io::PropType::None>::Do<decltype(count), DNAE>({}, count, fo);
-        athena::io::Write<athena::io::PropType::None>::Do<decltype(padding), DNAE>({}, padding, fo);
+        amuse::io::WriteVal<decltype(count), DNAE>({}, count, fo);
+        amuse::io::WriteVal<decltype(padding), DNAE>({}, padding, fo);
         for (auto& p : SortUnorderedMap(index.m_sfxEntries)) {
           SFXGroupIndex::SFXEntryDNA<DNAE> entry = p.second.get().toDNA<DNAE>(p.first);
           entry.write(fo);
         }
 
-        header.groupEndOff = fo.position();
-        fo.seek(groupStart, athena::SeekOrigin::Begin);
+        header.groupEndOff = fo.tellg();
+        fo.seekg(groupStart, std::ios_base::beg);
         header.write(fo);
-        fo.seek(header.groupEndOff, athena::SeekOrigin::Begin);
+        fo.seekg(header.groupEndOff, std::ios_base::beg);
       }
     }
   }
 
   const uint32_t finalTerm = 0xffffffff;
-  athena::io::Write<athena::io::PropType::None>::Do<decltype(finalTerm), DNAE>({}, finalTerm, fo);
+  amuse::io::WriteVal<decltype(finalTerm), DNAE>({}, finalTerm, fo);
 
   return fo.data();
 }

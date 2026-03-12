@@ -155,7 +155,7 @@ static const wchar_t* const GMPercNames[128] = {
 
 bool AudioGroupDataCollection::loadProj() {
   std::wstring path = m_path + L"\\proj";
-  athena::io::FileReader r(path, 1024 * 32, false);
+  std::ifstream r(path, 1024 * 32, false);
   if (r.hasError())
     return false;
   std::vector<uint8_t>& ret = m_projData;
@@ -167,7 +167,7 @@ bool AudioGroupDataCollection::loadProj() {
 
 bool AudioGroupDataCollection::loadPool() {
   std::wstring path = m_path + L"\\pool";
-  athena::io::FileReader r(path, 1024 * 32, false);
+  std::ifstream r(path, 1024 * 32, false);
   if (r.hasError())
     return false;
   std::vector<uint8_t>& ret = m_poolData;
@@ -179,7 +179,7 @@ bool AudioGroupDataCollection::loadPool() {
 
 bool AudioGroupDataCollection::loadSdir() {
   std::wstring path = m_path + L"\\sdir";
-  athena::io::FileReader r(path, 1024 * 32, false);
+  std::ifstream r(path, 1024 * 32, false);
   if (r.hasError())
     return false;
   std::vector<uint8_t>& ret = m_sdirData;
@@ -191,7 +191,7 @@ bool AudioGroupDataCollection::loadSdir() {
 
 bool AudioGroupDataCollection::loadSamp() {
   std::wstring path = m_path + L"\\samp";
-  athena::io::FileReader r(path, 1024 * 32, false);
+  std::ifstream r(path, 1024 * 32, false);
   if (r.hasError())
     return false;
   std::vector<uint8_t>& ret = m_sampData;
@@ -203,7 +203,7 @@ bool AudioGroupDataCollection::loadSamp() {
 
 bool AudioGroupDataCollection::loadMeta() {
   std::wstring path = m_path + L"\\meta";
-  athena::io::FileReader r(path, 1024 * 32, false);
+  std::ifstream r(path, 1024 * 32, false);
   if (r.hasError())
     return false;
   std::optional<MetaData>& ret = m_metaData;

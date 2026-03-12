@@ -1,6 +1,6 @@
 #include "amuse/amuse.hpp"
-#include "athena/FileReader.hpp"
-#include "athena/DNAYaml.hpp"
+#include <fstream>
+#include <amuse/DNAYaml.hpp>
 #include "logvisor/logvisor.hpp"
 #include <cstdio>
 #include <cstring>

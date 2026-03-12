@@ -4,7 +4,7 @@
 #include <memory>
 #include <optional>
 #include <amuse/amuse.hpp>
-#include <athena/FileReader.hpp>
+#include <fstream>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -30,7 +30,7 @@ struct AudioGroupDataCollection {
     uint32_t active;
     MetaData(amuse::DataFormat fmtIn, uint32_t absOffsIn, uint32_t activeIn)
     : FMT_STRING(fmtIn), absOffs(absOffsIn), active(activeIn) {}
-    MetaData(athena::io::FileReader& r)
+    MetaData(std::ifstream& r)
     : FMT_STRING(amuse::DataFormat(r.readUint32Little())), absOffs(r.readUint32Little()), active(r.readUint32Little()) {}
   };
   std::optional<MetaData> m_metaData;

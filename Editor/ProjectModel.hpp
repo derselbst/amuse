@@ -453,7 +453,7 @@ public:
   void _renameNode(INode* node, const QString& name);
 
   template <class NT>
-  EditorUndoCommand* readMimeYAML(athena::io::YAMLDocReader& r, const QString& name, GroupNode* gn);
+  EditorUndoCommand* readMimeYAML(amuse::io::YAMLDocReader& r, const QString& name, GroupNode* gn);
   template <class NT>
   void loadMimeData(const QMimeData* data, const QString& mimeType, GroupNode* gn);
 

@@ -5,7 +5,7 @@
 
 #include "amuse/AudioGroupData.hpp"
 
-#include <athena/FileReader.hpp>
+#include <fstream>
 #include <fmt/ostream.h>
 
 
