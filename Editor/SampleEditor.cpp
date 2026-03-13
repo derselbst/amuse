@@ -416,7 +416,7 @@ public:
   , m_fieldIdx(fieldIdx) {}
   void undo() override {
     m_undid = true;
-    amuse::SampleEntryData* data = m_node.cast<ProjectModel::SampleNode>()->m_obj->m_data.get();
+    amuse::SampleEntryData* data = std::static_pointer_cast<ProjectModel::SampleNode>(m_node)->m_obj->m_data.get();
     data->setLoopStartSample(m_undoStartVal);
     data->setLoopEndSample(m_undoEndVal);
     EditorUndoCommand::undo();
@@ -424,7 +424,7 @@ public:
       e->m_controls->doFileWrite();
   }
   void redo() override {
-    amuse::SampleEntryData* data = m_node.cast<ProjectModel::SampleNode>()->m_obj->m_data.get();
+    amuse::SampleEntryData* data = std::static_pointer_cast<ProjectModel::SampleNode>(m_node)->m_obj->m_data.get();
     m_undoStartVal = data->getLoopStartSample();
     m_undoEndVal = data->getLoopEndSample();
     data->setLoopStartSample(m_redoStartVal);
@@ -518,14 +518,14 @@ public:
   : EditorUndoCommand(node.get(), SampleControls::tr("Change Base Pitch")), m_redoPitchVal(redoPitch) {}
   void undo() override {
     m_undid = true;
-    amuse::SampleEntryData* data = m_node.cast<ProjectModel::SampleNode>()->m_obj->m_data.get();
+    amuse::SampleEntryData* data = std::static_pointer_cast<ProjectModel::SampleNode>(m_node)->m_obj->m_data.get();
     data->m_pitch = m_undoPitchVal;
     EditorUndoCommand::undo();
     if (SampleEditor* e = static_cast<SampleEditor*>(g_MainWindow->getEditorWidget()))
       e->m_controls->doFileWrite();
   }
   void redo() override {
-    amuse::SampleEntryData* data = m_node.cast<ProjectModel::SampleNode>()->m_obj->m_data.get();
+    amuse::SampleEntryData* data = std::static_pointer_cast<ProjectModel::SampleNode>(m_node)->m_obj->m_data.get();
     m_undoPitchVal = data->m_pitch;
     data->m_pitch = m_redoPitchVal;
     if (m_undid) {

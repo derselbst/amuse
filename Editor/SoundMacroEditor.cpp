@@ -577,11 +577,11 @@ public:
   : EditorUndoCommand(node.get(), SoundMacroListing::tr("Reorder %1").arg(text)), m_a(a), m_b(b) {}
   void undo() override {
     m_undid = true;
-    m_node.cast<ProjectModel::SoundMacroNode>()->m_obj->swapPositions(m_a, m_b);
+    std::static_pointer_cast<ProjectModel::SoundMacroNode>(m_node)->m_obj->swapPositions(m_a, m_b);
     EditorUndoCommand::undo();
   }
   void redo() override {
-    m_node.cast<ProjectModel::SoundMacroNode>()->m_obj->swapPositions(m_a, m_b);
+    std::static_pointer_cast<ProjectModel::SoundMacroNode>(m_node)->m_obj->swapPositions(m_a, m_b);
     if (m_undid)
       EditorUndoCommand::redo();
   }
@@ -688,13 +688,13 @@ public:
   InsertCommandUndoCommand(int insertIdx, const QString& text, amuse::ObjToken<ProjectModel::SoundMacroNode> node)
   : EditorUndoCommand(node.get(), SoundMacroListing::tr("Insert %1").arg(text)), m_insertIdx(insertIdx) {}
   void undo() override {
-    m_cmd = m_node.cast<ProjectModel::SoundMacroNode>()->m_obj->deleteCmd(m_insertIdx);
+    m_cmd = std::static_pointer_cast<ProjectModel::SoundMacroNode>(m_node)->m_obj->deleteCmd(m_insertIdx);
     EditorUndoCommand::undo();
   }
   void redo() override {
     if (!m_cmd)
       return;
-    m_node.cast<ProjectModel::SoundMacroNode>()->m_obj->insertCmd(m_insertIdx, std::move(m_cmd));
+    std::static_pointer_cast<ProjectModel::SoundMacroNode>(m_node)->m_obj->insertCmd(m_insertIdx, std::move(m_cmd));
     m_cmd.reset();
     EditorUndoCommand::redo();
   }
@@ -734,12 +734,12 @@ public:
   : EditorUndoCommand(node.get(), SoundMacroListing::tr("Delete %1").arg(text)), m_deleteIdx(deleteIdx) {}
   void undo() override {
     m_undid = true;
-    m_node.cast<ProjectModel::SoundMacroNode>()->m_obj->insertCmd(m_deleteIdx, std::move(m_cmd));
+    std::static_pointer_cast<ProjectModel::SoundMacroNode>(m_node)->m_obj->insertCmd(m_deleteIdx, std::move(m_cmd));
     m_cmd.reset();
     EditorUndoCommand::undo();
   }
   void redo() override {
-    m_cmd = m_node.cast<ProjectModel::SoundMacroNode>()->m_obj->deleteCmd(m_deleteIdx);
+    m_cmd = std::static_pointer_cast<ProjectModel::SoundMacroNode>(m_node)->m_obj->deleteCmd(m_deleteIdx);
     if (m_undid)
       EditorUndoCommand::redo();
   }

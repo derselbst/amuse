@@ -1,10 +1,10 @@
 #pragma once
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -146,179 +146,15 @@ struct LittleUInt24 : LittleDNA {
   }
 };
 
-class IObj {
-  std::atomic_int m_refCount = {0};
+template <class T>
+using ObjToken = std::shared_ptr<T>;
 
-protected:
-  virtual ~IObj() = default;
-
-public:
-  void increment() noexcept { m_refCount.fetch_add(1, std::memory_order_relaxed); }
-  void decrement() noexcept {
-    if (m_refCount.fetch_sub(1, std::memory_order_release) == 1) {
-      std::atomic_thread_fence(std::memory_order_acquire);
-      delete this;
-    }
-  }
-};
-
-template <class SubCls>
-class ObjWrapper : public IObj {
-  SubCls m_obj;
-
-public:
-  template <class... _Args>
-  ObjWrapper(_Args&&... args) noexcept : m_obj(std::forward<_Args>(args)...) {}
-  SubCls* get() noexcept { return &m_obj; }
-  const SubCls* get() const noexcept { return &m_obj; }
-};
-
-template <class SubCls>
-class ObjTokenBase {
-protected:
-  IObj* m_obj = nullptr;
-  ObjTokenBase(IObj* obj) noexcept : m_obj(obj) {
-    if (m_obj) {
-      m_obj->increment();
-    }
-  }
-
-public:
-  ObjTokenBase() noexcept = default;
-  ObjTokenBase(const ObjTokenBase& other) noexcept : m_obj(other.m_obj) {
-    if (m_obj) {
-      m_obj->increment();
-    }
-  }
-  ObjTokenBase(ObjTokenBase&& other) noexcept : m_obj(other.m_obj) { other.m_obj = nullptr; }
-  ObjTokenBase& operator=(const ObjTokenBase& other) noexcept {
-    if (m_obj) {
-      m_obj->decrement();
-    }
-    m_obj = other.m_obj;
-    if (m_obj) {
-      m_obj->increment();
-    }
-    return *this;
-  }
-  ObjTokenBase& operator=(ObjTokenBase&& other) noexcept {
-    if (m_obj) {
-      m_obj->decrement();
-    }
-    m_obj = other.m_obj;
-    other.m_obj = nullptr;
-    return *this;
-  }
-  ~ObjTokenBase() noexcept {
-    if (!m_obj) {
-      return;
-    }
-
-    m_obj->decrement();
-  }
-  bool operator==(const ObjTokenBase& other) const noexcept { return m_obj == other.m_obj; }
-  bool operator!=(const ObjTokenBase& other) const noexcept { return !operator==(other); }
-  bool operator<(const ObjTokenBase& other) const noexcept { return m_obj < other.m_obj; }
-  bool operator>(const ObjTokenBase& other) const noexcept { return m_obj > other.m_obj; }
-  explicit operator bool() const noexcept { return m_obj != nullptr; }
-  void reset() noexcept {
-    if (m_obj) {
-      m_obj->decrement();
-    }
-    m_obj = nullptr;
-  }
-};
-
-template <class SubCls, class Enable = void>
-class ObjToken : public ObjTokenBase<SubCls> {
-  IObj*& _obj() noexcept { return ObjTokenBase<SubCls>::m_obj; }
-  IObj* const& _obj() const noexcept { return ObjTokenBase<SubCls>::m_obj; }
-
-public:
-  using ObjTokenBase<SubCls>::ObjTokenBase;
-  ObjToken() noexcept = default;
-  ObjToken(ObjWrapper<SubCls>* obj) noexcept : ObjTokenBase<SubCls>(obj) {}
-  ObjToken& operator=(ObjWrapper<SubCls>* obj) noexcept {
-    if (_obj()) {
-      _obj()->decrement();
-    }
-    _obj() = obj;
-    if (_obj()) {
-      _obj()->increment();
-    }
-    return *this;
-  }
-  SubCls* get() const noexcept { return static_cast<ObjWrapper<SubCls>*>(_obj())->get(); }
-  SubCls* operator->() const noexcept { return get(); }
-  SubCls& operator*() const noexcept { return *get(); }
-};
-
-template <class SubCls>
-class ObjToken<SubCls, typename std::enable_if_t<std::is_base_of_v<IObj, SubCls>>> : public ObjTokenBase<SubCls> {
-  IObj*& _obj() noexcept { return ObjTokenBase<SubCls>::m_obj; }
-  IObj* const& _obj() const noexcept { return ObjTokenBase<SubCls>::m_obj; }
-
-public:
-  using ObjTokenBase<SubCls>::ObjTokenBase;
-  ObjToken() noexcept = default;
-  ObjToken(IObj* obj) noexcept : ObjTokenBase<SubCls>(obj) {}
-  ObjToken& operator=(IObj* obj) noexcept {
-    if (_obj()) {
-      _obj()->decrement();
-    }
-    _obj() = obj;
-    if (_obj()) {
-      _obj()->increment();
-    }
-    return *this;
-  }
-  SubCls* get() const noexcept { return static_cast<SubCls*>(_obj()); }
-  SubCls* operator->() const noexcept { return get(); }
-  SubCls& operator*() const noexcept { return *get(); }
-  template <class T>
-  T* cast() const noexcept {
-    return static_cast<T*>(_obj());
-  }
-};
-
-/* ONLY USE WITH CLASSES DERIVED FROM IOBJ!
- * Bypasses type_traits tests for incomplete type definitions. */
-template <class SubCls>
-class IObjToken : public ObjTokenBase<SubCls> {
-  IObj*& _obj() noexcept { return ObjTokenBase<SubCls>::m_obj; }
-  IObj* const& _obj() const noexcept { return ObjTokenBase<SubCls>::m_obj; }
-
-public:
-  using ObjTokenBase<SubCls>::ObjTokenBase;
-  IObjToken() noexcept = default;
-  IObjToken(IObj* obj) noexcept : ObjTokenBase<SubCls>(obj) {}
-  IObjToken& operator=(IObj* obj) noexcept {
-    if (_obj()) {
-      _obj()->decrement();
-    }
-    _obj() = obj;
-    if (_obj()) {
-      _obj()->increment();
-    }
-    return *this;
-  }
-  SubCls* get() const noexcept { return static_cast<SubCls*>(_obj()); }
-  SubCls* operator->() const noexcept { return get(); }
-  SubCls& operator*() const noexcept { return *get(); }
-  template <class T>
-  T* cast() const noexcept {
-    return static_cast<T*>(_obj());
-  }
-};
+template <class T>
+using IObjToken = std::shared_ptr<T>;
 
 template <class Tp, class... _Args>
-inline typename std::enable_if_t<std::is_base_of_v<IObj, Tp>, ObjToken<Tp>> MakeObj(_Args&&... args) {
-  return new Tp(std::forward<_Args>(args)...);
-}
-
-template <class Tp, class... _Args>
-inline typename std::enable_if_t<!std::is_base_of_v<IObj, Tp>, ObjToken<Tp>> MakeObj(_Args&&... args) {
-  return new ObjWrapper<Tp>(std::forward<_Args>(args)...);
+inline std::shared_ptr<Tp> MakeObj(_Args&&... args) {
+  return std::make_shared<Tp>(std::forward<_Args>(args)...);
 }
 
 #ifndef PRISize
@@ -503,10 +339,6 @@ DECL_ID_HASH(SongId)
 DECL_ID_HASH(SFXId)
 DECL_ID_HASH(GroupId)
 
-template <class T>
-struct hash<amuse::ObjToken<T>> {
-  size_t operator()(const amuse::ObjToken<T>& val) const noexcept { return hash<T*>()(val.get()); }
-};
 } // namespace std
 
 namespace amuse {
