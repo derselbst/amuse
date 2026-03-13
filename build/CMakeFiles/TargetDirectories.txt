@@ -1,3 +1,0 @@
-/home/runner/work/amuse/amuse/build/CMakeFiles/amuse.dir
-/home/runner/work/amuse/amuse/build/CMakeFiles/edit_cache.dir
-/home/runner/work/amuse/amuse/build/CMakeFiles/rebuild_cache.dir
