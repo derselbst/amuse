@@ -75,40 +75,46 @@ struct WAVSampleLoop : LittleDNA {
   Value<atUint32> playCount = 0;
 };
 
+constexpr atUint32 CC_RIFF = FOURCC('R', 'I', 'F', 'F');
+constexpr atUint32 CC_WAVE = FOURCC('W', 'A', 'V', 'E');
+constexpr atUint32 CC_FMT  = FOURCC('f', 'm', 't', ' ');
+constexpr atUint32 CC_SMPL = FOURCC('s', 'm', 'p', 'l');
+constexpr atUint32 CC_DATA = FOURCC('d', 'a', 't', 'a');
+
 struct WAVHeader : LittleDNA {
   AT_DECL_DNA
-  Value<atUint32> riffMagic = SBIG('RIFF');
+  Value<atUint32> riffMagic = CC_RIFF;
   Value<atUint32> wavChuckSize; // everything - 8
-  Value<atUint32> wavMagic = SBIG('WAVE');
+  Value<atUint32> wavMagic = CC_WAVE;
 
-  Value<atUint32> fmtMagic = SBIG('fmt ');
+  Value<atUint32> fmtMagic = CC_FMT;
   Value<atUint32> fmtChunkSize = 16;
   WAVFormatChunk fmtChunk;
 
-  Value<atUint32> smplMagic = SBIG('smpl');
+  Value<atUint32> smplMagic = CC_SMPL;
   Value<atUint32> smplChunkSize = 36; // 36 + numSampleLoops*24
   WAVSampleChunk smplChunk;
 
-  Value<atUint32> dataMagic = SBIG('data');
+  Value<atUint32> dataMagic = CC_DATA;
   Value<atUint32> dataChunkSize; // numSamples * numChannels * bitsPerSample/8
 };
 
 struct WAVHeaderLoop : LittleDNA {
   AT_DECL_DNA
-  Value<atUint32> riffMagic = SBIG('RIFF');
+  Value<atUint32> riffMagic = CC_RIFF;
   Value<atUint32> wavChuckSize; // everything - 8
-  Value<atUint32> wavMagic = SBIG('WAVE');
+  Value<atUint32> wavMagic = CC_WAVE;
 
-  Value<atUint32> fmtMagic = SBIG('fmt ');
+  Value<atUint32> fmtMagic = CC_FMT;
   Value<atUint32> fmtChunkSize = 16;
   WAVFormatChunk fmtChunk;
 
-  Value<atUint32> smplMagic = SBIG('smpl');
+  Value<atUint32> smplMagic = CC_SMPL;
   Value<atUint32> smplChunkSize = 60; // 36 + numSampleLoops*24
   WAVSampleChunk smplChunk;
   WAVSampleLoop sampleLoop;
 
-  Value<atUint32> dataMagic = SBIG('data');
+  Value<atUint32> dataMagic = CC_DATA;
   Value<atUint32> dataChunkSize; // numSamples * numChannels * bitsPerSample/8
 };
 

@@ -206,22 +206,22 @@ void AudioGroupSampleDirectory::EntryData::loadLooseWAV(std::string_view wavPath
   athena::io::FileReader r(wavPath);
   if (!r.hasError()) {
     atUint32 riffMagic = r.readUint32Little();
-    if (riffMagic != SBIG('RIFF'))
+    if (riffMagic != CC_RIFF)
       return;
     atUint32 wavChuckSize = r.readUint32Little();
     atUint32 wavMagic = r.readUint32Little();
-    if (wavMagic != SBIG('WAVE'))
+    if (wavMagic != CC_WAVE)
       return;
 
     while (r.position() < wavChuckSize + 8) {
       atUint32 chunkMagic = r.readUint32Little();
       atUint32 chunkSize = r.readUint32Little();
       atUint64 startPos = r.position();
-      if (chunkMagic == SBIG('fmt ')) {
+      if (chunkMagic == CC_FMT) {
         WAVFormatChunk fmt;
         fmt.read(r);
         m_sampleRate = atUint16(fmt.sampleRate);
-      } else if (chunkMagic == SBIG('smpl')) {
+      } else if (chunkMagic == CC_SMPL) {
         WAVSampleChunk smpl;
         smpl.read(r);
         m_pitch = atUint8(smpl.midiNote);
@@ -232,7 +232,7 @@ void AudioGroupSampleDirectory::EntryData::loadLooseWAV(std::string_view wavPath
           _setLoopStartSample(loop.start);
           setLoopEndSample(loop.end);
         }
-      } else if (chunkMagic == SBIG('data')) {
+      } else if (chunkMagic == CC_DATA) {
         m_numSamples = ((chunkSize / 2) & 0xffffff) | (atUint32(SampleFormat::PCM_PC) << 24);
         m_looseData.reset(new uint8_t[chunkSize]);
         r.readUBytesToBuf(m_looseData.get(), chunkSize);
@@ -412,10 +412,10 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
   athena::io::FileReader r(wavPath);
   if (!r.hasError()) {
     atUint32 riffMagic = r.readUint32Little();
-    if (riffMagic == SBIG('RIFF')) {
+    if (riffMagic == CC_RIFF) {
       atUint32 wavChuckSize = r.readUint32Little();
       atUint32 wavMagic = r.readUint32Little();
-      if (wavMagic == SBIG('WAVE')) {
+      if (wavMagic == CC_WAVE) {
         atInt64 smplOffset = -1;
         atInt64 loopOffset = -1;
         WAVFormatChunk fmt;
@@ -425,10 +425,10 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
           atUint32 chunkMagic = r.readUint32Little();
           atUint32 chunkSize = r.readUint32Little();
           atUint64 startPos = r.position();
-          if (chunkMagic == SBIG('fmt ')) {
+          if (chunkMagic == CC_FMT) {
             fmt.read(r);
             ++readSec;
-          } else if (chunkMagic == SBIG('smpl')) {
+          } else if (chunkMagic == CC_SMPL) {
             smplOffset = startPos;
             if (chunkSize >= 60)
               loopOffset = startPos + 36;
@@ -442,17 +442,17 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
           r.seek(12, athena::SeekOrigin::Begin);
           athena::io::FileWriter w(wavPath);
           if (!w.hasError()) {
-            w.writeUint32Little(SBIG('RIFF'));
+            w.writeUint32Little(CC_RIFF);
             w.writeUint32Little(0);
-            w.writeUint32Little(SBIG('WAVE'));
+            w.writeUint32Little(CC_WAVE);
 
             bool wroteSMPL = false;
             while (r.position() < wavChuckSize + 8) {
               atUint32 chunkMagic = r.readUint32Little();
               atUint32 chunkSize = r.readUint32Little();
-              if (!wroteSMPL && (chunkMagic == SBIG('smpl') || chunkMagic == SBIG('data'))) {
+              if (!wroteSMPL && (chunkMagic == CC_SMPL || chunkMagic == CC_DATA)) {
                 wroteSMPL = true;
-                w.writeUint32Little(SBIG('smpl'));
+                w.writeUint32Little(CC_SMPL);
                 w.writeUint32Little(60);
                 WAVSampleChunk smpl;
                 smpl.smplPeriod = 1000000000 / fmt.sampleRate;
@@ -469,7 +469,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
                 loop.start = getLoopStartSample();
                 loop.end = getLoopEndSample();
                 loop.write(w);
-                if (chunkMagic == SBIG('smpl')) {
+                if (chunkMagic == CC_SMPL) {
                   r.seek(chunkSize, athena::SeekOrigin::Current);
                   continue;
                 }
