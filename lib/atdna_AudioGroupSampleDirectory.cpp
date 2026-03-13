@@ -217,7 +217,7 @@ template <> void WAVHeaderLoop::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 std::string_view WAVHeaderLoop::DNAType() { return "amuse::WAVHeaderLoop"; }
 
 // ── EntryDNA<Big> ─────────────────────────────────────────────────────────────
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     m_sfxId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
     m_sampleOff    = r.readUint32Big();
@@ -230,7 +230,7 @@ template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian:
     m_loopLengthSamples = r.readUint32Big();
     m_adpcmParmOffset   = r.readUint32Big();
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     m_sfxId.write(w);
     uint8_t pad2[2] = {};
     w.writeBytes(pad2, 2);
@@ -245,11 +245,11 @@ template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian:
     w.writeUint32Big(m_loopLengthSamples);
     w.writeUint32Big(m_adpcmParmOffset);
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     m_sfxId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
     m_sampleOff    = r.readUint32Little();
@@ -262,7 +262,7 @@ template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian:
     m_loopLengthSamples = r.readUint32Little();
     m_adpcmParmOffset   = r.readUint32Little();
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     m_sfxId.write(w);
     uint8_t pad2[2] = {};
     w.writeBytes(pad2, 2);
@@ -277,14 +277,14 @@ template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian:
     w.writeUint32Little(m_loopLengthSamples);
     w.writeUint32Little(m_adpcmParmOffset);
 }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-template struct AudioGroupSampleDirectory::EntryDNA<athena::Endian::Big>;
-template struct AudioGroupSampleDirectory::EntryDNA<athena::Endian::Little>;
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template struct AudioGroupSampleDirectory::EntryDNA<std::endian::big>;
+template struct AudioGroupSampleDirectory::EntryDNA<std::endian::little>;
 
 // ── MusyX1SdirEntry<Big/Little> ───────────────────────────────────────────────
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     m_sfxId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
     m_sampleOff       = r.readUint32Big();
@@ -293,7 +293,7 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::
     m_loopStartSample = r.readUint32Big();
     m_loopLengthSamples = r.readUint32Big();
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     w.writeBytes(pad, 2);
@@ -303,11 +303,11 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::
     w.writeUint32Big(m_loopStartSample);
     w.writeUint32Big(m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     m_sfxId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
     m_sampleOff       = r.readUint32Little();
@@ -316,7 +316,7 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::
     m_loopStartSample = r.readUint32Little();
     m_loopLengthSamples = r.readUint32Little();
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     w.writeBytes(pad, 2);
@@ -326,14 +326,14 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::
     w.writeUint32Little(m_loopStartSample);
     w.writeUint32Little(m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-template struct AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Big>;
-template struct AudioGroupSampleDirectory::MusyX1SdirEntry<athena::Endian::Little>;
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 24; }
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template struct AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>;
+template struct AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>;
 
 // ── MusyX1AbsSdirEntry<Big/Little> ────────────────────────────────────────────
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     m_sfxId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
     m_sampleOff       = r.readUint32Big();
@@ -343,7 +343,7 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athen
     m_loopStartSample = r.readUint32Big();
     m_loopLengthSamples = r.readUint32Big();
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     w.writeBytes(pad, 2);
@@ -354,11 +354,11 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athen
     w.writeUint32Big(m_loopStartSample);
     w.writeUint32Big(m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 28; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 28; }
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     m_sfxId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
     m_sampleOff       = r.readUint32Little();
@@ -368,7 +368,7 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athen
     m_loopStartSample = r.readUint32Little();
     m_loopLengthSamples = r.readUint32Little();
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     w.writeBytes(pad, 2);
@@ -379,24 +379,24 @@ template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athen
     w.writeUint32Little(m_loopStartSample);
     w.writeUint32Little(m_loopLengthSamples);
 }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 28; }
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Big>;
-template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<athena::Endian::Little>;
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 28; }
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>;
+template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>;
 
 // DNAType for template struct instantiations
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view AudioGroupSampleDirectory::EntryDNA<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::EntryDNA";
 }
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view AudioGroupSampleDirectory::MusyX1SdirEntry<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::MusyX1SdirEntry";
 }
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view AudioGroupSampleDirectory::MusyX1AbsSdirEntry<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::MusyX1AbsSdirEntry";
 }

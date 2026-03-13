@@ -11,8 +11,6 @@
 // ── Enumerations ─────────────────────────────────────────────────────────────
 namespace athena {
 
-enum class Endian : uint8_t { Big, Little };
-
 enum class SeekOrigin : uint8_t { Begin, Current, End };
 
 } // namespace athena
@@ -156,11 +154,6 @@ public:
 // endianness; NotSystemEndian is its opposite.  Used as template arguments for
 // readCmds<E>/writeCmds<E> where game data (big-endian) differs from host.
 namespace athena::utility {
-#if ATHENA_IS_LITTLE_ENDIAN
-constexpr ::athena::Endian SystemEndian    = ::athena::Endian::Little;
-constexpr ::athena::Endian NotSystemEndian = ::athena::Endian::Big;
-#else
-constexpr ::athena::Endian SystemEndian    = ::athena::Endian::Big;
-constexpr ::athena::Endian NotSystemEndian = ::athena::Endian::Little;
-#endif
+constexpr ::std::endian SystemEndian    = std::endian::native == std::endian::big ? std::endian::big : std::endian::little;
+constexpr ::std::endian NotSystemEndian = std::endian::native == std::endian::big ? std::endian::little : std::endian::big;
 } // namespace athena::utility

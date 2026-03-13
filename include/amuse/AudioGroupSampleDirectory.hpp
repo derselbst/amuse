@@ -152,8 +152,8 @@ public:
     void swapBigVADPCM();
   };
 
-  template <athena::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) EntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) EntryDNA : BigDNA {
     AT_DECL_DNA
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, athena::SeekOrigin::Current> pad;
@@ -173,8 +173,8 @@ public:
     }
     void setLoopEndSample(atUint32 sample) { m_loopLengthSamples = sample + 1 - m_loopStartSample; }
   };
-  template <athena::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) MusyX1SdirEntry : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1SdirEntry : BigDNA {
     AT_DECL_DNA
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, athena::SeekOrigin::Current> pad;
@@ -184,8 +184,8 @@ public:
     Value<atUint32, DNAEn> m_loopStartSample;
     Value<atUint32, DNAEn> m_loopLengthSamples;
   };
-  template <athena::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) MusyX1AbsSdirEntry : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1AbsSdirEntry : BigDNA {
     AT_DECL_DNA
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, athena::SeekOrigin::Current> pad;
@@ -237,7 +237,7 @@ public:
 
     EntryData() = default;
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     EntryData(const EntryDNA<DNAE>& in)
     : m_sampleOff(in.m_sampleOff)
     , m_unk(in.m_unk)
@@ -248,7 +248,7 @@ public:
     , m_loopLengthSamples(in.m_loopLengthSamples)
     , m_adpcmParmOffset(in.m_adpcmParmOffset) {}
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     EntryData(const MusyX1SdirEntry<DNAE>& in)
     : m_sampleOff(in.m_sampleOff)
     , m_unk(0)
@@ -259,7 +259,7 @@ public:
     , m_loopLengthSamples(in.m_loopLengthSamples)
     , m_adpcmParmOffset(0) {}
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     EntryData(const MusyX1AbsSdirEntry<DNAE>& in)
     : m_sampleOff(in.m_sampleOff)
     , m_unk(in.m_unk)
@@ -270,7 +270,7 @@ public:
     , m_loopLengthSamples(in.m_loopLengthSamples)
     , m_adpcmParmOffset(0) {}
 
-    template <athena::Endian DNAEn>
+    template <std::endian DNAEn>
     EntryDNA<DNAEn> toDNA(SFXId id) const {
       EntryDNA<DNAEn> ret;
       ret.m_sfxId.id = id;
@@ -301,16 +301,16 @@ public:
 
     Entry() : m_data(MakeObj<EntryData>()) {}
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     Entry(const EntryDNA<DNAE>& in) : m_data(MakeObj<EntryData>(in)) {}
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     Entry(const MusyX1SdirEntry<DNAE>& in) : m_data(MakeObj<EntryData>(in)) {}
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     Entry(const MusyX1AbsSdirEntry<DNAE>& in) : m_data(MakeObj<EntryData>(in)) {}
 
-    template <athena::Endian DNAEn>
+    template <std::endian DNAEn>
     EntryDNA<DNAEn> toDNA(SFXId id) const {
       return m_data->toDNA<DNAEn>(id);
     }

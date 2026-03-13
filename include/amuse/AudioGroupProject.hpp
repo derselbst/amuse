@@ -17,8 +17,8 @@ class AudioGroupSampleDirectory;
 enum class GroupType : atUint16 { Song, SFX };
 
 /** Header at top of project file */
-template <athena::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) GroupHeader : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) GroupHeader : BigDNA {
   AT_DECL_DNA
   Value<atUint32, DNAEn> groupEndOff;
   GroupIdDNA<DNAEn> groupId;
@@ -39,8 +39,8 @@ struct AudioGroupIndex {};
 /** Root index of SongGroup */
 struct SongGroupIndex : AudioGroupIndex {
   /** Maps GM program numbers to sound entities */
-  template <athena::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) PageEntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PageEntryDNA : BigDNA {
     AT_DECL_DNA_YAML
     PageObjectIdDNA<DNAEn> objId;
     Value<atUint8> priority;
@@ -48,8 +48,8 @@ struct SongGroupIndex : AudioGroupIndex {
     Value<atUint8> programNo;
     Seek<1, athena::SeekOrigin::Current> pad;
   };
-  template <athena::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) MusyX1PageEntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1PageEntryDNA : BigDNA {
     AT_DECL_DNA
     PageObjectIdDNA<DNAEn> objId;
     Value<atUint8> priority;
@@ -60,20 +60,20 @@ struct SongGroupIndex : AudioGroupIndex {
   };
   struct PageEntry : BigDNA {
     AT_DECL_DNA_YAML
-    PageObjectIdDNA<athena::Endian::Big> objId;
+    PageObjectIdDNA<std::endian::big> objId;
     Value<atUint8> priority = 0;
     Value<atUint8> maxVoices = 255;
 
     PageEntry() = default;
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     PageEntry(const PageEntryDNA<DNAE>& in) : objId(in.objId.id), priority(in.priority), maxVoices(in.maxVoices) {}
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     PageEntry(const MusyX1PageEntryDNA<DNAE>& in)
     : objId(in.objId.id), priority(in.priority), maxVoices(in.maxVoices) {}
 
-    template <athena::Endian DNAEn>
+    template <std::endian DNAEn>
     PageEntryDNA<DNAEn> toDNA(uint8_t programNo) const {
       PageEntryDNA<DNAEn> ret;
       ret.objId = objId;
@@ -120,8 +120,8 @@ struct SongGroupIndex : AudioGroupIndex {
 /** Root index of SFXGroup */
 struct SFXGroupIndex : AudioGroupIndex {
   /** Maps game-side SFX define IDs to sound entities */
-  template <athena::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(athena::Endian::Big, athena::Endian::Little) SFXEntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) SFXEntryDNA : BigDNA {
     AT_DECL_DNA
     SFXIdDNA<DNAEn> sfxId;
     PageObjectIdDNA<DNAEn> objId;
@@ -134,7 +134,7 @@ struct SFXGroupIndex : AudioGroupIndex {
   };
   struct SFXEntry : BigDNA {
     AT_DECL_DNA_YAML
-    PageObjectIdDNA<athena::Endian::Big> objId;
+    PageObjectIdDNA<std::endian::big> objId;
     Value<atUint8> priority = 0;
     Value<atUint8> maxVoices = 255;
     Value<atUint8> defVel = 127;
@@ -143,7 +143,7 @@ struct SFXGroupIndex : AudioGroupIndex {
 
     SFXEntry() = default;
 
-    template <athena::Endian DNAE>
+    template <std::endian DNAE>
     SFXEntry(const SFXEntryDNA<DNAE>& in)
     : objId(in.objId.id)
     , priority(in.priority)
@@ -152,7 +152,7 @@ struct SFXGroupIndex : AudioGroupIndex {
     , panning(in.panning)
     , defKey(in.defKey) {}
 
-    template <athena::Endian DNAEn>
+    template <std::endian DNAEn>
     SFXEntryDNA<DNAEn> toDNA(SFXId id) const {
       SFXEntryDNA<DNAEn> ret;
       ret.sfxId.id = id;
@@ -180,11 +180,11 @@ class AudioGroupProject {
   std::unordered_map<GroupId, ObjToken<SFXGroupIndex>> m_sfxGroups;
 
   AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag);
-  template <athena::Endian DNAE>
+  template <std::endian DNAE>
   static AudioGroupProject _AudioGroupProject(athena::io::IStreamReader& r, bool absOffs);
 
   static void BootstrapObjectIDs(athena::io::IStreamReader& r, GCNDataTag);
-  template <athena::Endian DNAE>
+  template <std::endian DNAE>
   static void BootstrapObjectIDs(athena::io::IStreamReader& r, bool absOffs);
 
 public:

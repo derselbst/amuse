@@ -50,80 +50,80 @@ using namespace athena::io;
 // =============================================================================
 // PoolHeader<E>
 // =============================================================================
-template <> template <> void PoolHeader<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void PoolHeader<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     soundMacrosOffset = r.readUint32Big();
     tablesOffset = r.readUint32Big();
     keymapsOffset = r.readUint32Big();
     layersOffset = r.readUint32Big();
 }
-template <> template <> void PoolHeader<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void PoolHeader<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Big(soundMacrosOffset);
     w.writeUint32Big(tablesOffset);
     w.writeUint32Big(keymapsOffset);
     w.writeUint32Big(layersOffset);
 }
-template <> template <> void PoolHeader<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 16; }
-template <> template <> void PoolHeader<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void PoolHeader<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void PoolHeader<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 16; }
+template <> template <> void PoolHeader<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void PoolHeader<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void PoolHeader<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void PoolHeader<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     soundMacrosOffset = r.readUint32Little();
     tablesOffset = r.readUint32Little();
     keymapsOffset = r.readUint32Little();
     layersOffset = r.readUint32Little();
 }
-template <> template <> void PoolHeader<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void PoolHeader<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Little(soundMacrosOffset);
     w.writeUint32Little(tablesOffset);
     w.writeUint32Little(keymapsOffset);
     w.writeUint32Little(layersOffset);
 }
-template <> template <> void PoolHeader<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 16; }
-template <> template <> void PoolHeader<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void PoolHeader<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void PoolHeader<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 16; }
+template <> template <> void PoolHeader<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void PoolHeader<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view PoolHeader<DNAE>::DNAType() { return "amuse::PoolHeader"; }
-template struct PoolHeader<athena::Endian::Big>;
-template struct PoolHeader<athena::Endian::Little>;
+template struct PoolHeader<std::endian::big>;
+template struct PoolHeader<std::endian::little>;
 
 // =============================================================================
 // ObjectHeader<E>
 // =============================================================================
-template <> template <> void ObjectHeader<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void ObjectHeader<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     size = r.readUint32Big();
     objectId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
 }
-template <> template <> void ObjectHeader<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void ObjectHeader<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Big(size);
     objectId.write(w);
     uint8_t pad[2] = {};
     w.writeBytes(pad, 2);
 }
-template <> template <> void ObjectHeader<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
-template <> template <> void ObjectHeader<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void ObjectHeader<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void ObjectHeader<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
+template <> template <> void ObjectHeader<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void ObjectHeader<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void ObjectHeader<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void ObjectHeader<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     size = r.readUint32Little();
     objectId.read(r);
     r.seek(2, athena::SeekOrigin::Current);
 }
-template <> template <> void ObjectHeader<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void ObjectHeader<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     w.writeUint32Little(size);
     objectId.write(w);
     uint8_t pad[2] = {};
     w.writeBytes(pad, 2);
 }
-template <> template <> void ObjectHeader<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
-template <> template <> void ObjectHeader<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void ObjectHeader<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void ObjectHeader<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
+template <> template <> void ObjectHeader<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void ObjectHeader<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view ObjectHeader<DNAE>::DNAType() { return "amuse::ObjectHeader"; }
-template struct ObjectHeader<athena::Endian::Big>;
-template struct ObjectHeader<athena::Endian::Little>;
+template struct ObjectHeader<std::endian::big>;
+template struct ObjectHeader<std::endian::little>;
 
 // =============================================================================
 // SoundMacro::ICmd – base class, no data fields
@@ -1100,70 +1100,70 @@ IMPL_YAMLV(Curve)
 // =============================================================================
 // KeymapDNA<E>
 // =============================================================================
-template <> template <> void KeymapDNA<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void KeymapDNA<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     macro.read(r); transpose = r.readByte(); pan = r.readByte(); prioOffset = r.readByte();
     r.seek(3, athena::SeekOrigin::Current);
 }
-template <> template <> void KeymapDNA<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void KeymapDNA<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     macro.write(w); w.writeByte(transpose); w.writeByte(pan); w.writeByte(prioOffset);
     uint8_t pad[3] = {}; w.writeBytes(pad, 3);
 }
-template <> template <> void KeymapDNA<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
-template <> template <> void KeymapDNA<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void KeymapDNA<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void KeymapDNA<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
+template <> template <> void KeymapDNA<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void KeymapDNA<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void KeymapDNA<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void KeymapDNA<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     macro.read(r); transpose = r.readByte(); pan = r.readByte(); prioOffset = r.readByte();
     r.seek(3, athena::SeekOrigin::Current);
 }
-template <> template <> void KeymapDNA<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void KeymapDNA<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     macro.write(w); w.writeByte(transpose); w.writeByte(pan); w.writeByte(prioOffset);
     uint8_t pad[3] = {}; w.writeBytes(pad, 3);
 }
-template <> template <> void KeymapDNA<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
-template <> template <> void KeymapDNA<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void KeymapDNA<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void KeymapDNA<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 8; }
+template <> template <> void KeymapDNA<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void KeymapDNA<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view KeymapDNA<DNAE>::DNAType() { return "amuse::KeymapDNA"; }
-template struct KeymapDNA<athena::Endian::Big>;
-template struct KeymapDNA<athena::Endian::Little>;
+template struct KeymapDNA<std::endian::big>;
+template struct KeymapDNA<std::endian::little>;
 
 // =============================================================================
 // LayerMappingDNA<E>
 // =============================================================================
-template <> template <> void LayerMappingDNA<athena::Endian::Big>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void LayerMappingDNA<std::endian::big>::Enumerate<DNAOpRead>(IStreamReader& r) {
     macro.read(r); keyLo = r.readByte(); keyHi = r.readByte(); transpose = r.readByte();
     volume = r.readByte(); prioOffset = r.readByte(); span = r.readByte(); pan = r.readByte();
     r.seek(3, athena::SeekOrigin::Current);
 }
-template <> template <> void LayerMappingDNA<athena::Endian::Big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void LayerMappingDNA<std::endian::big>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     macro.write(w); w.writeByte(keyLo); w.writeByte(keyHi); w.writeByte(transpose);
     w.writeByte(volume); w.writeByte(prioOffset); w.writeByte(span); w.writeByte(pan);
     uint8_t pad[3] = {}; w.writeBytes(pad, 3);
 }
-template <> template <> void LayerMappingDNA<athena::Endian::Big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 12; }
-template <> template <> void LayerMappingDNA<athena::Endian::Big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void LayerMappingDNA<athena::Endian::Big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void LayerMappingDNA<std::endian::big>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 12; }
+template <> template <> void LayerMappingDNA<std::endian::big>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void LayerMappingDNA<std::endian::big>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <> template <> void LayerMappingDNA<athena::Endian::Little>::Enumerate<DNAOpRead>(IStreamReader& r) {
+template <> template <> void LayerMappingDNA<std::endian::little>::Enumerate<DNAOpRead>(IStreamReader& r) {
     macro.read(r); keyLo = r.readByte(); keyHi = r.readByte(); transpose = r.readByte();
     volume = r.readByte(); prioOffset = r.readByte(); span = r.readByte(); pan = r.readByte();
     r.seek(3, athena::SeekOrigin::Current);
 }
-template <> template <> void LayerMappingDNA<athena::Endian::Little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
+template <> template <> void LayerMappingDNA<std::endian::little>::Enumerate<DNAOpWrite>(IStreamWriter& w) {
     macro.write(w); w.writeByte(keyLo); w.writeByte(keyHi); w.writeByte(transpose);
     w.writeByte(volume); w.writeByte(prioOffset); w.writeByte(span); w.writeByte(pan);
     uint8_t pad[3] = {}; w.writeBytes(pad, 3);
 }
-template <> template <> void LayerMappingDNA<athena::Endian::Little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 12; }
-template <> template <> void LayerMappingDNA<athena::Endian::Little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> template <> void LayerMappingDNA<athena::Endian::Little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
+template <> template <> void LayerMappingDNA<std::endian::little>::Enumerate<DNAOpBinarySize>(size_t& s) { s += 12; }
+template <> template <> void LayerMappingDNA<std::endian::little>::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
+template <> template <> void LayerMappingDNA<std::endian::little>::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 std::string_view LayerMappingDNA<DNAE>::DNAType() { return "amuse::LayerMappingDNA"; }
-template struct LayerMappingDNA<athena::Endian::Big>;
-template struct LayerMappingDNA<athena::Endian::Little>;
+template struct LayerMappingDNA<std::endian::big>;
+template struct LayerMappingDNA<std::endian::little>;
 
 // =============================================================================
 // Keymap (BigDNA, AT_DECL_DNA_YAML)

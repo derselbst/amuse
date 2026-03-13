@@ -45,7 +45,7 @@ struct DNAOpReadYaml    { using io_type = athena::io::YAMLDocReader; };
 struct DNAOpWriteYaml   { using io_type = athena::io::YAMLDocWriter; };
 
 // ── Operation tag types ───────────────────────────────────────────────────────
-template <athena::Endian E>
+template <std::endian E>
 struct DNA {
     using Read        = DNAOpRead;
     using Write       = DNAOpWrite;
@@ -55,7 +55,7 @@ struct DNA {
 };
 
 // ── DNAVYaml – adds virtual binary + YAML read/write ─────────────────────────
-template <athena::Endian E>
+template <std::endian E>
 struct DNAVYaml : DNA<E> {
     virtual void read (athena::io::IStreamReader& r)        = 0;
     virtual void write(athena::io::IStreamWriter& w) const  = 0;
@@ -73,7 +73,7 @@ enum class PropType { None };
 template <PropType P>
 struct Read {
     // Scalar types
-    template <typename T, athena::Endian E,
+    template <typename T, std::endian E,
               std::enable_if_t<!std::is_array_v<T>, int> = 0>
     static void Do(std::string_view /*key*/, T& val, athena::io::IStreamReader& r) {
         if constexpr (std::is_same_v<T, bool>) {
@@ -81,19 +81,19 @@ struct Read {
         } else if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>) {
             val = static_cast<T>(r.readUByte());
         } else if constexpr (sizeof(T) == 2) {
-            if constexpr (E == athena::Endian::Big) {
+            if constexpr (E == std::endian::big) {
                 uint16_t v = r.readUint16Big();   std::memcpy(&val, &v, 2);
             } else {
                 uint16_t v = r.readUint16Little(); std::memcpy(&val, &v, 2);
             }
         } else if constexpr (sizeof(T) == 4) {
-            if constexpr (E == athena::Endian::Big) {
+            if constexpr (E == std::endian::big) {
                 uint32_t v = r.readUint32Big();   std::memcpy(&val, &v, 4);
             } else {
                 uint32_t v = r.readUint32Little(); std::memcpy(&val, &v, 4);
             }
         } else if constexpr (sizeof(T) == 8) {
-            if constexpr (E == athena::Endian::Big) {
+            if constexpr (E == std::endian::big) {
                 uint64_t v = r.readUint64Big();   std::memcpy(&val, &v, 8);
             } else {
                 uint64_t v = r.readUint64Little(); std::memcpy(&val, &v, 8);
@@ -102,7 +102,7 @@ struct Read {
     }
 
     // Array types – read each element with endian correction
-    template <typename T, athena::Endian E,
+    template <typename T, std::endian E,
               std::enable_if_t<std::is_array_v<T>, int> = 0>
     static void Do(std::string_view key, T& val, athena::io::IStreamReader& r) {
         using Elem = std::remove_all_extents_t<T>;
@@ -115,7 +115,7 @@ struct Read {
 template <PropType P>
 struct Write {
     // Scalar types
-    template <typename T, athena::Endian E,
+    template <typename T, std::endian E,
               std::enable_if_t<!std::is_array_v<T>, int> = 0>
     static void Do(std::string_view /*key*/, const T& val, athena::io::IStreamWriter& w) {
         if constexpr (std::is_same_v<T, bool>) {
@@ -124,21 +124,21 @@ struct Write {
             w.writeUByte(static_cast<uint8_t>(val));
         } else if constexpr (sizeof(T) == 2) {
             uint16_t v; std::memcpy(&v, &val, 2);
-            if constexpr (E == athena::Endian::Big) w.writeUint16Big(v);
+            if constexpr (E == std::endian::big) w.writeUint16Big(v);
             else                                     w.writeUint16Little(v);
         } else if constexpr (sizeof(T) == 4) {
             uint32_t v; std::memcpy(&v, &val, 4);
-            if constexpr (E == athena::Endian::Big) w.writeUint32Big(v);
+            if constexpr (E == std::endian::big) w.writeUint32Big(v);
             else                                     w.writeUint32Little(v);
         } else if constexpr (sizeof(T) == 8) {
             uint64_t v; std::memcpy(&v, &val, 8);
-            if constexpr (E == athena::Endian::Big) w.writeUint64Big(v);
+            if constexpr (E == std::endian::big) w.writeUint64Big(v);
             else                                     w.writeUint64Little(v);
         }
     }
 
     // Array types – write each element with endian correction
-    template <typename T, athena::Endian E,
+    template <typename T, std::endian E,
               std::enable_if_t<std::is_array_v<T>, int> = 0>
     static void Do(std::string_view key, const T& val, athena::io::IStreamWriter& w) {
         using Elem = std::remove_all_extents_t<T>;
@@ -156,7 +156,7 @@ struct Write {
 // Endian-aware I/O is handled explicitly in the Enumerate<Op> bodies in the
 // atdna_*.cpp files.
 
-template <typename T, athena::Endian E = athena::Endian::Big>
+template <typename T, std::endian E = std::endian::big>
 using Value = T;
 
 // ── Seek<N, Origin> ───────────────────────────────────────────────────────────
