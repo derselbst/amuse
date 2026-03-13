@@ -378,10 +378,6 @@ constexpr T ClampFull(float in) noexcept {
   }
 }
 
-#ifndef M_PIF
-#define M_PIF 3.14159265358979323846f /* pi */
-#endif
-
 inline const char* StrRChr(const char* str, char ch) {
   return strrchr(str, ch);
 }

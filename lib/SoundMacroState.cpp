@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <numbers>
 
 #include "amuse/AudioGroup.hpp"
 #include "amuse/AudioGroupPool.hpp"
@@ -46,12 +47,12 @@ float SoundMacroState::Evaluator::evaluate(double time, const Voice& vox, const 
       case 130:
         /* LFO1 */
         if (vox.m_lfoPeriods[0])
-          thisValue = (std::sin(time / vox.m_lfoPeriods[0] * 2.f * M_PIF) * 0.5f + 0.5f) * 127.f;
+          thisValue = (std::sin(time / vox.m_lfoPeriods[0] * 2.f * std::numbers::pi_v<float>) * 0.5f + 0.5f) * 127.f;
         break;
       case 131:
         /* LFO2 */
         if (vox.m_lfoPeriods[1])
-          thisValue = (std::sin(time / vox.m_lfoPeriods[1] * 2.f * M_PIF) * 0.5f + 0.5f) * 127.f;
+          thisValue = (std::sin(time / vox.m_lfoPeriods[1] * 2.f * std::numbers::pi_v<float>) * 0.5f + 0.5f) * 127.f;
         break;
       case 132:
         /* Surround panning */
