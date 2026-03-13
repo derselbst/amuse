@@ -8,7 +8,7 @@ namespace amuse {
 // =============================================================================
 // GroupHeader<E>
 // =============================================================================
-template <> void GroupHeader<amuse::Endian::Big>::read(std::istream& r) {
+template <> void GroupHeader<std::endian::big>::read(std::istream& r) {
     groupEndOff = amuse::io::readUint32Big(r);
     groupId.read(r);
     type = static_cast<GroupType>(amuse::io::readUint16Big(r));
@@ -21,7 +21,7 @@ template <> void GroupHeader<amuse::Endian::Big>::read(std::istream& r) {
     drumTableOff = amuse::io::readUint32Big(r);
     midiSetupsOff = amuse::io::readUint32Big(r);
 }
-template <> void GroupHeader<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void GroupHeader<std::endian::big>::write(std::ostream& w) const {
     amuse::io::writeUint32Big(w, groupEndOff);
     groupId.write(w);
     amuse::io::writeUint16Big(w, static_cast<uint16_t>(type));
@@ -34,11 +34,11 @@ template <> void GroupHeader<amuse::Endian::Big>::write(std::ostream& w) const {
     amuse::io::writeUint32Big(w, drumTableOff);
     amuse::io::writeUint32Big(w, midiSetupsOff);
 }
-template <> size_t GroupHeader<amuse::Endian::Big>::binarySize(size_t s) const { s += 40; return s; }
-template <> void GroupHeader<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void GroupHeader<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t GroupHeader<std::endian::big>::binarySize(size_t s) const { s += 40; return s; }
+template <> void GroupHeader<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void GroupHeader<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void GroupHeader<amuse::Endian::Little>::read(std::istream& r) {
+template <> void GroupHeader<std::endian::little>::read(std::istream& r) {
     groupEndOff = amuse::io::readUint32Little(r);
     groupId.read(r);
     type = static_cast<GroupType>(amuse::io::readUint16Little(r));
@@ -51,7 +51,7 @@ template <> void GroupHeader<amuse::Endian::Little>::read(std::istream& r) {
     drumTableOff = amuse::io::readUint32Little(r);
     midiSetupsOff = amuse::io::readUint32Little(r);
 }
-template <> void GroupHeader<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void GroupHeader<std::endian::little>::write(std::ostream& w) const {
     amuse::io::writeUint32Little(w, groupEndOff);
     groupId.write(w);
     amuse::io::writeUint16Little(w, static_cast<uint16_t>(type));
@@ -64,86 +64,86 @@ template <> void GroupHeader<amuse::Endian::Little>::write(std::ostream& w) cons
     amuse::io::writeUint32Little(w, drumTableOff);
     amuse::io::writeUint32Little(w, midiSetupsOff);
 }
-template <> size_t GroupHeader<amuse::Endian::Little>::binarySize(size_t s) const { s += 40; return s; }
-template <> void GroupHeader<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void GroupHeader<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t GroupHeader<std::endian::little>::binarySize(size_t s) const { s += 40; return s; }
+template <> void GroupHeader<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void GroupHeader<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view GroupHeader<DNAE>::DNAType() { return "amuse::GroupHeader"; }
-template struct GroupHeader<amuse::Endian::Big>;
-template struct GroupHeader<amuse::Endian::Little>;
+template struct GroupHeader<std::endian::big>;
+template struct GroupHeader<std::endian::little>;
 
 // =============================================================================
 // SongGroupIndex::PageEntryDNA<E> (AT_DECL_DNA_YAML)
 // =============================================================================
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Big>::read(std::istream& r) {
+template <> void SongGroupIndex::PageEntryDNA<std::endian::big>::read(std::istream& r) {
     objId.read(r);
     priority = amuse::io::readUByte(r); maxVoices = amuse::io::readUByte(r); programNo = amuse::io::readUByte(r);
     r.seekg(1, std::ios_base::cur);
 }
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void SongGroupIndex::PageEntryDNA<std::endian::big>::write(std::ostream& w) const {
     objId.write(w);
     amuse::io::writeUByte(w, priority); amuse::io::writeUByte(w, maxVoices); amuse::io::writeUByte(w, programNo);
     uint8_t pad = 0; amuse::io::writeUByte(w, pad);
 }
-template <> size_t SongGroupIndex::PageEntryDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 6; return s; }
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t SongGroupIndex::PageEntryDNA<std::endian::big>::binarySize(size_t s) const { s += 6; return s; }
+template <> void SongGroupIndex::PageEntryDNA<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void SongGroupIndex::PageEntryDNA<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Little>::read(std::istream& r) {
+template <> void SongGroupIndex::PageEntryDNA<std::endian::little>::read(std::istream& r) {
     objId.read(r);
     priority = amuse::io::readUByte(r); maxVoices = amuse::io::readUByte(r); programNo = amuse::io::readUByte(r);
     r.seekg(1, std::ios_base::cur);
 }
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void SongGroupIndex::PageEntryDNA<std::endian::little>::write(std::ostream& w) const {
     objId.write(w);
     amuse::io::writeUByte(w, priority); amuse::io::writeUByte(w, maxVoices); amuse::io::writeUByte(w, programNo);
     uint8_t pad = 0; amuse::io::writeUByte(w, pad);
 }
-template <> size_t SongGroupIndex::PageEntryDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 6; return s; }
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void SongGroupIndex::PageEntryDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t SongGroupIndex::PageEntryDNA<std::endian::little>::binarySize(size_t s) const { s += 6; return s; }
+template <> void SongGroupIndex::PageEntryDNA<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void SongGroupIndex::PageEntryDNA<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view SongGroupIndex::PageEntryDNA<DNAE>::DNAType() { return "amuse::SongGroupIndex::PageEntryDNA"; }
-template struct SongGroupIndex::PageEntryDNA<amuse::Endian::Big>;
-template struct SongGroupIndex::PageEntryDNA<amuse::Endian::Little>;
+template struct SongGroupIndex::PageEntryDNA<std::endian::big>;
+template struct SongGroupIndex::PageEntryDNA<std::endian::little>;
 
 // =============================================================================
 // SongGroupIndex::MusyX1PageEntryDNA<E> (AT_DECL_DNA)
 // =============================================================================
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Big>::read(std::istream& r) {
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::big>::read(std::istream& r) {
     objId.read(r);
     priority = amuse::io::readUByte(r); maxVoices = amuse::io::readUByte(r); unk = amuse::io::readUByte(r); programNo = amuse::io::readUByte(r);
     r.seekg(2, std::ios_base::cur);
 }
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::big>::write(std::ostream& w) const {
     objId.write(w);
     amuse::io::writeUByte(w, priority); amuse::io::writeUByte(w, maxVoices); amuse::io::writeUByte(w, unk); amuse::io::writeUByte(w, programNo);
     uint8_t pad[2] = {}; amuse::io::writeBytes(w, pad, 2);
 }
-template <> size_t SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 8; return s; }
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t SongGroupIndex::MusyX1PageEntryDNA<std::endian::big>::binarySize(size_t s) const { s += 8; return s; }
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Little>::read(std::istream& r) {
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::little>::read(std::istream& r) {
     objId.read(r);
     priority = amuse::io::readUByte(r); maxVoices = amuse::io::readUByte(r); unk = amuse::io::readUByte(r); programNo = amuse::io::readUByte(r);
     r.seekg(2, std::ios_base::cur);
 }
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::little>::write(std::ostream& w) const {
     objId.write(w);
     amuse::io::writeUByte(w, priority); amuse::io::writeUByte(w, maxVoices); amuse::io::writeUByte(w, unk); amuse::io::writeUByte(w, programNo);
     uint8_t pad[2] = {}; amuse::io::writeBytes(w, pad, 2);
 }
-template <> size_t SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 8; return s; }
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t SongGroupIndex::MusyX1PageEntryDNA<std::endian::little>::binarySize(size_t s) const { s += 8; return s; }
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void SongGroupIndex::MusyX1PageEntryDNA<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view SongGroupIndex::MusyX1PageEntryDNA<DNAE>::DNAType() { return "amuse::SongGroupIndex::MusyX1PageEntryDNA"; }
-template struct SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Big>;
-template struct SongGroupIndex::MusyX1PageEntryDNA<amuse::Endian::Little>;
+template struct SongGroupIndex::MusyX1PageEntryDNA<std::endian::big>;
+template struct SongGroupIndex::MusyX1PageEntryDNA<std::endian::little>;
 
 // =============================================================================
 // SongGroupIndex::PageEntry (BigDNA, AT_DECL_DNA_YAML)
@@ -196,42 +196,42 @@ std::string_view SongGroupIndex::MIDISetup::DNAType() { return "amuse::SongGroup
 // =============================================================================
 // SFXGroupIndex::SFXEntryDNA<E> (BigDNA template, AT_DECL_DNA)
 // =============================================================================
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big>::read(std::istream& r) {
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::big>::read(std::istream& r) {
     sfxId.read(r); objId.read(r);
     priority = amuse::io::readUByte(r); maxVoices = amuse::io::readUByte(r); defVel = amuse::io::readUByte(r);
     panning = amuse::io::readUByte(r); defKey = amuse::io::readUByte(r);
     r.seekg(1, std::ios_base::cur);
 }
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::big>::write(std::ostream& w) const {
     sfxId.write(w); objId.write(w);
     amuse::io::writeUByte(w, priority); amuse::io::writeUByte(w, maxVoices); amuse::io::writeUByte(w, defVel);
     amuse::io::writeUByte(w, panning); amuse::io::writeUByte(w, defKey);
     uint8_t pad = 0; amuse::io::writeUByte(w, pad);
 }
-template <> size_t SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 10; return s; }
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t SFXGroupIndex::SFXEntryDNA<std::endian::big>::binarySize(size_t s) const { s += 10; return s; }
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Little>::read(std::istream& r) {
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::little>::read(std::istream& r) {
     sfxId.read(r); objId.read(r);
     priority = amuse::io::readUByte(r); maxVoices = amuse::io::readUByte(r); defVel = amuse::io::readUByte(r);
     panning = amuse::io::readUByte(r); defKey = amuse::io::readUByte(r);
     r.seekg(1, std::ios_base::cur);
 }
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::little>::write(std::ostream& w) const {
     sfxId.write(w); objId.write(w);
     amuse::io::writeUByte(w, priority); amuse::io::writeUByte(w, maxVoices); amuse::io::writeUByte(w, defVel);
     amuse::io::writeUByte(w, panning); amuse::io::writeUByte(w, defKey);
     uint8_t pad = 0; amuse::io::writeUByte(w, pad);
 }
-template <> size_t SFXGroupIndex::SFXEntryDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 10; return s; }
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void SFXGroupIndex::SFXEntryDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t SFXGroupIndex::SFXEntryDNA<std::endian::little>::binarySize(size_t s) const { s += 10; return s; }
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void SFXGroupIndex::SFXEntryDNA<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view SFXGroupIndex::SFXEntryDNA<DNAE>::DNAType() { return "amuse::SFXGroupIndex::SFXEntryDNA"; }
-template struct SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big>;
-template struct SFXGroupIndex::SFXEntryDNA<amuse::Endian::Little>;
+template struct SFXGroupIndex::SFXEntryDNA<std::endian::big>;
+template struct SFXGroupIndex::SFXEntryDNA<std::endian::little>;
 
 // =============================================================================
 // SFXGroupIndex::SFXEntry (BigDNA, AT_DECL_DNA_YAML)

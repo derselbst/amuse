@@ -18,8 +18,8 @@ struct SoundMacroState;
 class Voice;
 
 /** Header at the top of the pool file */
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) PoolHeader : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PoolHeader : BigDNA {
   AT_DECL_DNA
   Value<uint32_t, DNAEn> soundMacrosOffset;
   Value<uint32_t, DNAEn> tablesOffset;
@@ -28,8 +28,8 @@ struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) PoolHeader
 };
 
 /** Header present at the top of each pool object */
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) ObjectHeader : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) ObjectHeader : BigDNA {
   AT_DECL_DNA
   Value<uint32_t, DNAEn> size;
   ObjectIdDNA<DNAEn> objectId;
@@ -177,8 +177,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<int8_t> key;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SplitKey; }
   };
@@ -186,8 +186,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<int8_t> velocity;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SplitVel; }
   };
@@ -209,7 +209,7 @@ struct SoundMacro {
     Value<bool> keyOff;
     Value<bool> random;
     Value<bool> sampleEnd;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     Value<uint16_t> times;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Loop; }
@@ -218,8 +218,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<1, amuse::SeekOrigin::Current> dummy;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Goto; }
   };
@@ -239,8 +239,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<int8_t> addNote;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     Value<uint8_t> priority;
     Value<uint8_t> maxVoices;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -258,8 +258,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<int8_t> modValue;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SplitMod; }
   };
@@ -275,7 +275,7 @@ struct SoundMacro {
   struct CmdSetAdsr : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    TableIdDNA<amuse::Endian::Little> table;
+    TableIdDNA<std::endian::little> table;
     Value<bool> dlsMode;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetAdsr; }
@@ -285,7 +285,7 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     Value<int8_t> scale;
     Value<int8_t> add;
-    TableIdDNA<amuse::Endian::Little> table;
+    TableIdDNA<std::endian::little> table;
     Value<bool> originalVol;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::ScaleVolume; }
@@ -304,7 +304,7 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     Value<int8_t> scale;
     Value<int8_t> add;
-    TableIdDNA<amuse::Endian::Little> table;
+    TableIdDNA<std::endian::little> table;
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -314,7 +314,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     enum class Mode : int8_t { NoScale = 0, Negative = 1, Positive = 2 };
-    SampleIdDNA<amuse::Endian::Little> sample;
+    SampleIdDNA<std::endian::little> sample;
     Value<Mode> mode;
     Value<uint32_t> offset;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -336,8 +336,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<uint8_t> rnd;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SplitRnd; }
   };
@@ -346,7 +346,7 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     Value<int8_t> scale;
     Value<int8_t> add;
-    TableIdDNA<amuse::Endian::Little> table;
+    TableIdDNA<std::endian::little> table;
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -474,7 +474,7 @@ struct SoundMacro {
   struct CmdSetPitchAdsr : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    TableIdDNA<amuse::Endian::Little> table;
+    TableIdDNA<std::endian::little> table;
     Seek<1, amuse::SeekOrigin::Current> seek;
     Value<int8_t> keys;
     Value<int8_t> cents;
@@ -516,8 +516,8 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<1, amuse::SeekOrigin::Current> seek;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::GoSub; }
   };
@@ -526,8 +526,8 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     enum class EventType : int8_t { KeyOff, SampleEnd, MessageRecv };
     Value<EventType> event;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroIdDNA<std::endian::little> macro;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::TrapEvent; }
   };
@@ -542,7 +542,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> isVar;
-    SoundMacroIdDNA<amuse::Endian::Little> macro;
+    SoundMacroIdDNA<std::endian::little> macro;
     Value<uint8_t> voiceVar;
     Value<uint8_t> valueVar;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -918,7 +918,7 @@ struct SoundMacro {
     Value<bool> varCtrlB;
     Value<int8_t> b;
     Value<bool> notEq;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::IfEqual; }
   };
@@ -930,7 +930,7 @@ struct SoundMacro {
     Value<bool> varCtrlB;
     Value<int8_t> b;
     Value<bool> notLt;
-    SoundMacroStepDNA<amuse::Endian::Little> macroStep;
+    SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::IfLess; }
   };
@@ -947,9 +947,9 @@ struct SoundMacro {
 
   const ICmd& getCmd(int i) const { return *m_cmds[assertPC(i)]; }
 
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   void readCmds(std::istream& r, uint32_t size);
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   void writeCmds(std::ostream& w) const;
 
   ICmd* insertNewCmd(int idx, CmdOp op) { return m_cmds.insert(m_cmds.begin() + idx, MakeCmd(op))->get(); }
@@ -1090,8 +1090,8 @@ struct Curve : ITable {
 
 /** Maps individual MIDI keys to sound-entity as indexed in table
  *  (macro-voice, keymap, layer) */
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) KeymapDNA : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) KeymapDNA : BigDNA {
   AT_DECL_DNA
   SoundMacroIdDNA<DNAEn> macro;
   Value<int8_t> transpose;
@@ -1101,18 +1101,18 @@ struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) KeymapDNA 
 };
 struct Keymap : BigDNA {
   AT_DECL_DNA_YAML
-  SoundMacroIdDNA<amuse::Endian::Big> macro;
+  SoundMacroIdDNA<std::endian::big> macro;
   Value<int8_t> transpose = 0;
   Value<int8_t> pan = 64; /* -128 for surround-channel only */
   Value<int8_t> prioOffset = 0;
 
   Keymap() = default;
 
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   Keymap(const KeymapDNA<DNAE>& in)
   : macro(in.macro.id), transpose(in.transpose), pan(in.pan), prioOffset(in.prioOffset) {}
 
-  template <amuse::Endian DNAEn>
+  template <std::endian DNAEn>
   KeymapDNA<DNAEn> toDNA() const {
     KeymapDNA<DNAEn> ret;
     ret.macro.id = macro;
@@ -1128,8 +1128,8 @@ struct Keymap : BigDNA {
 };
 
 /** Maps ranges of MIDI keys to sound-entity (macro-voice, keymap, layer) */
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) LayerMappingDNA : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) LayerMappingDNA : BigDNA {
   AT_DECL_DNA
   SoundMacroIdDNA<DNAEn> macro;
   Value<int8_t> keyLo;
@@ -1143,7 +1143,7 @@ struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) LayerMappi
 };
 struct LayerMapping : BigDNA {
   AT_DECL_DNA_YAML
-  SoundMacroIdDNA<amuse::Endian::Big> macro;
+  SoundMacroIdDNA<std::endian::big> macro;
   Value<int8_t> keyLo = 0;
   Value<int8_t> keyHi = 127;
   Value<int8_t> transpose = 0;
@@ -1154,7 +1154,7 @@ struct LayerMapping : BigDNA {
 
   LayerMapping() = default;
 
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   LayerMapping(const LayerMappingDNA<DNAE>& in)
   : macro(in.macro.id)
   , keyLo(in.keyLo)
@@ -1165,7 +1165,7 @@ struct LayerMapping : BigDNA {
   , span(in.span)
   , pan(in.pan) {}
 
-  template <amuse::Endian DNAEn>
+  template <std::endian DNAEn>
   LayerMappingDNA<DNAEn> toDNA() const {
     LayerMappingDNA<DNAEn> ret;
     ret.macro.id = macro;
@@ -1187,7 +1187,7 @@ class AudioGroupPool {
   std::unordered_map<KeymapId, ObjToken<std::array<Keymap, 128>>> m_keymaps;
   std::unordered_map<LayersId, ObjToken<std::vector<LayerMapping>>> m_layers;
 
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   static AudioGroupPool _AudioGroupPool(std::istream& r);
 
 public:
@@ -1212,7 +1212,7 @@ public:
   const Curve* tableAsCurves(ObjectId id) const;
 
   std::vector<uint8_t> toYAML() const;
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   std::vector<uint8_t> toData() const;
 
   AudioGroupPool(const AudioGroupPool&) = delete;

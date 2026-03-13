@@ -52,8 +52,8 @@ struct ObjectId {
   constexpr bool operator>(const ObjectId& other) const noexcept { return id > other.id; }
   static thread_local NameDB* CurNameDB;
 };
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) ObjectIdDNA : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) ObjectIdDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
   void _read(amuse::io::YAMLDocReader& r);
   void _write(amuse::io::YAMLDocWriter& w);
@@ -70,8 +70,8 @@ struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) ObjectIdDN
     constexpr type(const ObjectId& idIn) noexcept : ObjectId(idIn) {}                                                  \
     static thread_local NameDB* CurNameDB;                                                                             \
   };                                                                                                                   \
-  template <amuse::Endian DNAEn>                                                                                      \
-  struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) type##DNA : BigDNA {                           \
+  template <std::endian DNAEn>                                                                                      \
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) type##DNA : BigDNA {                           \
     AT_DECL_EXPLICIT_DNA_YAML                                                                                          \
     void _read(amuse::io::YAMLDocReader& r);                                                                           \
     void _write(amuse::io::YAMLDocWriter& w);                                                                          \
@@ -92,8 +92,8 @@ DECL_ID_TYPE(GroupId)
 /* MusyX has object polymorphism between Keymaps and Layers when
  * referenced by a song group's page object. When the upper bit is set,
  * this indicates a layer type. */
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) PageObjectIdDNA : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PageObjectIdDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
   void _read(amuse::io::YAMLDocReader& r);
   void _write(amuse::io::YAMLDocWriter& w);
@@ -114,8 +114,8 @@ struct SoundMacroStep {
   }
 };
 
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) SoundMacroStepDNA : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) SoundMacroStepDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
   SoundMacroStep step;
   constexpr SoundMacroStepDNA() noexcept = default;

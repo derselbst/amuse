@@ -215,7 +215,7 @@ void WAVHeaderLoop::writeYaml(amuse::io::YAMLDocWriter&) const {}
 std::string_view WAVHeaderLoop::DNAType() { return "amuse::WAVHeaderLoop"; }
 
 // ── EntryDNA<Big> ─────────────────────────────────────────────────────────────
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::read(std::istream& r) {
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::read(std::istream& r) {
     m_sfxId.read(r);
     r.seekg(2, std::ios_base::cur);
     m_sampleOff    = amuse::io::readUint32Big(r);
@@ -228,7 +228,7 @@ template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::read(s
     m_loopLengthSamples = amuse::io::readUint32Big(r);
     m_adpcmParmOffset   = amuse::io::readUint32Big(r);
 }
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad2[2] = {};
     amuse::io::writeBytes(w, pad2, 2);
@@ -243,11 +243,11 @@ template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::write(
     amuse::io::writeUint32Big(w, m_loopLengthSamples);
     amuse::io::writeUint32Big(w, m_adpcmParmOffset);
 }
-template <> size_t AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 24; return s; }
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t AudioGroupSampleDirectory::EntryDNA<std::endian::big>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::read(std::istream& r) {
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::read(std::istream& r) {
     m_sfxId.read(r);
     r.seekg(2, std::ios_base::cur);
     m_sampleOff    = amuse::io::readUint32Little(r);
@@ -260,7 +260,7 @@ template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::rea
     m_loopLengthSamples = amuse::io::readUint32Little(r);
     m_adpcmParmOffset   = amuse::io::readUint32Little(r);
 }
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad2[2] = {};
     amuse::io::writeBytes(w, pad2, 2);
@@ -275,14 +275,14 @@ template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::wri
     amuse::io::writeUint32Little(w, m_loopLengthSamples);
     amuse::io::writeUint32Little(w, m_adpcmParmOffset);
 }
-template <> size_t AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 24; return s; }
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
-template struct AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Big>;
-template struct AudioGroupSampleDirectory::EntryDNA<amuse::Endian::Little>;
+template <> size_t AudioGroupSampleDirectory::EntryDNA<std::endian::little>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::EntryDNA<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template struct AudioGroupSampleDirectory::EntryDNA<std::endian::big>;
+template struct AudioGroupSampleDirectory::EntryDNA<std::endian::little>;
 
 // ── MusyX1SdirEntry<Big/Little> ───────────────────────────────────────────────
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::read(std::istream& r) {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::read(std::istream& r) {
     m_sfxId.read(r);
     r.seekg(2, std::ios_base::cur);
     m_sampleOff       = amuse::io::readUint32Big(r);
@@ -291,7 +291,7 @@ template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>:
     m_loopStartSample = amuse::io::readUint32Big(r);
     m_loopLengthSamples = amuse::io::readUint32Big(r);
 }
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     amuse::io::writeBytes(w, pad, 2);
@@ -301,11 +301,11 @@ template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>:
     amuse::io::writeUint32Big(w, m_loopStartSample);
     amuse::io::writeUint32Big(w, m_loopLengthSamples);
 }
-template <> size_t AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::binarySize(size_t s) const { s += 24; return s; }
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::read(std::istream& r) {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::read(std::istream& r) {
     m_sfxId.read(r);
     r.seekg(2, std::ios_base::cur);
     m_sampleOff       = amuse::io::readUint32Little(r);
@@ -314,7 +314,7 @@ template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Littl
     m_loopStartSample = amuse::io::readUint32Little(r);
     m_loopLengthSamples = amuse::io::readUint32Little(r);
 }
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     amuse::io::writeBytes(w, pad, 2);
@@ -324,14 +324,14 @@ template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Littl
     amuse::io::writeUint32Little(w, m_loopStartSample);
     amuse::io::writeUint32Little(w, m_loopLengthSamples);
 }
-template <> size_t AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::binarySize(size_t s) const { s += 24; return s; }
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
-template struct AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Big>;
-template struct AudioGroupSampleDirectory::MusyX1SdirEntry<amuse::Endian::Little>;
+template <> size_t AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::binarySize(size_t s) const { s += 24; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template struct AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::big>;
+template struct AudioGroupSampleDirectory::MusyX1SdirEntry<std::endian::little>;
 
 // ── MusyX1AbsSdirEntry<Big/Little> ────────────────────────────────────────────
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::read(std::istream& r) {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::read(std::istream& r) {
     m_sfxId.read(r);
     r.seekg(2, std::ios_base::cur);
     m_sampleOff       = amuse::io::readUint32Big(r);
@@ -341,7 +341,7 @@ template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Bi
     m_loopStartSample = amuse::io::readUint32Big(r);
     m_loopLengthSamples = amuse::io::readUint32Big(r);
 }
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     amuse::io::writeBytes(w, pad, 2);
@@ -352,11 +352,11 @@ template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Bi
     amuse::io::writeUint32Big(w, m_loopStartSample);
     amuse::io::writeUint32Big(w, m_loopLengthSamples);
 }
-template <> size_t AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::binarySize(size_t s) const { s += 28; return s; }
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::binarySize(size_t s) const { s += 28; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::read(std::istream& r) {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::read(std::istream& r) {
     m_sfxId.read(r);
     r.seekg(2, std::ios_base::cur);
     m_sampleOff       = amuse::io::readUint32Little(r);
@@ -366,7 +366,7 @@ template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Li
     m_loopStartSample = amuse::io::readUint32Little(r);
     m_loopLengthSamples = amuse::io::readUint32Little(r);
 }
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::write(std::ostream& w) const {
     m_sfxId.write(w);
     uint8_t pad[2] = {};
     amuse::io::writeBytes(w, pad, 2);
@@ -377,24 +377,24 @@ template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Li
     amuse::io::writeUint32Little(w, m_loopStartSample);
     amuse::io::writeUint32Little(w, m_loopLengthSamples);
 }
-template <> size_t AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::binarySize(size_t s) const { s += 28; return s; }
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
-template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Big>;
-template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<amuse::Endian::Little>;
+template <> size_t AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::binarySize(size_t s) const { s += 28; return s; }
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::big>;
+template struct AudioGroupSampleDirectory::MusyX1AbsSdirEntry<std::endian::little>;
 
 // DNAType for template struct instantiations
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view AudioGroupSampleDirectory::EntryDNA<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::EntryDNA";
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view AudioGroupSampleDirectory::MusyX1SdirEntry<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::MusyX1SdirEntry";
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view AudioGroupSampleDirectory::MusyX1AbsSdirEntry<DNAE>::DNAType() {
     return "amuse::AudioGroupSampleDirectory::MusyX1AbsSdirEntry";
 }

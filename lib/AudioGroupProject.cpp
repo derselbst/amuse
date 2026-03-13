@@ -29,7 +29,7 @@ static bool AtEnd16(std::istream& r) {
   return v == 0xffff;
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 static void ReadRangedObjectIds(NameDB* db, std::istream& r, NameDB::Type tp) {
   uint16_t id;
   amuse::io::ReadVal<decltype(id), DNAE>({}, id, r);
@@ -55,7 +55,7 @@ static void ReadRangedObjectIds(NameDB* db, std::istream& r, NameDB::Type tp) {
   }
 }
 
-template <amuse::Endian DNAE, class T>
+template <std::endian DNAE, class T>
 static void WriteRangedObjectIds(std::ostream& w, const T& list) {
   if (list.cbegin() == list.cend()) {
     uint16_t term = 0xffff;
@@ -85,7 +85,7 @@ static void WriteRangedObjectIds(std::ostream& w, const T& list) {
 
 AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    GroupHeader<amuse::Endian::Big> header;
+    GroupHeader<std::endian::big> header;
     header.read(r);
 
     if (GroupId::CurNameDB)
@@ -95,31 +95,31 @@ AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
     /* Sound Macros */
     r.seekg(header.soundMacroIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
+      ReadRangedObjectIds<std::endian::big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
     }
 
     /* Samples */
     r.seekg(header.samplIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
+      ReadRangedObjectIds<std::endian::big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
     r.seekg(header.tableIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
+      ReadRangedObjectIds<std::endian::big>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
     r.seekg(header.keymapIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
+      ReadRangedObjectIds<std::endian::big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
     r.seekg(header.layerIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
+      ReadRangedObjectIds<std::endian::big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
 #endif
 
@@ -130,7 +130,7 @@ AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
       /* Normal pages */
       r.seekg(header.pageTableOff, std::ios_base::beg);
       while (!AtEnd64(r)) {
-        SongGroupIndex::PageEntryDNA<amuse::Endian::Big> entry;
+        SongGroupIndex::PageEntryDNA<std::endian::big> entry;
         entry.read(r);
         idx->m_normPages[entry.programNo] = entry;
       }
@@ -138,7 +138,7 @@ AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
       /* Drum pages */
       r.seekg(header.drumTableOff, std::ios_base::beg);
       while (!AtEnd64(r)) {
-        SongGroupIndex::PageEntryDNA<amuse::Endian::Big> entry;
+        SongGroupIndex::PageEntryDNA<std::endian::big> entry;
         entry.read(r);
         idx->m_drumPages[entry.programNo] = entry;
       }
@@ -166,7 +166,7 @@ AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
       r.seekg(2, std::ios_base::cur);
       idx->m_sfxEntries.reserve(count);
       for (int i = 0; i < count; ++i) {
-        SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big> entry;
+        SFXGroupIndex::SFXEntryDNA<std::endian::big> entry;
         entry.read(r);
         idx->m_sfxEntries[entry.sfxId.id] = entry;
         if (SFXId::CurNameDB)
@@ -178,7 +178,7 @@ AudioGroupProject::AudioGroupProject(std::istream& r, GCNDataTag) {
   }
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 AudioGroupProject AudioGroupProject::_AudioGroupProject(std::istream& r, bool absOffs) {
   AudioGroupProject ret;
 
@@ -324,9 +324,9 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(const AudioGroupDat
   default:
     return AudioGroupProject(r, GCNDataTag{});
   case DataFormat::N64:
-    return _AudioGroupProject<amuse::Endian::Big>(r, data.getAbsoluteProjOffsets());
+    return _AudioGroupProject<std::endian::big>(r, data.getAbsoluteProjOffsets());
   case DataFormat::PC:
-    return _AudioGroupProject<amuse::Endian::Little>(r, data.getAbsoluteProjOffsets());
+    return _AudioGroupProject<std::endian::little>(r, data.getAbsoluteProjOffsets());
   }
 }
 
@@ -462,7 +462,7 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(const AudioGroupPro
 
 void AudioGroupProject::BootstrapObjectIDs(std::istream& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    GroupHeader<amuse::Endian::Big> header;
+    GroupHeader<std::endian::big> header;
     header.read(r);
 
     GroupId::CurNameDB->registerPair(NameDB::generateName(header.groupId, NameDB::Type::Group), header.groupId);
@@ -470,30 +470,30 @@ void AudioGroupProject::BootstrapObjectIDs(std::istream& r, GCNDataTag) {
     /* Sound Macros */
     r.seekg(header.soundMacroIdsOff, std::ios_base::beg);
     while (!AtEnd16(r))
-      ReadRangedObjectIds<amuse::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
+      ReadRangedObjectIds<std::endian::big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
 
     /* Samples */
     r.seekg(header.samplIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
+      ReadRangedObjectIds<std::endian::big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
     r.seekg(header.tableIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
+      ReadRangedObjectIds<std::endian::big>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
     r.seekg(header.keymapIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
+      ReadRangedObjectIds<std::endian::big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
     r.seekg(header.layerIdsOff, std::ios_base::beg);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<amuse::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
+      ReadRangedObjectIds<std::endian::big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
 
     if (header.type == GroupType::Song) {
@@ -510,7 +510,7 @@ void AudioGroupProject::BootstrapObjectIDs(std::istream& r, GCNDataTag) {
       uint16_t count = amuse::io::readUint16Big(r);
       r.seekg(2, std::ios_base::cur);
       for (int i = 0; i < count; ++i) {
-        SFXGroupIndex::SFXEntryDNA<amuse::Endian::Big> entry;
+        SFXGroupIndex::SFXEntryDNA<std::endian::big> entry;
         entry.read(r);
         SFXId::CurNameDB->registerPair(NameDB::generateName(entry.sfxId.id, NameDB::Type::SFX), entry.sfxId.id);
       }
@@ -520,7 +520,7 @@ void AudioGroupProject::BootstrapObjectIDs(std::istream& r, GCNDataTag) {
   }
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 void AudioGroupProject::BootstrapObjectIDs(std::istream& r, bool absOffs) {
   while (!AtEnd32(r)) {
     int64_t groupBegin = r.tellg();
@@ -609,10 +609,10 @@ void AudioGroupProject::BootstrapObjectIDs(const AudioGroupData& data) {
     BootstrapObjectIDs(r, GCNDataTag{});
     break;
   case DataFormat::N64:
-    BootstrapObjectIDs<amuse::Endian::Big>(r, data.getAbsoluteProjOffsets());
+    BootstrapObjectIDs<std::endian::big>(r, data.getAbsoluteProjOffsets());
     break;
   case DataFormat::PC:
-    BootstrapObjectIDs<amuse::Endian::Little>(r, data.getAbsoluteProjOffsets());
+    BootstrapObjectIDs<std::endian::little>(r, data.getAbsoluteProjOffsets());
     break;
   }
 }
@@ -823,7 +823,7 @@ struct ObjectIdPool
 
 std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
                                                   const AudioGroupSampleDirectory& sdir) const {
-  constexpr amuse::Endian DNAE = amuse::Endian::Big;
+  constexpr std::endian DNAE = std::endian::big;
 
   amuse::io::VectorOutputStream fo;
 

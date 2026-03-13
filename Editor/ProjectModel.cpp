@@ -67,19 +67,19 @@ static void VisitObjectFields(ProjectModel::SoundMacroNode* n,
         break;
       switch (field.m_tp) {
       case amuse::SoundMacro::CmdIntrospection::Field::Type::SoundMacroId:
-        if (!func(amuse::AccessField<amuse::SoundMacroIdDNA<amuse::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::SoundMacroIdDNA<std::endian::little>>(p.get(), field).id,
                   amuse::SoundMacroId::CurNameDB)) {
           return;
         }
         break;
       case amuse::SoundMacro::CmdIntrospection::Field::Type::TableId:
-        if (!func(amuse::AccessField<amuse::TableIdDNA<amuse::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::TableIdDNA<std::endian::little>>(p.get(), field).id,
                   amuse::TableId::CurNameDB)) {
           return;
         }
         break;
       case amuse::SoundMacro::CmdIntrospection::Field::Type::SampleId:
-        if (!func(amuse::AccessField<amuse::SampleIdDNA<amuse::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::SampleIdDNA<std::endian::little>>(p.get(), field).id,
                   amuse::SampleId::CurNameDB)) {
           return;
         }
@@ -728,7 +728,7 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
     fo.writeUBytes(proj.data(), proj.size());
   }
   {
-    auto pool = group.getPool().toData<amuse::Endian::Big>();
+    auto pool = group.getPool().toData<std::endian::big>();
     std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".pool")));
     if (fo.hasError()) {
       messenger.critical(tr("Export Error"), tr("Unable to export %1.pool").arg(groupName));
@@ -1444,7 +1444,7 @@ ProjectModel::SoundMacroNode* ProjectModel::newSoundMacro(GroupNode* group, QStr
   auto dataNode = amuse::MakeObj<amuse::SoundMacro>();
   if (templ) {
     amuse::io::MemoryInputStream r(templ->m_data, templ->m_length);
-    dataNode->readCmds<amuse::Endian::Big>(r, templ->m_length);
+    dataNode->readCmds<std::endian::big>(r, templ->m_length);
   }
 
   auto node = amuse::MakeObj<SoundMacroNode>(std::move(name), std::move(dataNode));

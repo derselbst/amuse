@@ -15,8 +15,8 @@ class AudioGroupSampleDirectory;
 enum class GroupType : uint16_t { Song, SFX };
 
 /** Header at top of project file */
-template <amuse::Endian DNAEn>
-struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) GroupHeader : BigDNA {
+template <std::endian DNAEn>
+struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) GroupHeader : BigDNA {
   AT_DECL_DNA
   Value<uint32_t, DNAEn> groupEndOff;
   GroupIdDNA<DNAEn> groupId;
@@ -37,8 +37,8 @@ struct AudioGroupIndex {};
 /** Root index of SongGroup */
 struct SongGroupIndex : AudioGroupIndex {
   /** Maps GM program numbers to sound entities */
-  template <amuse::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) PageEntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PageEntryDNA : BigDNA {
     AT_DECL_DNA_YAML
     PageObjectIdDNA<DNAEn> objId;
     Value<uint8_t> priority;
@@ -46,8 +46,8 @@ struct SongGroupIndex : AudioGroupIndex {
     Value<uint8_t> programNo;
     Seek<1, amuse::SeekOrigin::Current> pad;
   };
-  template <amuse::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) MusyX1PageEntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1PageEntryDNA : BigDNA {
     AT_DECL_DNA
     PageObjectIdDNA<DNAEn> objId;
     Value<uint8_t> priority;
@@ -58,20 +58,20 @@ struct SongGroupIndex : AudioGroupIndex {
   };
   struct PageEntry : BigDNA {
     AT_DECL_DNA_YAML
-    PageObjectIdDNA<amuse::Endian::Big> objId;
+    PageObjectIdDNA<std::endian::big> objId;
     Value<uint8_t> priority = 0;
     Value<uint8_t> maxVoices = 255;
 
     PageEntry() = default;
 
-    template <amuse::Endian DNAE>
+    template <std::endian DNAE>
     PageEntry(const PageEntryDNA<DNAE>& in) : objId(in.objId.id), priority(in.priority), maxVoices(in.maxVoices) {}
 
-    template <amuse::Endian DNAE>
+    template <std::endian DNAE>
     PageEntry(const MusyX1PageEntryDNA<DNAE>& in)
     : objId(in.objId.id), priority(in.priority), maxVoices(in.maxVoices) {}
 
-    template <amuse::Endian DNAEn>
+    template <std::endian DNAEn>
     PageEntryDNA<DNAEn> toDNA(uint8_t programNo) const {
       PageEntryDNA<DNAEn> ret;
       ret.objId = objId;
@@ -118,8 +118,8 @@ struct SongGroupIndex : AudioGroupIndex {
 /** Root index of SFXGroup */
 struct SFXGroupIndex : AudioGroupIndex {
   /** Maps game-side SFX define IDs to sound entities */
-  template <amuse::Endian DNAEn>
-  struct AT_SPECIALIZE_PARMS(amuse::Endian::Big, amuse::Endian::Little) SFXEntryDNA : BigDNA {
+  template <std::endian DNAEn>
+  struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) SFXEntryDNA : BigDNA {
     AT_DECL_DNA
     SFXIdDNA<DNAEn> sfxId;
     PageObjectIdDNA<DNAEn> objId;
@@ -132,7 +132,7 @@ struct SFXGroupIndex : AudioGroupIndex {
   };
   struct SFXEntry : BigDNA {
     AT_DECL_DNA_YAML
-    PageObjectIdDNA<amuse::Endian::Big> objId;
+    PageObjectIdDNA<std::endian::big> objId;
     Value<uint8_t> priority = 0;
     Value<uint8_t> maxVoices = 255;
     Value<uint8_t> defVel = 127;
@@ -141,7 +141,7 @@ struct SFXGroupIndex : AudioGroupIndex {
 
     SFXEntry() = default;
 
-    template <amuse::Endian DNAE>
+    template <std::endian DNAE>
     SFXEntry(const SFXEntryDNA<DNAE>& in)
     : objId(in.objId.id)
     , priority(in.priority)
@@ -150,7 +150,7 @@ struct SFXGroupIndex : AudioGroupIndex {
     , panning(in.panning)
     , defKey(in.defKey) {}
 
-    template <amuse::Endian DNAEn>
+    template <std::endian DNAEn>
     SFXEntryDNA<DNAEn> toDNA(SFXId id) const {
       SFXEntryDNA<DNAEn> ret;
       ret.sfxId.id = id;
@@ -178,11 +178,11 @@ class AudioGroupProject {
   std::unordered_map<GroupId, ObjToken<SFXGroupIndex>> m_sfxGroups;
 
   AudioGroupProject(std::istream& r, GCNDataTag);
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   static AudioGroupProject _AudioGroupProject(std::istream& r, bool absOffs);
 
   static void BootstrapObjectIDs(std::istream& r, GCNDataTag);
-  template <amuse::Endian DNAE>
+  template <std::endian DNAE>
   static void BootstrapObjectIDs(std::istream& r, bool absOffs);
 
 public:

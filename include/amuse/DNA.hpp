@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -12,7 +13,7 @@
 //
 // Simplified replacement for the athena DNA system.  Provides:
 //
-//   • amuse::Endian                – Big/Little tag for data format endianness
+//   • std::endian::big / std::endian::little  – data format endianness tag
 //   • BigDNA / LittleDNA          – empty base for non-polymorphic structs
 //   • BigDNAV / LittleDNAV        – virtual base for polymorphic DNA structs
 //   • AT_DECL_DNA / AT_DECL_DNA_YAML / AT_DECL_DNA_YAMLV
@@ -24,8 +25,6 @@
 // =============================================================================
 
 namespace amuse {
-
-enum class Endian : uint8_t { Big, Little };
 
 // ── Non-polymorphic DNA base ──────────────────────────────────────────────────
 struct BigDNA {
@@ -44,7 +43,7 @@ struct BigDNAV {
 using LittleDNAV = BigDNAV;
 
 // ── Value<T, E> – transparent alias ──────────────────────────────────────────
-template <typename T, amuse::Endian E = amuse::Endian::Big>
+template <typename T, std::endian E = std::endian::big>
 using Value = T;
 
 // ── SeekOrigin ───────────────────────────────────────────────────────────────

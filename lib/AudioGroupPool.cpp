@@ -69,7 +69,7 @@ struct MakeDefaultCmdOp {
         case amuse::SoundMacro::CmdIntrospection::Field::Type::SoundMacroStep:
         case amuse::SoundMacro::CmdIntrospection::Field::Type::TableId:
         case amuse::SoundMacro::CmdIntrospection::Field::Type::SampleId:
-          AccessField<SoundMacroIdDNA<amuse::Endian::Little>>(ret.get(), field).id = uint16_t(field.m_default);
+          AccessField<SoundMacroIdDNA<std::endian::little>>(ret.get(), field).id = uint16_t(field.m_default);
           break;
         default:
           break;
@@ -93,7 +93,7 @@ static bool AtEnd(std::istream& r) {
   return v == 0xffffffff;
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 AudioGroupPool AudioGroupPool::_AudioGroupPool(std::istream& r) {
   AudioGroupPool ret;
 
@@ -189,8 +189,8 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(std::istream& r) {
 
   return ret;
 }
-template AudioGroupPool AudioGroupPool::_AudioGroupPool<amuse::Endian::Big>(std::istream& r);
-template AudioGroupPool AudioGroupPool::_AudioGroupPool<amuse::Endian::Little>(std::istream& r);
+template AudioGroupPool AudioGroupPool::_AudioGroupPool<std::endian::big>(std::istream& r);
+template AudioGroupPool AudioGroupPool::_AudioGroupPool<std::endian::little>(std::istream& r);
 
 AudioGroupPool AudioGroupPool::CreateAudioGroupPool(const AudioGroupData& data) {
   if (data.getPoolSize() < 16)
@@ -198,9 +198,9 @@ AudioGroupPool AudioGroupPool::CreateAudioGroupPool(const AudioGroupData& data) 
   amuse::io::MemoryInputStream r(data.getPool(), data.getPoolSize());
   switch (data.getDataFormat()) {
   case DataFormat::PC:
-    return _AudioGroupPool<amuse::Endian::Little>(r);
+    return _AudioGroupPool<std::endian::little>(r);
   default:
-    return _AudioGroupPool<amuse::Endian::Big>(r);
+    return _AudioGroupPool<std::endian::big>(r);
   }
 }
 
@@ -329,7 +329,7 @@ int SoundMacro::assertPC(int pc) const {
   return pc;
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 void SoundMacro::readCmds(std::istream& r, uint32_t size) {
   uint32_t numCmds = size / 8;
   m_cmds.reserve(numCmds);
@@ -340,10 +340,10 @@ void SoundMacro::readCmds(std::istream& r, uint32_t size) {
     m_cmds.push_back(CmdDo<MakeCmdOp, std::unique_ptr<ICmd>>(mr));
   }
 }
-template void SoundMacro::readCmds<amuse::Endian::Big>(std::istream& r, uint32_t size);
-template void SoundMacro::readCmds<amuse::Endian::Little>(std::istream& r, uint32_t size);
+template void SoundMacro::readCmds<std::endian::big>(std::istream& r, uint32_t size);
+template void SoundMacro::readCmds<std::endian::little>(std::istream& r, uint32_t size);
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 void SoundMacro::writeCmds(std::ostream& w) const {
   for (const auto& cmd : m_cmds) {
     uint32_t data[2];
@@ -353,8 +353,8 @@ void SoundMacro::writeCmds(std::ostream& w) const {
     amuse::io::WriteVal<decltype(data), DNAE>({}, data, w);
   }
 }
-template void SoundMacro::writeCmds<amuse::Endian::Big>(std::ostream& w) const;
-template void SoundMacro::writeCmds<amuse::Endian::Little>(std::ostream& w) const;
+template void SoundMacro::writeCmds<std::endian::big>(std::ostream& w) const;
+template void SoundMacro::writeCmds<std::endian::little>(std::ostream& w) const;
 
 void SoundMacro::buildFromPrototype(const SoundMacro& other) {
   m_cmds.reserve(other.m_cmds.size());
@@ -1002,7 +1002,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
   return fo.data();
 }
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::vector<uint8_t> AudioGroupPool::toData() const {
   amuse::io::VectorOutputStream fo;
 
@@ -1102,8 +1102,8 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
 
   return fo.data();
 }
-template std::vector<uint8_t> AudioGroupPool::toData<amuse::Endian::Big>() const;
-template std::vector<uint8_t> AudioGroupPool::toData<amuse::Endian::Little>() const;
+template std::vector<uint8_t> AudioGroupPool::toData<std::endian::big>() const;
+template std::vector<uint8_t> AudioGroupPool::toData<std::endian::little>() const;
 
 template <>
 void amuse::Curve::Enumerate<LittleDNA::Read>(std::istream& r) {

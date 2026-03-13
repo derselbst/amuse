@@ -36,80 +36,80 @@ namespace amuse {
 // =============================================================================
 // PoolHeader<E>
 // =============================================================================
-template <> void PoolHeader<amuse::Endian::Big>::read(std::istream& r) {
+template <> void PoolHeader<std::endian::big>::read(std::istream& r) {
     soundMacrosOffset = amuse::io::readUint32Big(r);
     tablesOffset = amuse::io::readUint32Big(r);
     keymapsOffset = amuse::io::readUint32Big(r);
     layersOffset = amuse::io::readUint32Big(r);
 }
-template <> void PoolHeader<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void PoolHeader<std::endian::big>::write(std::ostream& w) const {
     amuse::io::writeUint32Big(w, soundMacrosOffset);
     amuse::io::writeUint32Big(w, tablesOffset);
     amuse::io::writeUint32Big(w, keymapsOffset);
     amuse::io::writeUint32Big(w, layersOffset);
 }
-template <> size_t PoolHeader<amuse::Endian::Big>::binarySize(size_t s) const { s += 16; return s; }
-template <> void PoolHeader<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void PoolHeader<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t PoolHeader<std::endian::big>::binarySize(size_t s) const { s += 16; return s; }
+template <> void PoolHeader<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void PoolHeader<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void PoolHeader<amuse::Endian::Little>::read(std::istream& r) {
+template <> void PoolHeader<std::endian::little>::read(std::istream& r) {
     soundMacrosOffset = amuse::io::readUint32Little(r);
     tablesOffset = amuse::io::readUint32Little(r);
     keymapsOffset = amuse::io::readUint32Little(r);
     layersOffset = amuse::io::readUint32Little(r);
 }
-template <> void PoolHeader<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void PoolHeader<std::endian::little>::write(std::ostream& w) const {
     amuse::io::writeUint32Little(w, soundMacrosOffset);
     amuse::io::writeUint32Little(w, tablesOffset);
     amuse::io::writeUint32Little(w, keymapsOffset);
     amuse::io::writeUint32Little(w, layersOffset);
 }
-template <> size_t PoolHeader<amuse::Endian::Little>::binarySize(size_t s) const { s += 16; return s; }
-template <> void PoolHeader<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void PoolHeader<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t PoolHeader<std::endian::little>::binarySize(size_t s) const { s += 16; return s; }
+template <> void PoolHeader<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void PoolHeader<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view PoolHeader<DNAE>::DNAType() { return "amuse::PoolHeader"; }
-template struct PoolHeader<amuse::Endian::Big>;
-template struct PoolHeader<amuse::Endian::Little>;
+template struct PoolHeader<std::endian::big>;
+template struct PoolHeader<std::endian::little>;
 
 // =============================================================================
 // ObjectHeader<E>
 // =============================================================================
-template <> void ObjectHeader<amuse::Endian::Big>::read(std::istream& r) {
+template <> void ObjectHeader<std::endian::big>::read(std::istream& r) {
     size = amuse::io::readUint32Big(r);
     objectId.read(r);
     r.seekg(2, std::ios_base::cur);
 }
-template <> void ObjectHeader<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void ObjectHeader<std::endian::big>::write(std::ostream& w) const {
     amuse::io::writeUint32Big(w, size);
     objectId.write(w);
     uint8_t pad[2] = {};
     amuse::io::writeBytes(w, pad, 2);
 }
-template <> size_t ObjectHeader<amuse::Endian::Big>::binarySize(size_t s) const { s += 8; return s; }
-template <> void ObjectHeader<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void ObjectHeader<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t ObjectHeader<std::endian::big>::binarySize(size_t s) const { s += 8; return s; }
+template <> void ObjectHeader<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void ObjectHeader<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void ObjectHeader<amuse::Endian::Little>::read(std::istream& r) {
+template <> void ObjectHeader<std::endian::little>::read(std::istream& r) {
     size = amuse::io::readUint32Little(r);
     objectId.read(r);
     r.seekg(2, std::ios_base::cur);
 }
-template <> void ObjectHeader<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void ObjectHeader<std::endian::little>::write(std::ostream& w) const {
     amuse::io::writeUint32Little(w, size);
     objectId.write(w);
     uint8_t pad[2] = {};
     amuse::io::writeBytes(w, pad, 2);
 }
-template <> size_t ObjectHeader<amuse::Endian::Little>::binarySize(size_t s) const { s += 8; return s; }
-template <> void ObjectHeader<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void ObjectHeader<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t ObjectHeader<std::endian::little>::binarySize(size_t s) const { s += 8; return s; }
+template <> void ObjectHeader<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void ObjectHeader<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view ObjectHeader<DNAE>::DNAType() { return "amuse::ObjectHeader"; }
-template struct ObjectHeader<amuse::Endian::Big>;
-template struct ObjectHeader<amuse::Endian::Little>;
+template struct ObjectHeader<std::endian::big>;
+template struct ObjectHeader<std::endian::little>;
 
 // =============================================================================
 // SoundMacro::ICmd – base class, no data fields
@@ -1014,70 +1014,70 @@ std::string_view ADSRDLS::DNAType() { return "amuse::ADSRDLS"; }
 // =============================================================================
 // KeymapDNA<E>
 // =============================================================================
-template <> void KeymapDNA<amuse::Endian::Big>::read(std::istream& r) {
+template <> void KeymapDNA<std::endian::big>::read(std::istream& r) {
     macro.read(r); transpose = amuse::io::readByte(r); pan = amuse::io::readByte(r); prioOffset = amuse::io::readByte(r);
     r.seekg(3, std::ios_base::cur);
 }
-template <> void KeymapDNA<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void KeymapDNA<std::endian::big>::write(std::ostream& w) const {
     macro.write(w); amuse::io::writeByte(w, transpose); amuse::io::writeByte(w, pan); amuse::io::writeByte(w, prioOffset);
     uint8_t pad[3] = {}; amuse::io::writeBytes(w, pad, 3);
 }
-template <> size_t KeymapDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 8; return s; }
-template <> void KeymapDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void KeymapDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t KeymapDNA<std::endian::big>::binarySize(size_t s) const { s += 8; return s; }
+template <> void KeymapDNA<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void KeymapDNA<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void KeymapDNA<amuse::Endian::Little>::read(std::istream& r) {
+template <> void KeymapDNA<std::endian::little>::read(std::istream& r) {
     macro.read(r); transpose = amuse::io::readByte(r); pan = amuse::io::readByte(r); prioOffset = amuse::io::readByte(r);
     r.seekg(3, std::ios_base::cur);
 }
-template <> void KeymapDNA<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void KeymapDNA<std::endian::little>::write(std::ostream& w) const {
     macro.write(w); amuse::io::writeByte(w, transpose); amuse::io::writeByte(w, pan); amuse::io::writeByte(w, prioOffset);
     uint8_t pad[3] = {}; amuse::io::writeBytes(w, pad, 3);
 }
-template <> size_t KeymapDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 8; return s; }
-template <> void KeymapDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void KeymapDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t KeymapDNA<std::endian::little>::binarySize(size_t s) const { s += 8; return s; }
+template <> void KeymapDNA<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void KeymapDNA<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view KeymapDNA<DNAE>::DNAType() { return "amuse::KeymapDNA"; }
-template struct KeymapDNA<amuse::Endian::Big>;
-template struct KeymapDNA<amuse::Endian::Little>;
+template struct KeymapDNA<std::endian::big>;
+template struct KeymapDNA<std::endian::little>;
 
 // =============================================================================
 // LayerMappingDNA<E>
 // =============================================================================
-template <> void LayerMappingDNA<amuse::Endian::Big>::read(std::istream& r) {
+template <> void LayerMappingDNA<std::endian::big>::read(std::istream& r) {
     macro.read(r); keyLo = amuse::io::readByte(r); keyHi = amuse::io::readByte(r); transpose = amuse::io::readByte(r);
     volume = amuse::io::readByte(r); prioOffset = amuse::io::readByte(r); span = amuse::io::readByte(r); pan = amuse::io::readByte(r);
     r.seekg(3, std::ios_base::cur);
 }
-template <> void LayerMappingDNA<amuse::Endian::Big>::write(std::ostream& w) const {
+template <> void LayerMappingDNA<std::endian::big>::write(std::ostream& w) const {
     macro.write(w); amuse::io::writeByte(w, keyLo); amuse::io::writeByte(w, keyHi); amuse::io::writeByte(w, transpose);
     amuse::io::writeByte(w, volume); amuse::io::writeByte(w, prioOffset); amuse::io::writeByte(w, span); amuse::io::writeByte(w, pan);
     uint8_t pad[3] = {}; amuse::io::writeBytes(w, pad, 3);
 }
-template <> size_t LayerMappingDNA<amuse::Endian::Big>::binarySize(size_t s) const { s += 12; return s; }
-template <> void LayerMappingDNA<amuse::Endian::Big>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void LayerMappingDNA<amuse::Endian::Big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t LayerMappingDNA<std::endian::big>::binarySize(size_t s) const { s += 12; return s; }
+template <> void LayerMappingDNA<std::endian::big>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void LayerMappingDNA<std::endian::big>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <> void LayerMappingDNA<amuse::Endian::Little>::read(std::istream& r) {
+template <> void LayerMappingDNA<std::endian::little>::read(std::istream& r) {
     macro.read(r); keyLo = amuse::io::readByte(r); keyHi = amuse::io::readByte(r); transpose = amuse::io::readByte(r);
     volume = amuse::io::readByte(r); prioOffset = amuse::io::readByte(r); span = amuse::io::readByte(r); pan = amuse::io::readByte(r);
     r.seekg(3, std::ios_base::cur);
 }
-template <> void LayerMappingDNA<amuse::Endian::Little>::write(std::ostream& w) const {
+template <> void LayerMappingDNA<std::endian::little>::write(std::ostream& w) const {
     macro.write(w); amuse::io::writeByte(w, keyLo); amuse::io::writeByte(w, keyHi); amuse::io::writeByte(w, transpose);
     amuse::io::writeByte(w, volume); amuse::io::writeByte(w, prioOffset); amuse::io::writeByte(w, span); amuse::io::writeByte(w, pan);
     uint8_t pad[3] = {}; amuse::io::writeBytes(w, pad, 3);
 }
-template <> size_t LayerMappingDNA<amuse::Endian::Little>::binarySize(size_t s) const { s += 12; return s; }
-template <> void LayerMappingDNA<amuse::Endian::Little>::readYaml(amuse::io::YAMLDocReader&) {}
-template <> void LayerMappingDNA<amuse::Endian::Little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
+template <> size_t LayerMappingDNA<std::endian::little>::binarySize(size_t s) const { s += 12; return s; }
+template <> void LayerMappingDNA<std::endian::little>::readYaml(amuse::io::YAMLDocReader&) {}
+template <> void LayerMappingDNA<std::endian::little>::writeYaml(amuse::io::YAMLDocWriter&) const {}
 
-template <amuse::Endian DNAE>
+template <std::endian DNAE>
 std::string_view LayerMappingDNA<DNAE>::DNAType() { return "amuse::LayerMappingDNA"; }
-template struct LayerMappingDNA<amuse::Endian::Big>;
-template struct LayerMappingDNA<amuse::Endian::Little>;
+template struct LayerMappingDNA<std::endian::big>;
+template struct LayerMappingDNA<std::endian::little>;
 
 // =============================================================================
 // Keymap (BigDNA, AT_DECL_DNA_YAML)

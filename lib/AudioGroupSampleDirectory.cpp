@@ -46,7 +46,7 @@ void AudioGroupSampleDirectory::ADPCMParms::swapBigVADPCM() {
 
 AudioGroupSampleDirectory::AudioGroupSampleDirectory(std::istream& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    EntryDNA<amuse::Endian::Big> ent;
+    EntryDNA<std::endian::big> ent;
     ent.read(r);
     m_entries[ent.m_sfxId] = MakeObj<Entry>(ent);
     if (SampleId::CurNameDB)
@@ -66,14 +66,14 @@ AudioGroupSampleDirectory::AudioGroupSampleDirectory(std::istream& r, const unsi
                                                      bool absOffs, N64DataTag) {
   if (absOffs) {
     while (!AtEnd32(r)) {
-      MusyX1AbsSdirEntry<amuse::Endian::Big> ent;
+      MusyX1AbsSdirEntry<std::endian::big> ent;
       ent.read(r);
       m_entries[ent.m_sfxId] = MakeObj<Entry>(ent);
       SampleId::CurNameDB->registerPair(NameDB::generateName(ent.m_sfxId, NameDB::Type::Sample), ent.m_sfxId);
     }
   } else {
     while (!AtEnd32(r)) {
-      MusyX1SdirEntry<amuse::Endian::Big> ent;
+      MusyX1SdirEntry<std::endian::big> ent;
       ent.read(r);
       m_entries[ent.m_sfxId] = MakeObj<Entry>(ent);
       SampleId::CurNameDB->registerPair(NameDB::generateName(ent.m_sfxId, NameDB::Type::Sample), ent.m_sfxId);
@@ -89,7 +89,7 @@ AudioGroupSampleDirectory::AudioGroupSampleDirectory(std::istream& r, const unsi
 AudioGroupSampleDirectory::AudioGroupSampleDirectory(std::istream& r, bool absOffs, PCDataTag) {
   if (absOffs) {
     while (!AtEnd32(r)) {
-      MusyX1AbsSdirEntry<amuse::Endian::Little> ent;
+      MusyX1AbsSdirEntry<std::endian::little> ent;
       ent.read(r);
       auto& store = m_entries[ent.m_sfxId];
       store = MakeObj<Entry>(ent);
@@ -98,7 +98,7 @@ AudioGroupSampleDirectory::AudioGroupSampleDirectory(std::istream& r, bool absOf
     }
   } else {
     while (!AtEnd32(r)) {
-      MusyX1SdirEntry<amuse::Endian::Little> ent;
+      MusyX1SdirEntry<std::endian::little> ent;
       ent.read(r);
       auto& store = m_entries[ent.m_sfxId];
       store = MakeObj<Entry>(ent);
@@ -860,7 +860,7 @@ void AudioGroupSampleDirectory::reloadSampleData(std::string_view groupPath) {
 
 std::pair<std::vector<uint8_t>, std::vector<uint8_t>>
 AudioGroupSampleDirectory::toGCNData(const AudioGroupDatabase& group) const {
-  constexpr amuse::Endian DNAE = amuse::Endian::Big;
+  constexpr std::endian DNAE = std::endian::big;
 
   amuse::io::VectorOutputStream fo;
   amuse::io::VectorOutputStream sfo;
