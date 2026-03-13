@@ -24,7 +24,7 @@ public:
 
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::CurveNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::CurveNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::Curve) {
       auto& curve = static_cast<amuse::Curve&>(table);
       curve.data.assign(m_undoData.cbegin(), m_undoData.cend());
@@ -33,7 +33,7 @@ public:
   }
 
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::CurveNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::CurveNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::Curve) {
       auto& curve = static_cast<amuse::Curve&>(table);
       curve.data.resize(128);

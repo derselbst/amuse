@@ -206,7 +206,6 @@ ObjToken<Voice> Sequencer::ChannelState::keyOn(uint8_t note, uint8_t velocity) {
   std::list<ObjToken<Voice>>::iterator ret = m_parent->m_engine._allocateVoice(
       m_parent->m_audioGroup, m_parent->m_groupId, NativeSampleRate, true, false, m_parent->m_studio);
   if (*ret) {
-    (*ret)->m_sequencer = m_parent;
     m_chanVoxs[note] = *ret;
     (*ret)->installCtrlValues(m_ctrlVals.data());
 

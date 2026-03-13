@@ -29,7 +29,7 @@ static bool AtEnd16(athena::io::IStreamReader& r) {
   return v == 0xffff;
 }
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 static void ReadRangedObjectIds(NameDB* db, athena::io::IStreamReader& r, NameDB::Type tp) {
   uint16_t id;
   athena::io::Read<athena::io::PropType::None>::Do<decltype(id), DNAE>({}, id, r);
@@ -55,7 +55,7 @@ static void ReadRangedObjectIds(NameDB* db, athena::io::IStreamReader& r, NameDB
   }
 }
 
-template <athena::Endian DNAE, class T>
+template <std::endian DNAE, class T>
 static void WriteRangedObjectIds(athena::io::IStreamWriter& w, const T& list) {
   if (list.cbegin() == list.cend()) {
     uint16_t term = 0xffff;
@@ -85,7 +85,7 @@ static void WriteRangedObjectIds(athena::io::IStreamWriter& w, const T& list) {
 
 AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    GroupHeader<athena::Endian::Big> header;
+    GroupHeader<std::endian::big> header;
     header.read(r);
 
     if (GroupId::CurNameDB)
@@ -95,31 +95,31 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
     /* Sound Macros */
     r.seek(header.soundMacroIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
+      ReadRangedObjectIds<std::endian::big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
     }
 
     /* Samples */
     r.seek(header.samplIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
+      ReadRangedObjectIds<std::endian::big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
     r.seek(header.tableIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
+      ReadRangedObjectIds<std::endian::big>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
     r.seek(header.keymapIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
+      ReadRangedObjectIds<std::endian::big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
     r.seek(header.layerIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
+      ReadRangedObjectIds<std::endian::big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
 #endif
 
@@ -130,7 +130,7 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
       /* Normal pages */
       r.seek(header.pageTableOff, athena::SeekOrigin::Begin);
       while (!AtEnd64(r)) {
-        SongGroupIndex::PageEntryDNA<athena::Endian::Big> entry;
+        SongGroupIndex::PageEntryDNA<std::endian::big> entry;
         entry.read(r);
         idx->m_normPages[entry.programNo] = entry;
       }
@@ -138,7 +138,7 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
       /* Drum pages */
       r.seek(header.drumTableOff, athena::SeekOrigin::Begin);
       while (!AtEnd64(r)) {
-        SongGroupIndex::PageEntryDNA<athena::Endian::Big> entry;
+        SongGroupIndex::PageEntryDNA<std::endian::big> entry;
         entry.read(r);
         idx->m_drumPages[entry.programNo] = entry;
       }
@@ -166,7 +166,7 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
       r.seek(2, athena::SeekOrigin::Current);
       idx->m_sfxEntries.reserve(count);
       for (int i = 0; i < count; ++i) {
-        SFXGroupIndex::SFXEntryDNA<athena::Endian::Big> entry;
+        SFXGroupIndex::SFXEntryDNA<std::endian::big> entry;
         entry.read(r);
         idx->m_sfxEntries[entry.sfxId.id] = entry;
         if (SFXId::CurNameDB)
@@ -178,13 +178,13 @@ AudioGroupProject::AudioGroupProject(athena::io::IStreamReader& r, GCNDataTag) {
   }
 }
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReader& r, bool absOffs) {
   AudioGroupProject ret;
 
   while (!AtEnd32(r)) {
-    atInt64 groupBegin = r.position();
-    atInt64 subDataOff = absOffs ? 0 : groupBegin + 8;
+    int64_t groupBegin = r.position();
+    int64_t subDataOff = absOffs ? 0 : groupBegin + 8;
     GroupHeader<DNAE> header;
     header.read(r);
 
@@ -274,7 +274,7 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
 
         /* MIDI setups */
         r.seek(subDataOff + header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (atInt64(r.position() + 4) < groupBegin + header.groupEndOff) {
+        while (int64_t(r.position() + 4) < groupBegin + header.groupEndOff) {
           uint16_t songId;
           athena::io::Read<athena::io::PropType::None>::Do<decltype(songId), DNAE>({}, songId, r);
           r.seek(2, athena::SeekOrigin::Current);
@@ -324,9 +324,9 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(const AudioGroupDat
   default:
     return AudioGroupProject(r, GCNDataTag{});
   case DataFormat::N64:
-    return _AudioGroupProject<athena::Endian::Big>(r, data.getAbsoluteProjOffsets());
+    return _AudioGroupProject<std::endian::big>(r, data.getAbsoluteProjOffsets());
   case DataFormat::PC:
-    return _AudioGroupProject<athena::Endian::Little>(r, data.getAbsoluteProjOffsets());
+    return _AudioGroupProject<std::endian::little>(r, data.getAbsoluteProjOffsets());
   }
 }
 
@@ -462,7 +462,7 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(const AudioGroupPro
 
 void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    GroupHeader<athena::Endian::Big> header;
+    GroupHeader<std::endian::big> header;
     header.read(r);
 
     GroupId::CurNameDB->registerPair(NameDB::generateName(header.groupId, NameDB::Type::Group), header.groupId);
@@ -470,30 +470,30 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, GCNData
     /* Sound Macros */
     r.seek(header.soundMacroIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r))
-      ReadRangedObjectIds<athena::Endian::Big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
+      ReadRangedObjectIds<std::endian::big>(SoundMacroId::CurNameDB, r, NameDB::Type::SoundMacro);
 
     /* Samples */
     r.seek(header.samplIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
+      ReadRangedObjectIds<std::endian::big>(SampleId::CurNameDB, r, NameDB::Type::Sample);
     }
 
     /* Tables */
     r.seek(header.tableIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(TableId::CurNameDB, r, NameDB::Type::Table);
+      ReadRangedObjectIds<std::endian::big>(TableId::CurNameDB, r, NameDB::Type::Table);
     }
 
     /* Keymaps */
     r.seek(header.keymapIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
+      ReadRangedObjectIds<std::endian::big>(KeymapId::CurNameDB, r, NameDB::Type::Keymap);
     }
 
     /* Layers */
     r.seek(header.layerIdsOff, athena::SeekOrigin::Begin);
     while (!AtEnd16(r)) {
-      ReadRangedObjectIds<athena::Endian::Big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
+      ReadRangedObjectIds<std::endian::big>(LayersId::CurNameDB, r, NameDB::Type::Layer);
     }
 
     if (header.type == GroupType::Song) {
@@ -510,7 +510,7 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, GCNData
       uint16_t count = r.readUint16Big();
       r.seek(2, athena::SeekOrigin::Current);
       for (int i = 0; i < count; ++i) {
-        SFXGroupIndex::SFXEntryDNA<athena::Endian::Big> entry;
+        SFXGroupIndex::SFXEntryDNA<std::endian::big> entry;
         entry.read(r);
         SFXId::CurNameDB->registerPair(NameDB::generateName(entry.sfxId.id, NameDB::Type::SFX), entry.sfxId.id);
       }
@@ -520,11 +520,11 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, GCNData
   }
 }
 
-template <athena::Endian DNAE>
+template <std::endian DNAE>
 void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, bool absOffs) {
   while (!AtEnd32(r)) {
-    atInt64 groupBegin = r.position();
-    atInt64 subDataOff = absOffs ? 0 : groupBegin + 8;
+    int64_t groupBegin = r.position();
+    int64_t subDataOff = absOffs ? 0 : groupBegin + 8;
     GroupHeader<DNAE> header;
     header.read(r);
 
@@ -572,7 +572,7 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, bool ab
         }
       } else {
         r.seek(subDataOff + header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (atInt64(r.position()) < groupBegin + header.groupEndOff) {
+        while (int64_t(r.position()) < groupBegin + header.groupEndOff) {
           uint16_t id;
           athena::io::Read<athena::io::PropType::None>::Do<decltype(id), DNAE>({}, id, r);
           SongId::CurNameDB->registerPair(NameDB::generateName(id, NameDB::Type::Song), id);
@@ -609,10 +609,10 @@ void AudioGroupProject::BootstrapObjectIDs(const AudioGroupData& data) {
     BootstrapObjectIDs(r, GCNDataTag{});
     break;
   case DataFormat::N64:
-    BootstrapObjectIDs<athena::Endian::Big>(r, data.getAbsoluteProjOffsets());
+    BootstrapObjectIDs<std::endian::big>(r, data.getAbsoluteProjOffsets());
     break;
   case DataFormat::PC:
-    BootstrapObjectIDs<athena::Endian::Little>(r, data.getAbsoluteProjOffsets());
+    BootstrapObjectIDs<std::endian::little>(r, data.getAbsoluteProjOffsets());
     break;
   }
 }
@@ -823,7 +823,7 @@ struct ObjectIdPool
 
 std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
                                                   const AudioGroupSampleDirectory& sdir) const {
-  constexpr athena::Endian DNAE = athena::Endian::Big;
+  constexpr std::endian DNAE = std::endian::big;
 
   athena::io::VectorWriter fo;
 

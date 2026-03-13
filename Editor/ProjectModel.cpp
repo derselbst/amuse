@@ -12,10 +12,10 @@
 #include <amuse/ContainerRegistry.hpp>
 #include <amuse/SongConverter.hpp>
 
-#include <athena/FileWriter.hpp>
-#include <athena/FileReader.hpp>
-#include <athena/YAMLDocWriter.hpp>
-#include <athena/VectorWriter.hpp>
+#include "athena/FileWriter.hpp"
+#include "athena/FileReader.hpp"
+#include "athena/DNAYaml.hpp"
+#include "athena/VectorWriter.hpp"
 
 QIcon ProjectModel::GroupNode::Icon;
 QIcon ProjectModel::SongGroupNode::Icon;
@@ -67,19 +67,19 @@ static void VisitObjectFields(ProjectModel::SoundMacroNode* n,
         break;
       switch (field.m_tp) {
       case amuse::SoundMacro::CmdIntrospection::Field::Type::SoundMacroId:
-        if (!func(amuse::AccessField<amuse::SoundMacroIdDNA<athena::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::SoundMacroIdDNA<std::endian::little>>(p.get(), field).id,
                   amuse::SoundMacroId::CurNameDB)) {
           return;
         }
         break;
       case amuse::SoundMacro::CmdIntrospection::Field::Type::TableId:
-        if (!func(amuse::AccessField<amuse::TableIdDNA<athena::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::TableIdDNA<std::endian::little>>(p.get(), field).id,
                   amuse::TableId::CurNameDB)) {
           return;
         }
         break;
       case amuse::SoundMacro::CmdIntrospection::Field::Type::SampleId:
-        if (!func(amuse::AccessField<amuse::SampleIdDNA<athena::Endian::Little>>(p.get(), field).id,
+        if (!func(amuse::AccessField<amuse::SampleIdDNA<std::endian::little>>(p.get(), field).id,
                   amuse::SampleId::CurNameDB)) {
           return;
         }
@@ -728,7 +728,7 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
     fo.writeUBytes(proj.data(), proj.size());
   }
   {
-    auto pool = group.getPool().toData<athena::Endian::Big>();
+    auto pool = group.getPool().toData<std::endian::big>();
     athena::io::FileWriter fo(QStringToUTF8(basePath + QStringLiteral(".pool")));
     if (fo.hasError()) {
       messenger.critical(tr("Export Error"), tr("Unable to export %1.pool").arg(groupName));
@@ -1706,7 +1706,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(athena::
 template <class NT>
 void ProjectModel::loadMimeData(const QMimeData* data, const QString& mimeType, GroupNode* gn) {
   auto d = data->data(mimeType);
-  athena::io::MemoryReader mr(d.data(), atUint64(d.length()));
+  athena::io::MemoryReader mr(d.data(), uint64_t(d.length()));
   athena::io::YAMLDocReader r;
   if (r.parse(&mr)) {
     QString newName = MakeDedupedName(QString::fromStdString(r.readString("name")), GetNameDB<NT>());

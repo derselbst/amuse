@@ -36,7 +36,6 @@ void Voice::_destroy() {
   m_studio.reset();
   m_backendVoice.reset();
   m_curSample.reset();
-  m_sequencer.reset();
 }
 
 Voice::~Voice() {

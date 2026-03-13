@@ -101,7 +101,7 @@ private:
   std::unordered_map<amuse::SongId, Song> m_midiFiles;
 
 public:
-  class INode : public amuse::IObj {
+  class INode {
     friend class ProjectModel;
     virtual void _sortChildren();
 
@@ -129,7 +129,7 @@ public:
     amuse::IObjToken<INode> m_nullChild;
 
   public:
-    ~INode() override = default;
+    virtual ~INode() = default;
     explicit INode(QString name);
 
     // ONLY USED BY NULL NODE!

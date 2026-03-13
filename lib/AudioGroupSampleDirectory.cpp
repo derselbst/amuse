@@ -46,7 +46,7 @@ void AudioGroupSampleDirectory::ADPCMParms::swapBigVADPCM() {
 
 AudioGroupSampleDirectory::AudioGroupSampleDirectory(athena::io::IStreamReader& r, GCNDataTag) {
   while (!AtEnd32(r)) {
-    EntryDNA<athena::Endian::Big> ent;
+    EntryDNA<std::endian::big> ent;
     ent.read(r);
     m_entries[ent.m_sfxId] = MakeObj<Entry>(ent);
     if (SampleId::CurNameDB)
@@ -66,14 +66,14 @@ AudioGroupSampleDirectory::AudioGroupSampleDirectory(athena::io::IStreamReader& 
                                                      bool absOffs, N64DataTag) {
   if (absOffs) {
     while (!AtEnd32(r)) {
-      MusyX1AbsSdirEntry<athena::Endian::Big> ent;
+      MusyX1AbsSdirEntry<std::endian::big> ent;
       ent.read(r);
       m_entries[ent.m_sfxId] = MakeObj<Entry>(ent);
       SampleId::CurNameDB->registerPair(NameDB::generateName(ent.m_sfxId, NameDB::Type::Sample), ent.m_sfxId);
     }
   } else {
     while (!AtEnd32(r)) {
-      MusyX1SdirEntry<athena::Endian::Big> ent;
+      MusyX1SdirEntry<std::endian::big> ent;
       ent.read(r);
       m_entries[ent.m_sfxId] = MakeObj<Entry>(ent);
       SampleId::CurNameDB->registerPair(NameDB::generateName(ent.m_sfxId, NameDB::Type::Sample), ent.m_sfxId);
@@ -89,20 +89,20 @@ AudioGroupSampleDirectory::AudioGroupSampleDirectory(athena::io::IStreamReader& 
 AudioGroupSampleDirectory::AudioGroupSampleDirectory(athena::io::IStreamReader& r, bool absOffs, PCDataTag) {
   if (absOffs) {
     while (!AtEnd32(r)) {
-      MusyX1AbsSdirEntry<athena::Endian::Little> ent;
+      MusyX1AbsSdirEntry<std::endian::little> ent;
       ent.read(r);
       auto& store = m_entries[ent.m_sfxId];
       store = MakeObj<Entry>(ent);
-      store->m_data->m_numSamples |= atUint32(SampleFormat::PCM_PC) << 24;
+      store->m_data->m_numSamples |= uint32_t(SampleFormat::PCM_PC) << 24;
       SampleId::CurNameDB->registerPair(NameDB::generateName(ent.m_sfxId, NameDB::Type::Sample), ent.m_sfxId);
     }
   } else {
     while (!AtEnd32(r)) {
-      MusyX1SdirEntry<athena::Endian::Little> ent;
+      MusyX1SdirEntry<std::endian::little> ent;
       ent.read(r);
       auto& store = m_entries[ent.m_sfxId];
       store = MakeObj<Entry>(ent);
-      store->m_data->m_numSamples |= atUint32(SampleFormat::PCM_PC) << 24;
+      store->m_data->m_numSamples |= uint32_t(SampleFormat::PCM_PC) << 24;
       SampleId::CurNameDB->registerPair(NameDB::generateName(ent.m_sfxId, NameDB::Type::Sample), ent.m_sfxId);
     }
   }
@@ -137,7 +137,7 @@ static uint32_t DSPNibbleToSample(uint32_t nibble) {
   return ret;
 }
 
-void AudioGroupSampleDirectory::EntryData::setLoopStartSample(atUint32 sample) {
+void AudioGroupSampleDirectory::EntryData::setLoopStartSample(uint32_t sample) {
   _setLoopStartSample(sample);
 
   if (m_looseData && isFormatDSP()) {
@@ -161,7 +161,7 @@ void AudioGroupSampleDirectory::EntryData::loadLooseDSP(std::string_view dspPath
     DSPADPCMHeader header;
     header.read(r);
     m_pitch = header.m_pitch;
-    m_sampleRate = atUint16(header.x8_sample_rate);
+    m_sampleRate = uint16_t(header.x8_sample_rate);
     m_numSamples = header.x0_num_samples;
     if (header.xc_loop_flag) {
       _setLoopStartSample(DSPNibbleToSample(header.x10_loop_start_nibble));
@@ -189,7 +189,7 @@ void AudioGroupSampleDirectory::EntryData::loadLooseVADPCM(std::string_view vadp
     m_pitch = header.m_pitchSampleRate >> 24;
     m_sampleRate = header.m_pitchSampleRate & 0xffff;
     m_numSamples = header.m_numSamples & 0xffff;
-    m_numSamples |= atUint32(SampleFormat::N64) << 24;
+    m_numSamples |= uint32_t(SampleFormat::N64) << 24;
     m_loopStartSample = header.m_loopStartSample;
     m_loopLengthSamples = header.m_loopLengthSamples;
 
@@ -205,26 +205,26 @@ void AudioGroupSampleDirectory::EntryData::loadLooseVADPCM(std::string_view vadp
 void AudioGroupSampleDirectory::EntryData::loadLooseWAV(std::string_view wavPath) {
   athena::io::FileReader r(wavPath);
   if (!r.hasError()) {
-    atUint32 riffMagic = r.readUint32Little();
-    if (riffMagic != SBIG('RIFF'))
+    uint32_t riffMagic = r.readUint32Little();
+    if (riffMagic != CC_RIFF)
       return;
-    atUint32 wavChuckSize = r.readUint32Little();
-    atUint32 wavMagic = r.readUint32Little();
-    if (wavMagic != SBIG('WAVE'))
+    uint32_t wavChuckSize = r.readUint32Little();
+    uint32_t wavMagic = r.readUint32Little();
+    if (wavMagic != CC_WAVE)
       return;
 
     while (r.position() < wavChuckSize + 8) {
-      atUint32 chunkMagic = r.readUint32Little();
-      atUint32 chunkSize = r.readUint32Little();
-      atUint64 startPos = r.position();
-      if (chunkMagic == SBIG('fmt ')) {
+      uint32_t chunkMagic = r.readUint32Little();
+      uint32_t chunkSize = r.readUint32Little();
+      uint64_t startPos = r.position();
+      if (chunkMagic == CC_FMT) {
         WAVFormatChunk fmt;
         fmt.read(r);
-        m_sampleRate = atUint16(fmt.sampleRate);
-      } else if (chunkMagic == SBIG('smpl')) {
+        m_sampleRate = uint16_t(fmt.sampleRate);
+      } else if (chunkMagic == CC_SMPL) {
         WAVSampleChunk smpl;
         smpl.read(r);
-        m_pitch = atUint8(smpl.midiNote);
+        m_pitch = uint8_t(smpl.midiNote);
 
         if (smpl.numSampleLoops) {
           WAVSampleLoop loop;
@@ -232,8 +232,8 @@ void AudioGroupSampleDirectory::EntryData::loadLooseWAV(std::string_view wavPath
           _setLoopStartSample(loop.start);
           setLoopEndSample(loop.end);
         }
-      } else if (chunkMagic == SBIG('data')) {
-        m_numSamples = ((chunkSize / 2) & 0xffffff) | (atUint32(SampleFormat::PCM_PC) << 24);
+      } else if (chunkMagic == CC_DATA) {
+        m_numSamples = ((chunkSize / 2) & 0xffffff) | (uint32_t(SampleFormat::PCM_PC) << 24);
         m_looseData.reset(new uint8_t[chunkSize]);
         r.readUBytesToBuf(m_looseData.get(), chunkSize);
       }
@@ -411,24 +411,24 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataVADPCM(std::string_view 
 void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wavPath) {
   athena::io::FileReader r(wavPath);
   if (!r.hasError()) {
-    atUint32 riffMagic = r.readUint32Little();
-    if (riffMagic == SBIG('RIFF')) {
-      atUint32 wavChuckSize = r.readUint32Little();
-      atUint32 wavMagic = r.readUint32Little();
-      if (wavMagic == SBIG('WAVE')) {
-        atInt64 smplOffset = -1;
-        atInt64 loopOffset = -1;
+    uint32_t riffMagic = r.readUint32Little();
+    if (riffMagic == CC_RIFF) {
+      uint32_t wavChuckSize = r.readUint32Little();
+      uint32_t wavMagic = r.readUint32Little();
+      if (wavMagic == CC_WAVE) {
+        int64_t smplOffset = -1;
+        int64_t loopOffset = -1;
         WAVFormatChunk fmt;
         int readSec = 0;
 
         while (r.position() < wavChuckSize + 8) {
-          atUint32 chunkMagic = r.readUint32Little();
-          atUint32 chunkSize = r.readUint32Little();
-          atUint64 startPos = r.position();
-          if (chunkMagic == SBIG('fmt ')) {
+          uint32_t chunkMagic = r.readUint32Little();
+          uint32_t chunkSize = r.readUint32Little();
+          uint64_t startPos = r.position();
+          if (chunkMagic == CC_FMT) {
             fmt.read(r);
             ++readSec;
-          } else if (chunkMagic == SBIG('smpl')) {
+          } else if (chunkMagic == CC_SMPL) {
             smplOffset = startPos;
             if (chunkSize >= 60)
               loopOffset = startPos + 36;
@@ -442,17 +442,17 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
           r.seek(12, athena::SeekOrigin::Begin);
           athena::io::FileWriter w(wavPath);
           if (!w.hasError()) {
-            w.writeUint32Little(SBIG('RIFF'));
+            w.writeUint32Little(CC_RIFF);
             w.writeUint32Little(0);
-            w.writeUint32Little(SBIG('WAVE'));
+            w.writeUint32Little(CC_WAVE);
 
             bool wroteSMPL = false;
             while (r.position() < wavChuckSize + 8) {
-              atUint32 chunkMagic = r.readUint32Little();
-              atUint32 chunkSize = r.readUint32Little();
-              if (!wroteSMPL && (chunkMagic == SBIG('smpl') || chunkMagic == SBIG('data'))) {
+              uint32_t chunkMagic = r.readUint32Little();
+              uint32_t chunkSize = r.readUint32Little();
+              if (!wroteSMPL && (chunkMagic == CC_SMPL || chunkMagic == CC_DATA)) {
                 wroteSMPL = true;
-                w.writeUint32Little(SBIG('smpl'));
+                w.writeUint32Little(CC_SMPL);
                 w.writeUint32Little(60);
                 WAVSampleChunk smpl;
                 smpl.smplPeriod = 1000000000 / fmt.sampleRate;
@@ -469,7 +469,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
                 loop.start = getLoopStartSample();
                 loop.end = getLoopEndSample();
                 loop.write(w);
-                if (chunkMagic == SBIG('smpl')) {
+                if (chunkMagic == CC_SMPL) {
                   r.seek(chunkSize, athena::SeekOrigin::Current);
                   continue;
                 }
@@ -479,7 +479,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
               w.writeUBytes(r.readUBytes(chunkSize).get(), chunkSize);
             }
 
-            atUint64 wavLen = w.position();
+            uint64_t wavLen = w.position();
             w.seek(4, athena::SeekOrigin::Begin);
             w.writeUint32Little(wavLen - 8);
           }
@@ -623,7 +623,7 @@ void AudioGroupSampleDirectory::_extractWAV(SampleId id, const EntryData& ent, s
     header.write(w);
   }
 
-  atUint64 dataLen;
+  uint64_t dataLen;
   if (fmt == SampleFormat::DSP || fmt == SampleFormat::DSP_DRUM) {
     uint32_t remSamples = numSamples;
     uint32_t numFrames = (remSamples + 13) / 14;
@@ -707,13 +707,13 @@ void AudioGroupSampleDirectory::_extractCompressed(SampleId id, const EntryData&
   path += SampleId::CurNameDB->resolveNameFromId(id);
 
   uint32_t numSamples = ent.getNumSamples();
-  atUint64 dataLen = 0;
+  uint64_t dataLen = 0;
   if (fmt == SampleFormat::DSP || fmt == SampleFormat::DSP_DRUM) {
     DSPADPCMHeader header;
     header.x0_num_samples = numSamples;
     header.x4_num_nibbles = DSPSampleToNibble(numSamples);
     header.x8_sample_rate = ent.m_sampleRate;
-    header.xc_loop_flag = atUint16(ent.isLooped());
+    header.xc_loop_flag = uint16_t(ent.isLooped());
     if (header.xc_loop_flag) {
       header.x10_loop_start_nibble = DSPSampleToNibble(ent.getLoopStartSample());
       header.x14_loop_end_nibble = DSPSampleToNibble(ent.getLoopEndSample());
@@ -761,7 +761,7 @@ void AudioGroupSampleDirectory::_extractCompressed(SampleId id, const EntryData&
     header.x0_num_samples = numSamples;
     header.x4_num_nibbles = DSPSampleToNibble(numSamples);
     header.x8_sample_rate = ent.m_sampleRate;
-    header.xc_loop_flag = atUint16(ent.isLooped());
+    header.xc_loop_flag = uint16_t(ent.isLooped());
     header.m_pitch = ent.m_pitch;
     if (header.xc_loop_flag) {
       header.x10_loop_start_nibble = DSPSampleToNibble(loopStartSample);
@@ -860,7 +860,7 @@ void AudioGroupSampleDirectory::reloadSampleData(std::string_view groupPath) {
 
 std::pair<std::vector<uint8_t>, std::vector<uint8_t>>
 AudioGroupSampleDirectory::toGCNData(const AudioGroupDatabase& group) const {
-  constexpr athena::Endian DNAE = athena::Endian::Big;
+  constexpr std::endian DNAE = std::endian::big;
 
   athena::io::VectorWriter fo;
   athena::io::VectorWriter sfo;
@@ -891,7 +891,7 @@ AudioGroupSampleDirectory::toGCNData(const AudioGroupDatabase& group) const {
       DSPADPCMHeader header;
       header.read(r);
       entryDNA.m_pitch = header.m_pitch;
-      entryDNA.m_sampleRate = atUint16(header.x8_sample_rate);
+      entryDNA.m_sampleRate = uint16_t(header.x8_sample_rate);
       entryDNA.m_numSamples = header.x0_num_samples;
       if (header.xc_loop_flag) {
         entryDNA._setLoopStartSample(DSPNibbleToSample(header.x10_loop_start_nibble));

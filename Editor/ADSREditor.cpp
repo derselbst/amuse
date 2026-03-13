@@ -285,7 +285,7 @@ public:
   : EditorUndoCommand(node.get(), ADSRControls::tr("Change Attack")), m_redoVal(redoVal) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr.setAttack(m_undoVal);
@@ -296,7 +296,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoVal = adsr.getAttack();
@@ -336,7 +336,7 @@ public:
   : EditorUndoCommand(node.get(), ADSRControls::tr("Change Decay")), m_redoVal(redoVal) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr.setDecay(m_undoVal);
@@ -347,7 +347,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoVal = adsr.getDecay();
@@ -387,7 +387,7 @@ public:
   : EditorUndoCommand(node.get(), ADSRControls::tr("Change Sustain")), m_redoVal(redoVal) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr.setSustain(m_undoVal);
@@ -398,7 +398,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoVal = adsr.getSustain();
@@ -444,7 +444,7 @@ public:
   , m_cycleCount(cycleCount) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr.setAttack(m_undoAttack);
@@ -457,7 +457,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoAttack = adsr.getAttack();
@@ -515,7 +515,7 @@ public:
   , m_cycleCount(cycleCount) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr.setDecay(m_undoDecay);
@@ -528,7 +528,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoDecay = adsr.getDecay();
@@ -581,7 +581,7 @@ public:
   : EditorUndoCommand(node.get(), ADSRControls::tr("Change Release")), m_redoVal(redoVal), m_cycleCount(cycleCount) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr.setRelease(m_undoVal);
@@ -592,7 +592,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoVal = adsr.getRelease();
@@ -670,7 +670,7 @@ public:
   , m_redoKeyToDecay(redoKeyToDecay) {}
   void undo() override {
     m_undid = true;
-    std::unique_ptr<amuse::ITable>& table = *m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    std::unique_ptr<amuse::ITable>& table = *std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if ((table->Isa() == amuse::ITable::Type::ADSRDLS && !m_redoVal) ||
         (table->Isa() == amuse::ITable::Type::ADSR && m_redoVal)) {
       return;
@@ -688,7 +688,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    std::unique_ptr<amuse::ITable>& table = *m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    std::unique_ptr<amuse::ITable>& table = *std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if ((table->Isa() == amuse::ITable::Type::ADSRDLS && m_redoVal) ||
         (table->Isa() == amuse::ITable::Type::ADSR && !m_redoVal)) {
       return;
@@ -748,7 +748,7 @@ public:
   : EditorUndoCommand(node.get(), ADSRControls::tr("Change Vel To Attack")), m_redoVal(redoVal) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr._setVelToAttack(m_undoVal);
@@ -756,7 +756,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoVal = adsr._getVelToAttack();
@@ -792,7 +792,7 @@ public:
   : EditorUndoCommand(node.get(), ADSRControls::tr("Change Key To Decay")), m_redoVal(redoVal) {}
   void undo() override {
     m_undid = true;
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       adsr._setKeyToDecay(m_undoVal);
@@ -800,7 +800,7 @@ public:
     EditorUndoCommand::undo();
   }
   void redo() override {
-    amuse::ITable& table = **m_node.cast<ProjectModel::ADSRNode>()->m_obj;
+    amuse::ITable& table = **std::static_pointer_cast<ProjectModel::ADSRNode>(m_node)->m_obj;
     if (table.Isa() == amuse::ITable::Type::ADSRDLS) {
       auto& adsr = static_cast<amuse::ADSRDLS&>(table);
       m_undoVal = adsr._getKeyToDecay();
