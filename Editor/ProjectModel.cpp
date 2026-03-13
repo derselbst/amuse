@@ -551,7 +551,7 @@ void ProjectModel::openSongsData() {
   QFileInfo songsFile(m_dir, QStringLiteral("!songs.yaml"));
   if (songsFile.exists()) {
     std::ifstream r(QStringToUTF8(songsFile.filePath()));
-    if (!r.hasError()) {
+    if (!r.fail()) {
       amuse::io::YAMLDocReader dr;
       if (dr.parse(&r)) {
         m_midiFiles.reserve(dr.getRootNode()->m_mapChildren.size());
@@ -638,16 +638,16 @@ bool ProjectModel::importGroupData(const QString& groupName, const amuse::AudioG
   {
     auto proj = grp.getProj().toYAML();
     std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!project.yaml")).filePath()));
-    if (fo.hasError())
+    if (fo.fail())
       return false;
-    fo.writeUBytes(proj.data(), proj.size());
+    amuse::io::writeBytes(fo, proj.data(), proj.size());
   }
   {
     auto pool = grp.getPool().toYAML();
     std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!pool.yaml")).filePath()));
-    if (fo.hasError())
+    if (fo.fail())
       return false;
-    fo.writeUBytes(pool.data(), pool.size());
+    amuse::io::writeBytes(fo, pool.data(), pool.size());
   }
 
   m_needsReset = true;
@@ -661,7 +661,7 @@ void ProjectModel::saveSongsIndex() {
     for (auto& p : amuse::SortUnorderedMap(m_midiFiles))
       dw.writeString(fmt::format(FMT_STRING("{}"), p.first), p.second.get().m_path.toUtf8().data());
     std::ofstream w(QStringToUTF8(songsFile.filePath()));
-    if (!w.hasError())
+    if (!w.fail())
       dw.finish(&w);
   }
 }
@@ -679,16 +679,16 @@ bool ProjectModel::saveToFile(UIMessenger& messenger) {
     {
       auto proj = g.second->getProj().toYAML();
       std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!project.yaml")).filePath()));
-      if (fo.hasError())
+      if (fo.fail())
         return false;
-      fo.writeUBytes(proj.data(), proj.size());
+      amuse::io::writeBytes(fo, proj.data(), proj.size());
     }
     {
       auto pool = g.second->getPool().toYAML();
       std::ofstream fo(QStringToUTF8(QFileInfo(dir, QStringLiteral("!pool.yaml")).filePath()));
-      if (fo.hasError())
+      if (fo.fail())
         return false;
-      fo.writeUBytes(pool.data(), pool.size());
+      amuse::io::writeBytes(fo, pool.data(), pool.size());
     }
   }
 
@@ -720,39 +720,39 @@ bool ProjectModel::exportGroup(const QString& path, const QString& groupName, UI
   QString basePath = QFileInfo(QDir(path), groupName).filePath();
   {
     auto proj = group.getProj().toGCNData(group.getPool(), group.getSdir());
-    std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".proj")));
-    if (fo.hasError()) {
+    std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".proj")), std::ios::binary);
+    if (fo.fail()) {
       messenger.critical(tr("Export Error"), tr("Unable to export %1.proj").arg(groupName));
       return false;
     }
-    fo.writeUBytes(proj.data(), proj.size());
+    amuse::io::writeBytes(fo, proj.data(), proj.size());
   }
   {
     auto pool = group.getPool().toData<std::endian::big>();
-    std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".pool")));
-    if (fo.hasError()) {
+    std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".pool")), std::ios::binary);
+    if (fo.fail()) {
       messenger.critical(tr("Export Error"), tr("Unable to export %1.pool").arg(groupName));
       return false;
     }
-    fo.writeUBytes(pool.data(), pool.size());
+    amuse::io::writeBytes(fo, pool.data(), pool.size());
   }
   {
     auto sdirSamp = group.getSdir().toGCNData(group);
     {
-      std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".sdir")));
-      if (fo.hasError()) {
+      std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".sdir")), std::ios::binary);
+      if (fo.fail()) {
         messenger.critical(tr("Export Error"), tr("Unable to export %1.sdir").arg(groupName));
         return false;
       }
-      fo.writeUBytes(sdirSamp.first.data(), sdirSamp.first.size());
+      amuse::io::writeBytes(fo, sdirSamp.first.data(), sdirSamp.first.size());
     }
     {
-      std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".samp")));
-      if (fo.hasError()) {
+      std::ofstream fo(QStringToUTF8(basePath + QStringLiteral(".samp")), std::ios::binary);
+      if (fo.fail()) {
         messenger.critical(tr("Export Error"), tr("Unable to export %1.samp").arg(groupName));
         return false;
       }
-      fo.writeUBytes(sdirSamp.second.data(), sdirSamp.second.size());
+      amuse::io::writeBytes(fo, sdirSamp.second.data(), sdirSamp.second.size());
     }
   }
   return true;
@@ -1595,14 +1595,14 @@ static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::SoundMacroN
   if (auto __r2 = w.enterSubVector("cmds"))
     n->m_obj->toYAML(w);
 }
-static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::ADSRNode* n) { n->m_obj->get()->write(w); }
-static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::CurveNode* n) { n->m_obj->get()->write(w); }
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::ADSRNode* n) { n->m_obj->get()->writeYaml(w); }
+static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::CurveNode* n) { n->m_obj->get()->writeYaml(w); }
 static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::KeymapNode* n) {
   if (auto __v = w.enterSubVector("entries")) {
     for (const auto& km : *n->m_obj) {
       if (auto __r2 = w.enterSubRecord()) {
         w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-        km.write(w);
+        km.writeYaml(w);
       }
     }
   }
@@ -1612,7 +1612,7 @@ static void WriteMimeYAML(amuse::io::YAMLDocWriter& w, ProjectModel::LayersNode*
     for (const auto& lm : *n->m_obj) {
       if (auto __r2 = w.enterSubRecord()) {
         w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-        lm.write(w);
+        lm.writeYaml(w);
       }
     }
   }
@@ -1655,10 +1655,10 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::ADSRNode>(amuse::io:
   if (auto __vta = r.enterSubRecord("velToAttack")) {
     __vta.leave();
     dataNode = amuse::MakeObj<std::unique_ptr<amuse::ITable>>(std::make_unique<amuse::ADSRDLS>());
-    static_cast<amuse::ADSRDLS&>(**dataNode).read(r);
+    static_cast<amuse::ADSRDLS&>(**dataNode).readYaml(r);
   } else {
     dataNode = amuse::MakeObj<std::unique_ptr<amuse::ITable>>(std::make_unique<amuse::ADSR>());
-    static_cast<amuse::ADSR&>(**dataNode).read(r);
+    static_cast<amuse::ADSR&>(**dataNode).readYaml(r);
   }
   auto node = amuse::MakeObj<ADSRNode>(name, dataNode);
   return new NodeAddUndoCommand<ADSRNode>(ProjectModel::tr("Add ADSR %1"), node.get(), gn);
@@ -1667,7 +1667,7 @@ template <>
 EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::CurveNode>(amuse::io::YAMLDocReader& r,
                                                                        const QString& name, GroupNode* gn) {
   auto dataNode = amuse::MakeObj<std::unique_ptr<amuse::ITable>>(std::make_unique<amuse::Curve>());
-  static_cast<amuse::Curve&>(**dataNode).read(r);
+  static_cast<amuse::Curve&>(**dataNode).readYaml(r);
   auto node = amuse::MakeObj<CurveNode>(name, dataNode);
   return new NodeAddUndoCommand<CurveNode>(ProjectModel::tr("Add Curve %1"), node.get(), gn);
 }
@@ -1679,7 +1679,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::KeymapNode>(amuse::i
   if (auto __v = r.enterSubVector("entries", entryCount)) {
     for (size_t i = 0; i < entryCount; ++i) {
       if (auto __r2 = r.enterSubRecord()) {
-        (*dataNode)[i].read(r);
+        ((*dataNode)[i]).readYaml(r);
       }
     }
   }
@@ -1695,7 +1695,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(amuse::i
     dataNode->resize(entryCount);
     for (size_t i = 0; i < entryCount; ++i) {
       if (auto __r2 = r.enterSubRecord()) {
-        (*dataNode)[i].read(r);
+        ((*dataNode)[i]).readYaml(r);
       }
     }
   }
