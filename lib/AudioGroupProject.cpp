@@ -183,8 +183,8 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
   AudioGroupProject ret;
 
   while (!AtEnd32(r)) {
-    atInt64 groupBegin = r.position();
-    atInt64 subDataOff = absOffs ? 0 : groupBegin + 8;
+    int64_t groupBegin = r.position();
+    int64_t subDataOff = absOffs ? 0 : groupBegin + 8;
     GroupHeader<DNAE> header;
     header.read(r);
 
@@ -274,7 +274,7 @@ AudioGroupProject AudioGroupProject::_AudioGroupProject(athena::io::IStreamReade
 
         /* MIDI setups */
         r.seek(subDataOff + header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (atInt64(r.position() + 4) < groupBegin + header.groupEndOff) {
+        while (int64_t(r.position() + 4) < groupBegin + header.groupEndOff) {
           uint16_t songId;
           athena::io::Read<athena::io::PropType::None>::Do<decltype(songId), DNAE>({}, songId, r);
           r.seek(2, athena::SeekOrigin::Current);
@@ -523,8 +523,8 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, GCNData
 template <std::endian DNAE>
 void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, bool absOffs) {
   while (!AtEnd32(r)) {
-    atInt64 groupBegin = r.position();
-    atInt64 subDataOff = absOffs ? 0 : groupBegin + 8;
+    int64_t groupBegin = r.position();
+    int64_t subDataOff = absOffs ? 0 : groupBegin + 8;
     GroupHeader<DNAE> header;
     header.read(r);
 
@@ -572,7 +572,7 @@ void AudioGroupProject::BootstrapObjectIDs(athena::io::IStreamReader& r, bool ab
         }
       } else {
         r.seek(subDataOff + header.midiSetupsOff, athena::SeekOrigin::Begin);
-        while (atInt64(r.position()) < groupBegin + header.groupEndOff) {
+        while (int64_t(r.position()) < groupBegin + header.groupEndOff) {
           uint16_t id;
           athena::io::Read<athena::io::PropType::None>::Do<decltype(id), DNAE>({}, id, r);
           SongId::CurNameDB->registerPair(NameDB::generateName(id, NameDB::Type::Song), id);

@@ -1706,7 +1706,7 @@ EditorUndoCommand* ProjectModel::readMimeYAML<ProjectModel::LayersNode>(athena::
 template <class NT>
 void ProjectModel::loadMimeData(const QMimeData* data, const QString& mimeType, GroupNode* gn) {
   auto d = data->data(mimeType);
-  athena::io::MemoryReader mr(d.data(), atUint64(d.length()));
+  athena::io::MemoryReader mr(d.data(), uint64_t(d.length()));
   athena::io::YAMLDocReader r;
   if (r.parse(&mr)) {
     QString newName = MakeDedupedName(QString::fromStdString(r.readString("name")), GetNameDB<NT>());

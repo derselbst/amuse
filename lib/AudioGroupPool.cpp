@@ -104,7 +104,7 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
     r.seek(head.soundMacrosOffset, athena::SeekOrigin::Begin);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.position();
       objHead.read(r);
       if (SoundMacroId::CurNameDB)
         SoundMacroId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::SoundMacro),
@@ -120,7 +120,7 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
     r.seek(head.tablesOffset, athena::SeekOrigin::Begin);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.position();
       objHead.read(r);
       if (TableId::CurNameDB)
         TableId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::Table), objHead.objectId);
@@ -148,7 +148,7 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
     r.seek(head.keymapsOffset, athena::SeekOrigin::Begin);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.position();
       objHead.read(r);
       if (KeymapId::CurNameDB)
         KeymapId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::Keymap),
@@ -168,7 +168,7 @@ AudioGroupPool AudioGroupPool::_AudioGroupPool(athena::io::IStreamReader& r) {
     r.seek(head.layersOffset, athena::SeekOrigin::Begin);
     while (!AtEnd(r)) {
       ObjectHeader<DNAE> objHead;
-      atInt64 startPos = r.position();
+      int64_t startPos = r.position();
       objHead.read(r);
       if (LayersId::CurNameDB)
         LayersId::CurNameDB->registerPair(NameDB::generateName(objHead.objectId, NameDB::Type::Layer),

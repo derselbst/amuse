@@ -452,7 +452,7 @@ void SampleControls::loopStateChanged(int state) {
     amuse::SampleEntryData* data = editor->m_sampleView->entryData();
     if (state == Qt::Checked) {
       g_MainWindow->pushUndoCommand(new SampLoopUndoCommand(
-          atUint32(m_loopStart->value()), uint32_t(m_loopEnd->value()), tr("Loop"), 0, editor->m_sampleView->m_node));
+          uint32_t(m_loopStart->value()), uint32_t(m_loopEnd->value()), tr("Loop"), 0, editor->m_sampleView->m_node));
       m_loopStart->setEnabled(true);
       m_loopEnd->setEnabled(true);
       if (m_loopStart->value() == 0 && m_loopEnd->value() == 0) {
@@ -461,7 +461,7 @@ void SampleControls::loopStateChanged(int state) {
         m_loopStart->setMaximum(m_loopEnd->value());
         m_enableUpdate = true;
       }
-      data->m_loopStartSample = atUint32(m_loopStart->value());
+      data->m_loopStartSample = uint32_t(m_loopStart->value());
       data->m_loopLengthSamples = m_loopEnd->value() + 1 - data->m_loopStartSample;
     } else {
       g_MainWindow->pushUndoCommand(new SampLoopUndoCommand(0, 0, tr("Loop"), 0, editor->m_sampleView->m_node));
@@ -481,10 +481,10 @@ void SampleControls::startValueChanged(int val) {
     amuse::SampleEntryData* data = editor->m_sampleView->entryData();
 
     int oldPos = data->getLoopStartSample();
-    g_MainWindow->pushUndoCommand(new SampLoopUndoCommand(atUint32(val), data->getLoopEndSample(), tr("Loop Start"), 1,
+    g_MainWindow->pushUndoCommand(new SampLoopUndoCommand(uint32_t(val), data->getLoopEndSample(), tr("Loop Start"), 1,
                                                           editor->m_sampleView->m_node));
 
-    data->setLoopStartSample(atUint32(val));
+    data->setLoopStartSample(uint32_t(val));
     m_loopEnd->setMinimum(val);
 
     editor->m_sampleView->updateSampleRange(oldPos, val);
@@ -498,10 +498,10 @@ void SampleControls::endValueChanged(int val) {
     amuse::SampleEntryData* data = editor->m_sampleView->entryData();
 
     int oldPos = data->getLoopEndSample();
-    g_MainWindow->pushUndoCommand(new SampLoopUndoCommand(data->getLoopStartSample(), atUint32(val), tr("Loop End"), 2,
+    g_MainWindow->pushUndoCommand(new SampLoopUndoCommand(data->getLoopStartSample(), uint32_t(val), tr("Loop End"), 2,
                                                           editor->m_sampleView->m_node));
 
-    data->setLoopEndSample(atUint32(val));
+    data->setLoopEndSample(uint32_t(val));
     m_loopStart->setMaximum(val);
 
     editor->m_sampleView->updateSampleRange(oldPos, val);
@@ -514,7 +514,7 @@ class SampPitchUndoCommand : public EditorUndoCommand {
   bool m_undid = false;
 
 public:
-  SampPitchUndoCommand(atUint8 redoPitch, amuse::ObjToken<ProjectModel::SampleNode> node)
+  SampPitchUndoCommand(uint8_t redoPitch, amuse::ObjToken<ProjectModel::SampleNode> node)
   : EditorUndoCommand(node.get(), SampleControls::tr("Change Base Pitch")), m_redoPitchVal(redoPitch) {}
   void undo() override {
     m_undid = true;
@@ -549,9 +549,9 @@ void SampleControls::pitchValueChanged(int val) {
     SampleEditor* editor = qobject_cast<SampleEditor*>(parentWidget());
     amuse::SampleEntryData* data = editor->m_sampleView->entryData();
 
-    g_MainWindow->pushUndoCommand(new SampPitchUndoCommand(atUint8(val), editor->m_sampleView->m_node));
+    g_MainWindow->pushUndoCommand(new SampPitchUndoCommand(uint8_t(val), editor->m_sampleView->m_node));
 
-    data->m_pitch = atUint8(val);
+    data->m_pitch = uint8_t(val);
     doFileWrite();
   }
 }

@@ -408,7 +408,7 @@ void NameDB::rename(ObjectId id, std::string_view str) {
 template <>
 void LittleUInt24::Enumerate<LittleDNA::Read>(athena::io::IStreamReader& reader) {
   union {
-    atUint32 val;
+    uint32_t val;
     char bytes[4];
   } data = {};
   reader.readBytesToBuf(data.bytes, 3);
@@ -418,7 +418,7 @@ void LittleUInt24::Enumerate<LittleDNA::Read>(athena::io::IStreamReader& reader)
 template <>
 void LittleUInt24::Enumerate<LittleDNA::Write>(athena::io::IStreamWriter& writer) {
   union {
-    atUint32 val;
+    uint32_t val;
     char bytes[4];
   } data;
   data.val = SLittle(val);

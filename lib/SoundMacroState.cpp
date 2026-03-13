@@ -140,27 +140,27 @@ constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<bool>() {
   return SoundMacro::CmdIntrospection::Field::Type::Bool;
 }
 template <>
-constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<atInt8>() {
+constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<int8_t>() {
   return SoundMacro::CmdIntrospection::Field::Type::Int8;
 }
 template <>
-constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<atUint8>() {
+constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<uint8_t>() {
   return SoundMacro::CmdIntrospection::Field::Type::UInt8;
 }
 template <>
-constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<atInt16>() {
+constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<int16_t>() {
   return SoundMacro::CmdIntrospection::Field::Type::Int16;
 }
 template <>
-constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<atUint16>() {
+constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<uint16_t>() {
   return SoundMacro::CmdIntrospection::Field::Type::UInt16;
 }
 template <>
-constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<atInt32>() {
+constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<int32_t>() {
   return SoundMacro::CmdIntrospection::Field::Type::Int32;
 }
 template <>
-constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<atUint32>() {
+constexpr SoundMacro::CmdIntrospection::Field::Type GetFieldType<uint32_t>() {
   return SoundMacro::CmdIntrospection::Field::Type::UInt32;
 }
 template <>
@@ -1308,7 +1308,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAuxAFXSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdAuxAFXSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0},
      {FIELD_HEAD(SoundMacro::CmdAuxAFXSelect, paramIndex), "Param Index"sv, 0, 2, 0}}}};
 bool SoundMacro::CmdAuxAFXSelect::Do(SoundMacroState& st, Voice& vox) const {
-  st.m_auxAFxSel[std::min(atUint8(paramIndex), atUint8(3))].addComponent(
+  st.m_auxAFxSel[std::min(uint8_t(paramIndex), uint8_t(3))].addComponent(
       midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(combine),
       SoundMacroState::Evaluator::VarType(isVar));
   return false;
@@ -1325,7 +1325,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAuxBFXSelect::Introspective = 
      {FIELD_HEAD(SoundMacro::CmdAuxBFXSelect, fineScaling), "Fine Scaling"sv, -100, 100, 0},
      {FIELD_HEAD(SoundMacro::CmdAuxBFXSelect, paramIndex), "Param Index"sv, 0, 2, 0}}}};
 bool SoundMacro::CmdAuxBFXSelect::Do(SoundMacroState& st, Voice& vox) const {
-  st.m_auxBFxSel[std::min(atUint8(paramIndex), atUint8(3))].addComponent(
+  st.m_auxBFxSel[std::min(uint8_t(paramIndex), uint8_t(3))].addComponent(
       midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f, SoundMacroState::Evaluator::Combine(combine),
       SoundMacroState::Evaluator::VarType(isVar));
   return false;

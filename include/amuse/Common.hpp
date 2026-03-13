@@ -136,7 +136,7 @@ struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) SoundMacroStep
 
 struct LittleUInt24 : LittleDNA {
   AT_DECL_EXPLICIT_DNA_YAML
-  atUint32 val{};
+  uint32_t val{};
   constexpr operator uint32_t() const noexcept { return val; }
   constexpr LittleUInt24() noexcept = default;
   constexpr LittleUInt24(uint32_t valIn) noexcept : val(valIn) {}

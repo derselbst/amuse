@@ -24,17 +24,17 @@ class Voice;
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PoolHeader : BigDNA {
   AT_DECL_DNA
-  Value<atUint32, DNAEn> soundMacrosOffset;
-  Value<atUint32, DNAEn> tablesOffset;
-  Value<atUint32, DNAEn> keymapsOffset;
-  Value<atUint32, DNAEn> layersOffset;
+  Value<uint32_t, DNAEn> soundMacrosOffset;
+  Value<uint32_t, DNAEn> tablesOffset;
+  Value<uint32_t, DNAEn> keymapsOffset;
+  Value<uint32_t, DNAEn> layersOffset;
 };
 
 /** Header present at the top of each pool object */
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) ObjectHeader : BigDNA {
   AT_DECL_DNA
-  Value<atUint32, DNAEn> size;
+  Value<uint32_t, DNAEn> size;
   ObjectIdDNA<DNAEn> objectId;
   Seek<2, athena::SeekOrigin::Current> pad;
 };
@@ -179,7 +179,7 @@ struct SoundMacro {
   struct CmdSplitKey : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> key;
+    Value<int8_t> key;
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -188,7 +188,7 @@ struct SoundMacro {
   struct CmdSplitVel : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> velocity;
+    Value<int8_t> velocity;
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -202,7 +202,7 @@ struct SoundMacro {
     Value<bool> sampleEnd;
     Value<bool> absolute;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::WaitTicks; }
   };
@@ -213,7 +213,7 @@ struct SoundMacro {
     Value<bool> random;
     Value<bool> sampleEnd;
     SoundMacroStepDNA<std::endian::little> macroStep;
-    Value<atUint16> times;
+    Value<uint16_t> times;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Loop; }
   };
@@ -234,25 +234,25 @@ struct SoundMacro {
     Value<bool> sampleEnd;
     Value<bool> absolute;
     Seek<1, athena::SeekOrigin::Current> dummy;
-    Value<atUint16> ms;
+    Value<uint16_t> ms;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::WaitMs; }
   };
   struct CmdPlayMacro : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> addNote;
+    Value<int8_t> addNote;
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
-    Value<atUint8> priority;
-    Value<atUint8> maxVoices;
+    Value<uint8_t> priority;
+    Value<uint8_t> maxVoices;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PlayMacro; }
   };
   struct CmdSendKeyOff : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> variable;
+    Value<uint8_t> variable;
     Value<bool> lastStarted;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SendKeyOff; }
@@ -260,7 +260,7 @@ struct SoundMacro {
   struct CmdSplitMod : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> modValue;
+    Value<int8_t> modValue;
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -269,9 +269,9 @@ struct SoundMacro {
   struct CmdPianoPan : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> scale;
-    Value<atInt8> centerKey;
-    Value<atInt8> centerPan;
+    Value<int8_t> scale;
+    Value<int8_t> centerKey;
+    Value<int8_t> centerPan;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PianoPan; }
   };
@@ -286,8 +286,8 @@ struct SoundMacro {
   struct CmdScaleVolume : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> scale;
-    Value<atInt8> add;
+    Value<int8_t> scale;
+    Value<int8_t> add;
     TableIdDNA<std::endian::little> table;
     Value<bool> originalVol;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -296,30 +296,30 @@ struct SoundMacro {
   struct CmdPanning : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> panPosition;
-    Value<atUint16> timeMs;
-    Value<atInt8> width;
+    Value<int8_t> panPosition;
+    Value<uint16_t> timeMs;
+    Value<int8_t> width;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Panning; }
   };
   struct CmdEnvelope : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> scale;
-    Value<atInt8> add;
+    Value<int8_t> scale;
+    Value<int8_t> add;
     TableIdDNA<std::endian::little> table;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Envelope; }
   };
   struct CmdStartSample : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    enum class Mode : atInt8 { NoScale = 0, Negative = 1, Positive = 2 };
+    enum class Mode : int8_t { NoScale = 0, Negative = 1, Positive = 2 };
     SampleIdDNA<std::endian::little> sample;
     Value<Mode> mode;
-    Value<atUint32> offset;
+    Value<uint32_t> offset;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::StartSample; }
   };
@@ -338,7 +338,7 @@ struct SoundMacro {
   struct CmdSplitRnd : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> rnd;
+    Value<uint8_t> rnd;
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -347,39 +347,39 @@ struct SoundMacro {
   struct CmdFadeIn : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> scale;
-    Value<atInt8> add;
+    Value<int8_t> scale;
+    Value<int8_t> add;
     TableIdDNA<std::endian::little> table;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::FadeIn; }
   };
   struct CmdSpanning : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> spanPosition;
-    Value<atUint16> timeMs;
-    Value<atInt8> width;
+    Value<int8_t> spanPosition;
+    Value<uint16_t> timeMs;
+    Value<int8_t> width;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Spanning; }
   };
   struct CmdSetAdsrCtrl : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> attack;
-    Value<atUint8> decay;
-    Value<atUint8> sustain;
-    Value<atUint8> release;
+    Value<uint8_t> attack;
+    Value<uint8_t> decay;
+    Value<uint8_t> sustain;
+    Value<uint8_t> release;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetAdsrCtrl; }
   };
   struct CmdRndNote : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> noteLo;
-    Value<atInt8> detune;
-    Value<atInt8> noteHi;
+    Value<int8_t> noteLo;
+    Value<int8_t> detune;
+    Value<int8_t> noteHi;
     Value<bool> fixedFree;
     Value<bool> absRel;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -388,81 +388,81 @@ struct SoundMacro {
   struct CmdAddNote : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> add;
-    Value<atInt8> detune;
+    Value<int8_t> add;
+    Value<int8_t> detune;
     Value<bool> originalKey;
     Seek<1, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AddNote; }
   };
   struct CmdSetNote : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> key;
-    Value<atInt8> detune;
+    Value<int8_t> key;
+    Value<int8_t> detune;
     Seek<2, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetNote; }
   };
   struct CmdLastNote : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> add;
-    Value<atInt8> detune;
+    Value<int8_t> add;
+    Value<int8_t> detune;
     Seek<2, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::LastNote; }
   };
   struct CmdPortamento : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    enum class PortState : atInt8 { Disable, Enable, MIDIControlled };
+    enum class PortState : int8_t { Disable, Enable, MIDIControlled };
     Value<PortState> portState;
-    enum class PortType : atInt8 { LastPressed, Always };
+    enum class PortType : int8_t { LastPressed, Always };
     Value<PortType> portType;
     Seek<2, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Portamento; }
   };
   struct CmdVibrato : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> levelNote;
-    Value<atInt8> levelFine;
+    Value<int8_t> levelNote;
+    Value<int8_t> levelFine;
     Value<bool> modwheelFlag;
     Seek<1, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Vibrato; }
   };
   struct CmdPitchSweep1 : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> times;
-    Value<atInt16> add;
+    Value<int8_t> times;
+    Value<int16_t> add;
     Seek<1, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PitchSweep1; }
   };
   struct CmdPitchSweep2 : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> times;
-    Value<atInt16> add;
+    Value<int8_t> times;
+    Value<int16_t> add;
     Seek<1, athena::SeekOrigin::Current> seek;
     Value<bool> msSwitch;
-    Value<atUint16> ticksOrMs;
+    Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PitchSweep2; }
   };
@@ -470,7 +470,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     LittleUInt24 hz;
-    Value<atUint16> fine;
+    Value<uint16_t> fine;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetPitch; }
   };
@@ -479,15 +479,15 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     TableIdDNA<std::endian::little> table;
     Seek<1, athena::SeekOrigin::Current> seek;
-    Value<atInt8> keys;
-    Value<atInt8> cents;
+    Value<int8_t> keys;
+    Value<int8_t> cents;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetPitchAdsr; }
   };
   struct CmdScaleVolumeDLS : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt16> scale;
+    Value<int16_t> scale;
     Value<bool> originalVol;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::ScaleVolumeDLS; }
@@ -495,17 +495,17 @@ struct SoundMacro {
   struct CmdMod2Vibrange : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> keys;
-    Value<atInt8> cents;
+    Value<int8_t> keys;
+    Value<int8_t> cents;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::Mod2Vibrange; }
   };
   struct CmdSetupTremolo : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt16> scale;
+    Value<int16_t> scale;
     Seek<1, athena::SeekOrigin::Current> seek;
-    Value<atInt16> modwAddScale;
+    Value<int16_t> modwAddScale;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetupTremolo; }
   };
@@ -527,7 +527,7 @@ struct SoundMacro {
   struct CmdTrapEvent : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    enum class EventType : atInt8 { KeyOff, SampleEnd, MessageRecv };
+    enum class EventType : int8_t { KeyOff, SampleEnd, MessageRecv };
     Value<EventType> event;
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
@@ -546,22 +546,22 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     Value<bool> isVar;
     SoundMacroIdDNA<std::endian::little> macro;
-    Value<atUint8> voiceVar;
-    Value<atUint8> valueVar;
+    Value<uint8_t> voiceVar;
+    Value<uint8_t> valueVar;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SendMessage; }
   };
   struct CmdGetMessage : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> variable;
+    Value<uint8_t> variable;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::GetMessage; }
   };
   struct CmdGetVid : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> variable;
+    Value<uint8_t> variable;
     Value<bool> playMacro;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::GetVid; }
@@ -570,7 +570,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<1, athena::SeekOrigin::Current> seek;
-    Value<atInt16> add;
+    Value<int16_t> add;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AddAgeCount; }
   };
@@ -578,30 +578,30 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<1, athena::SeekOrigin::Current> seek;
-    Value<atUint16> counter;
+    Value<uint16_t> counter;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetAgeCount; }
   };
   struct CmdSendFlag : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> flagId;
-    Value<atUint8> value;
+    Value<uint8_t> flagId;
+    Value<uint8_t> value;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SendFlag; }
   };
   struct CmdPitchWheelR : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atInt8> rangeUp;
-    Value<atInt8> rangeDown;
+    Value<int8_t> rangeUp;
+    Value<int8_t> rangeDown;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PitchWheelR; }
   };
   struct CmdSetPriority : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> prio;
+    Value<uint8_t> prio;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetPriority; }
   };
@@ -609,7 +609,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<1, athena::SeekOrigin::Current> seek;
-    Value<atInt16> prio;
+    Value<int16_t> prio;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AddPriority; }
   };
@@ -617,7 +617,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<3, athena::SeekOrigin::Current> seek;
-    Value<atUint32> time;
+    Value<uint32_t> time;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AgeCntSpeed; }
   };
@@ -625,184 +625,184 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Seek<1, athena::SeekOrigin::Current> seek;
-    Value<atUint16> ageBase;
-    Value<atUint16> ageScale;
+    Value<uint16_t> ageBase;
+    Value<uint16_t> ageScale;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AgeCntVel; }
   };
-  enum class Combine : atInt8 { Set, Add, Mult };
+  enum class Combine : int8_t { Set, Add, Mult };
   struct CmdVolSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::VolSelect; }
   };
   struct CmdPanSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PanSelect; }
   };
   struct CmdPitchWheelSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PitchWheelSelect; }
   };
   struct CmdModWheelSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::ModWheelSelect; }
   };
   struct CmdPedalSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PedalSelect; }
   };
   struct CmdPortamentoSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PortamentoSelect; }
   };
   struct CmdReverbSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::ReverbSelect; }
   };
   struct CmdSpanSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SpanSelect; }
   };
   struct CmdDopplerSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::DopplerSelect; }
   };
   struct CmdTremoloSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::TremoloSelect; }
   };
   struct CmdPreASelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PreASelect; }
   };
   struct CmdPreBSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PreBSelect; }
   };
   struct CmdPostBSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::PostBSelect; }
   };
   struct CmdAuxAFXSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
-    Value<atUint8> paramIndex;
+    Value<int8_t> fineScaling;
+    Value<uint8_t> paramIndex;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AuxAFXSelect; }
   };
   struct CmdAuxBFXSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> midiControl;
-    Value<atInt16> scalingPercentage;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
     Value<Combine> combine;
     Value<bool> isVar;
-    Value<atInt8> fineScaling;
-    Value<atUint8> paramIndex;
+    Value<int8_t> fineScaling;
+    Value<uint8_t> paramIndex;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AuxBFXSelect; }
   };
   struct CmdSetupLFO : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> lfoNumber;
-    Value<atInt16> periodInMs;
+    Value<uint8_t> lfoNumber;
+    Value<int16_t> periodInMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetupLFO; }
   };
@@ -817,7 +817,7 @@ struct SoundMacro {
   struct CmdSetKeygroup : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> group;
+    Value<uint8_t> group;
     Value<bool> killNow;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetKeygroup; }
@@ -825,8 +825,8 @@ struct SoundMacro {
   struct CmdSRCmodeSelect : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<atUint8> srcType;
-    Value<atUint8> type0SrcFilter;
+    Value<uint8_t> srcType;
+    Value<uint8_t> type0SrcFilter;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SRCmodeSelect; }
   };
@@ -848,11 +848,11 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atUint8> a;
+    Value<uint8_t> a;
     Value<bool> varCtrlB;
-    Value<atUint8> b;
+    Value<uint8_t> b;
     Value<bool> varCtrlC;
-    Value<atUint8> c;
+    Value<uint8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AddVars; }
   };
@@ -860,11 +860,11 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Value<bool> varCtrlB;
-    Value<atInt8> b;
+    Value<int8_t> b;
     Value<bool> varCtrlC;
-    Value<atInt8> c;
+    Value<int8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SubVars; }
   };
@@ -872,11 +872,11 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Value<bool> varCtrlB;
-    Value<atInt8> b;
+    Value<int8_t> b;
     Value<bool> varCtrlC;
-    Value<atInt8> c;
+    Value<int8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::MulVars; }
   };
@@ -884,11 +884,11 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Value<bool> varCtrlB;
-    Value<atInt8> b;
+    Value<int8_t> b;
     Value<bool> varCtrlC;
-    Value<atInt8> c;
+    Value<int8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::DivVars; }
   };
@@ -896,10 +896,10 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Value<bool> varCtrlB;
-    Value<atInt8> b;
-    Value<atInt16> imm;
+    Value<int8_t> b;
+    Value<int16_t> imm;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::AddIVars; }
   };
@@ -907,9 +907,9 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Seek<1, athena::SeekOrigin::Current> pad;
-    Value<atInt16> imm;
+    Value<int16_t> imm;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     CmdOp Isa() const override { return CmdOp::SetVar; }
   };
@@ -917,9 +917,9 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Value<bool> varCtrlB;
-    Value<atInt8> b;
+    Value<int8_t> b;
     Value<bool> notEq;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -929,9 +929,9 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     Value<bool> varCtrlA;
-    Value<atInt8> a;
+    Value<int8_t> a;
     Value<bool> varCtrlB;
-    Value<atInt8> b;
+    Value<int8_t> b;
     Value<bool> notLt;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
@@ -1004,10 +1004,10 @@ struct ITable : LittleDNAV {
 /** Defines phase-based volume curve for macro volume control */
 struct ADSR : ITable {
   AT_DECL_DNA_YAMLV
-  Value<atUint16> attack = 0;
-  Value<atUint16> decay = 0x8000;
-  Value<atUint16> sustain = 0; /* 0x1000 == 100% */
-  Value<atUint16> release = 0; /* milliseconds */
+  Value<uint16_t> attack = 0;
+  Value<uint16_t> decay = 0x8000;
+  Value<uint16_t> sustain = 0; /* 0x1000 == 100% */
+  Value<uint16_t> release = 0; /* milliseconds */
 
   double getAttack() const { return attack / 1000.0; }
   void setAttack(double v) { attack = v * 1000.0; }
@@ -1024,12 +1024,12 @@ struct ADSR : ITable {
 /** Defines phase-based volume curve for macro volume control (modified DLS standard) */
 struct ADSRDLS : ITable {
   AT_DECL_DNA_YAMLV
-  Value<atUint32> attack = 0x80000000;      /* 16.16 Time-cents */
-  Value<atUint32> decay = 0x80000000;       /* 16.16 Time-cents */
-  Value<atUint16> sustain = 0;              /* 0x1000 == 100% */
-  Value<atUint16> release = 0;              /* milliseconds */
-  Value<atUint32> velToAttack = 0x80000000; /* 16.16, 1000.0 == 100%; attack = <attack> + (vel/128) * <velToAttack> */
-  Value<atUint32> keyToDecay = 0x80000000;  /* 16.16, 1000.0 == 100%; decay = <decay> + (note/128) * <keyToDecay> */
+  Value<uint32_t> attack = 0x80000000;      /* 16.16 Time-cents */
+  Value<uint32_t> decay = 0x80000000;       /* 16.16 Time-cents */
+  Value<uint16_t> sustain = 0;              /* 0x1000 == 100% */
+  Value<uint16_t> release = 0;              /* milliseconds */
+  Value<uint32_t> velToAttack = 0x80000000; /* 16.16, 1000.0 == 100%; attack = <attack> + (vel/128) * <velToAttack> */
+  Value<uint32_t> keyToDecay = 0x80000000;  /* 16.16, 1000.0 == 100%; decay = <decay> + (note/128) * <keyToDecay> */
 
   double getAttack() const { return TimeCentsToSeconds(attack); }
   void setAttack(double v) { attack = SecondsToTimeCents(v); }
@@ -1051,7 +1051,7 @@ struct ADSRDLS : ITable {
     if (v == 0.0)
       velToAttack = 0x80000000;
     else
-      velToAttack = atUint32(v * 1000.0 * 65536.0);
+      velToAttack = uint32_t(v * 1000.0 * 65536.0);
   }
 
   double _getKeyToDecay() const {
@@ -1065,7 +1065,7 @@ struct ADSRDLS : ITable {
     if (v == 0.0)
       keyToDecay = 0x80000000;
     else
-      keyToDecay = atUint32(v * 1000.0 * 65536.0);
+      keyToDecay = uint32_t(v * 1000.0 * 65536.0);
   }
 
   double getVelToAttack(int8_t vel) const {
@@ -1097,17 +1097,17 @@ template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) KeymapDNA : BigDNA {
   AT_DECL_DNA
   SoundMacroIdDNA<DNAEn> macro;
-  Value<atInt8> transpose;
-  Value<atInt8> pan; /* -128 for surround-channel only */
-  Value<atInt8> prioOffset;
+  Value<int8_t> transpose;
+  Value<int8_t> pan; /* -128 for surround-channel only */
+  Value<int8_t> prioOffset;
   Seek<3, athena::SeekOrigin::Current> pad;
 };
 struct Keymap : BigDNA {
   AT_DECL_DNA_YAML
   SoundMacroIdDNA<std::endian::big> macro;
-  Value<atInt8> transpose = 0;
-  Value<atInt8> pan = 64; /* -128 for surround-channel only */
-  Value<atInt8> prioOffset = 0;
+  Value<int8_t> transpose = 0;
+  Value<int8_t> pan = 64; /* -128 for surround-channel only */
+  Value<int8_t> prioOffset = 0;
 
   Keymap() = default;
 
@@ -1135,25 +1135,25 @@ template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) LayerMappingDNA : BigDNA {
   AT_DECL_DNA
   SoundMacroIdDNA<DNAEn> macro;
-  Value<atInt8> keyLo;
-  Value<atInt8> keyHi;
-  Value<atInt8> transpose;
-  Value<atInt8> volume;
-  Value<atInt8> prioOffset;
-  Value<atInt8> span;
-  Value<atInt8> pan;
+  Value<int8_t> keyLo;
+  Value<int8_t> keyHi;
+  Value<int8_t> transpose;
+  Value<int8_t> volume;
+  Value<int8_t> prioOffset;
+  Value<int8_t> span;
+  Value<int8_t> pan;
   Seek<3, athena::SeekOrigin::Current> pad;
 };
 struct LayerMapping : BigDNA {
   AT_DECL_DNA_YAML
   SoundMacroIdDNA<std::endian::big> macro;
-  Value<atInt8> keyLo = 0;
-  Value<atInt8> keyHi = 127;
-  Value<atInt8> transpose = 0;
-  Value<atInt8> volume = 127;
-  Value<atInt8> prioOffset = 0;
-  Value<atInt8> span = 0;
-  Value<atInt8> pan = 64;
+  Value<int8_t> keyLo = 0;
+  Value<int8_t> keyHi = 127;
+  Value<int8_t> transpose = 0;
+  Value<int8_t> volume = 127;
+  Value<int8_t> prioOffset = 0;
+  Value<int8_t> span = 0;
+  Value<int8_t> pan = 64;
 
   LayerMapping() = default;
 
