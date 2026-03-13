@@ -4,10 +4,8 @@
 #include "amuse/Common.hpp"
 #include "amuse/Entity.hpp"
 
+#include <fmt/format.h>
 #include <fstream>
-#include <fstream>
-
-
 
 #include <logvisor/logvisor.hpp>
 
@@ -20,7 +18,10 @@ struct MakeCmdOp {
   template <class Tp, class R>
   static std::unique_ptr<SoundMacro::ICmd> Do(R& r) {
     std::unique_ptr<SoundMacro::ICmd> ret = std::make_unique<Tp>();
-    static_cast<Tp&>(*ret).read(r);
+    if constexpr (std::is_same_v<R, amuse::io::YAMLDocReader>)
+      static_cast<Tp&>(*ret).readYaml(r);
+    else
+      static_cast<Tp&>(*ret).read(r);
     return ret;
   }
 };
@@ -208,7 +209,7 @@ AudioGroupPool AudioGroupPool::CreateAudioGroupPool(std::string_view groupPath) 
   AudioGroupPool ret;
   std::string poolPath(groupPath);
   poolPath += "/!pool.yaml";
-  std::ifstream fi(poolPath, 32 * 1024, false);
+  std::ifstream fi(poolPath, std::ios::binary);
 
   if (!fi.fail()) {
     amuse::io::YAMLDocReader r;
@@ -268,15 +269,15 @@ AudioGroupPool AudioGroupPool::CreateAudioGroupPool(std::string_view groupPath) 
               if (auto __vta = r.enterSubRecord("velToAttack")) {
                 __vta.leave();
                 tableOut = MakeObj<std::unique_ptr<ITable>>(std::make_unique<ADSRDLS>());
-                static_cast<ADSRDLS&>(**tableOut).read(r);
+                static_cast<ADSRDLS&>(**tableOut).readYaml(r);
               } else {
                 tableOut = MakeObj<std::unique_ptr<ITable>>(std::make_unique<ADSR>());
-                static_cast<ADSR&>(**tableOut).read(r);
+                static_cast<ADSR&>(**tableOut).readYaml(r);
               }
             } else if (auto __dat = r.enterSubRecord("data")) {
               __dat.leave();
               tableOut = MakeObj<std::unique_ptr<ITable>>(std::make_unique<Curve>());
-              static_cast<Curve&>(**tableOut).read(r);
+              static_cast<Curve&>(**tableOut).readYaml(r);
             }
           }
         }
@@ -291,7 +292,7 @@ AudioGroupPool AudioGroupPool::CreateAudioGroupPool(std::string_view groupPath) 
             kmOut = MakeObj<std::array<Keymap, 128>>();
             for (size_t i = 0; i < mappingCount && i < 128; ++i)
               if (auto __r2 = r.enterSubRecord())
-                (*kmOut)[i].read(r);
+                (*kmOut)[i].readYaml(r);
           }
         }
       }
@@ -307,7 +308,7 @@ AudioGroupPool AudioGroupPool::CreateAudioGroupPool(std::string_view groupPath) 
             for (size_t lm = 0; lm < mappingCount; ++lm) {
               if (auto __r2 = r.enterSubRecord()) {
                 layOut->emplace_back();
-                layOut->back().read(r);
+                layOut->back().readYaml(r);
               }
             }
           }
@@ -335,7 +336,7 @@ void SoundMacro::readCmds(std::istream& r, uint32_t size) {
   m_cmds.reserve(numCmds);
   for (uint32_t i = 0; i < numCmds; ++i) {
     uint32_t data[2];
-    amuse::io::ReadVal<decltype(data), DNAE>({}, data, r);
+    amuse::io::readBytes(r, data, sizeof(data));
     amuse::io::MemoryInputStream mr(data, sizeof(data));
     m_cmds.push_back(CmdDo<MakeCmdOp, std::unique_ptr<ICmd>>(mr));
   }
@@ -346,11 +347,10 @@ template void SoundMacro::readCmds<std::endian::little>(std::istream& r, uint32_
 template <std::endian DNAE>
 void SoundMacro::writeCmds(std::ostream& w) const {
   for (const auto& cmd : m_cmds) {
-    uint32_t data[2];
-    amuse::io::VectorOutputStream mw(reinterpret_cast<uint8_t*>(data), sizeof(data));
+    amuse::io::VectorOutputStream mw;
     amuse::io::writeUByte(mw, uint8_t(cmd->Isa()));
     cmd->write(mw);
-    amuse::io::WriteVal<decltype(data), DNAE>({}, data, w);
+    amuse::io::writeBytes(w, mw.data().data(), mw.data().size());
   }
 }
 template void SoundMacro::writeCmds<std::endian::big>(std::ostream& w) const;
@@ -367,7 +367,7 @@ void SoundMacro::toYAML(amuse::io::YAMLDocWriter& w) const {
     if (auto __r2 = w.enterSubRecord()) {
       w.setStyle(amuse::io::YAMLNodeStyle::Flow);
       w.writeString("cmdOp", SoundMacro::CmdOpToStr(c->Isa()));
-      c->write(w);
+      c->writeYaml(w);
     }
   }
 }
@@ -961,7 +961,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
       for (const auto& p : SortUnorderedMap(m_tables)) {
         if (auto __v = w.enterSubRecord(TableId::CurNameDB->resolveNameFromId(p.first))) {
           w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-          (*p.second.get())->write(w);
+          (*p.second.get())->writeYaml(w);
         }
       }
     }
@@ -974,7 +974,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
           for (const auto& km : *p.second.get()) {
             if (auto __r2 = w.enterSubRecord()) {
               w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-              km.write(w);
+              km.writeYaml(w);
             }
           }
         }
@@ -989,7 +989,7 @@ std::vector<uint8_t> AudioGroupPool::toYAML() const {
           for (const auto& lm : *p.second.get()) {
             if (auto __r2 = w.enterSubRecord()) {
               w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-              lm.write(w);
+              lm.writeYaml(w);
             }
           }
         }
@@ -1012,25 +1012,25 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
   const uint32_t term = 0xffffffff;
 
   if (!m_soundMacros.empty()) {
-    head.soundMacrosOffset = fo.tellg();
+    head.soundMacrosOffset = fo.tellp();
     for (const auto& p : m_soundMacros) {
-      auto startPos = fo.tellg();
+      auto startPos = fo.tellp();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       p.second->template writeCmds<DNAE>(fo);
-      objHead.size = fo.tellg() - startPos;
+      objHead.size = fo.tellp() - startPos;
       objHead.objectId = p.first;
-      fo.seekg(startPos, std::ios_base::beg);
+      fo.seekp(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seekg(startPos + objHead.size, std::ios_base::beg);
+      fo.seekp(startPos + objHead.size, std::ios_base::beg);
     }
     amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
   if (!m_tables.empty()) {
-    head.tablesOffset = fo.tellg();
+    head.tablesOffset = fo.tellp();
     for (const auto& p : m_tables) {
-      auto startPos = fo.tellg();
+      auto startPos = fo.tellp();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       switch ((*p.second)->Isa()) {
@@ -1048,38 +1048,38 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
       default:
         break;
       }
-      objHead.size = fo.tellg() - startPos;
+      objHead.size = fo.tellp() - startPos;
       objHead.objectId = p.first;
-      fo.seekg(startPos, std::ios_base::beg);
+      fo.seekp(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seekg(startPos + objHead.size, std::ios_base::beg);
+      fo.seekp(startPos + objHead.size, std::ios_base::beg);
     }
     amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
   if (!m_keymaps.empty()) {
-    head.keymapsOffset = fo.tellg();
+    head.keymapsOffset = fo.tellp();
     for (const auto& p : m_keymaps) {
-      auto startPos = fo.tellg();
+      auto startPos = fo.tellp();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       for (const auto& km : *p.second) {
         KeymapDNA<DNAE> kmData = km.toDNA<DNAE>();
         kmData.write(fo);
       }
-      objHead.size = fo.tellg() - startPos;
+      objHead.size = fo.tellp() - startPos;
       objHead.objectId = p.first;
-      fo.seekg(startPos, std::ios_base::beg);
+      fo.seekp(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seekg(startPos + objHead.size, std::ios_base::beg);
+      fo.seekp(startPos + objHead.size, std::ios_base::beg);
     }
     amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
   if (!m_layers.empty()) {
-    head.layersOffset = fo.tellg();
+    head.layersOffset = fo.tellp();
     for (const auto& p : m_layers) {
-      auto startPos = fo.tellg();
+      auto startPos = fo.tellp();
       ObjectHeader<DNAE> objHead = {};
       objHead.write(fo);
       uint32_t count = p.second->size();
@@ -1088,16 +1088,16 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
         LayerMappingDNA<DNAE> lmData = lm.toDNA<DNAE>();
         lmData.write(fo);
       }
-      objHead.size = fo.tellg() - startPos;
+      objHead.size = fo.tellp() - startPos;
       objHead.objectId = p.first;
-      fo.seekg(startPos, std::ios_base::beg);
+      fo.seekp(startPos, std::ios_base::beg);
       objHead.write(fo);
-      fo.seekg(startPos + objHead.size, std::ios_base::beg);
+      fo.seekp(startPos + objHead.size, std::ios_base::beg);
     }
     amuse::io::WriteVal<decltype(term), DNAE>({}, term, fo);
   }
 
-  fo.seekg(0, std::ios_base::beg);
+  fo.seekp(0, std::ios_base::beg);
   head.write(fo);
 
   return fo.data();
@@ -1105,28 +1105,24 @@ std::vector<uint8_t> AudioGroupPool::toData() const {
 template std::vector<uint8_t> AudioGroupPool::toData<std::endian::big>() const;
 template std::vector<uint8_t> AudioGroupPool::toData<std::endian::little>() const;
 
-template <>
-void amuse::Curve::Enumerate<LittleDNA::Read>(std::istream& r) {
+void amuse::Curve::read(std::istream& r) {
   Log.report(logvisor::Fatal, FMT_STRING("Curve binary DNA read not supported"));
 }
 
-template <>
-void amuse::Curve::Enumerate<LittleDNA::Write>(std::ostream& w) {
+void amuse::Curve::write(std::ostream& w) const {
   Log.report(logvisor::Fatal, FMT_STRING("Curve binary DNA write not supported"));
 }
 
-template <>
-void amuse::Curve::Enumerate<LittleDNA::BinarySize>(size_t& sz) {
+size_t amuse::Curve::binarySize(size_t sz) const {
   Log.report(logvisor::Fatal, FMT_STRING("Curve binary DNA size not supported"));
+  return sz;
 }
 
-template <>
-void amuse::Curve::Enumerate<LittleDNA::ReadYaml>(amuse::io::YAMLDocReader& r) {
+void amuse::Curve::readYaml(amuse::io::YAMLDocReader& r) {
   r.enumerate("data", data);
 }
 
-template <>
-void amuse::Curve::Enumerate<LittleDNA::WriteYaml>(amuse::io::YAMLDocWriter& w) {
+void amuse::Curve::writeYaml(amuse::io::YAMLDocWriter& w) const {
   w.enumerate("data", data);
 }
 

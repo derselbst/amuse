@@ -156,7 +156,7 @@ void AudioGroupSampleDirectory::EntryData::setLoopStartSample(uint32_t sample) {
 }
 
 void AudioGroupSampleDirectory::EntryData::loadLooseDSP(std::string_view dspPath) {
-  std::ifstream r(dspPath);
+  std::ifstream r(std::string(dspPath), std::ios::binary);
   if (!r.fail()) {
     DSPADPCMHeader header;
     header.read(r);
@@ -182,7 +182,7 @@ void AudioGroupSampleDirectory::EntryData::loadLooseDSP(std::string_view dspPath
 }
 
 void AudioGroupSampleDirectory::EntryData::loadLooseVADPCM(std::string_view vadpcmPath) {
-  std::ifstream r(vadpcmPath);
+  std::ifstream r(std::string(vadpcmPath), std::ios::binary);
   if (!r.fail()) {
     VADPCMHeader header;
     header.read(r);
@@ -203,7 +203,7 @@ void AudioGroupSampleDirectory::EntryData::loadLooseVADPCM(std::string_view vadp
 }
 
 void AudioGroupSampleDirectory::EntryData::loadLooseWAV(std::string_view wavPath) {
-  std::ifstream r(wavPath);
+  std::ifstream r(std::string(wavPath), std::ios::binary);
   if (!r.fail()) {
     uint32_t riffMagic = amuse::io::readUint32Little(r);
     if (riffMagic != SBIG('RIFF'))
@@ -352,7 +352,7 @@ SampleFileState AudioGroupSampleDirectory::Entry::getFileState(std::string_view 
 }
 
 void AudioGroupSampleDirectory::EntryData::patchMetadataDSP(std::string_view dspPath) {
-  std::ifstream r(dspPath);
+  std::ifstream r(std::string(dspPath), std::ios::binary);
   if (!r.fail()) {
     DSPADPCMHeader head;
     head.read(r);
@@ -386,18 +386,18 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataDSP(std::string_view dsp
     head.m_pitch = m_pitch;
     r.close();
 
-    std::ofstream w(dspPath, false);
+    std::ofstream w(std::string(dspPath), std::ios::binary | std::ios::in | std::ios::out);
     if (!w.fail()) {
-      w.seekg(0, std::ios_base::beg);
+      w.seekp(0, std::ios_base::beg);
       head.write(w);
     }
   }
 }
 
 void AudioGroupSampleDirectory::EntryData::patchMetadataVADPCM(std::string_view vadpcmPath) {
-  std::ofstream w(vadpcmPath, false);
+  std::ofstream w(std::string(vadpcmPath), std::ios::binary | std::ios::in | std::ios::out);
   if (!w.fail()) {
-    w.seekg(0, std::ios_base::beg);
+    w.seekp(0, std::ios_base::beg);
     VADPCMHeader header;
     header.m_pitchSampleRate = m_pitch << 24;
     header.m_pitchSampleRate |= m_sampleRate & 0xffff;
@@ -409,7 +409,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataVADPCM(std::string_view 
 }
 
 void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wavPath) {
-  std::ifstream r(wavPath);
+  std::ifstream r(std::string(wavPath), std::ios::binary);
   if (!r.fail()) {
     uint32_t riffMagic = amuse::io::readUint32Little(r);
     if (riffMagic == SBIG('RIFF')) {
@@ -440,7 +440,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
         if (smplOffset == -1 || loopOffset == -1) {
           /* Complete rewrite of RIFF layout - new smpl chunk */
           r.seekg(12, std::ios_base::beg);
-          std::ofstream w(wavPath);
+          std::ofstream w(std::string(wavPath), std::ios::binary);
           if (!w.fail()) {
             amuse::io::writeUint32Little(w, SBIG('RIFF'));
             amuse::io::writeUint32Little(w, 0);
@@ -480,16 +480,16 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
             }
 
             uint64_t wavLen = w.tellg();
-            w.seekg(4, std::ios_base::beg);
+            w.seekp(4, std::ios_base::beg);
             amuse::io::writeUint32Little(w, wavLen - 8);
           }
           r.close();
         } else {
           /* In-place patch of RIFF layout - edit smpl chunk */
           r.close();
-          std::ofstream w(wavPath, false);
+          std::ofstream w(std::string(wavPath), std::ios::binary | std::ios::in | std::ios::out);
           if (!w.fail()) {
-            w.seekg(smplOffset, std::ios_base::beg);
+            w.seekp(smplOffset, std::ios_base::beg);
             WAVSampleChunk smpl;
             smpl.smplPeriod = 1000000000 / fmt.sampleRate;
             smpl.midiNote = m_pitch;
@@ -596,7 +596,7 @@ void AudioGroupSampleDirectory::_extractWAV(SampleId id, const EntryData& ent, s
   std::string dspPath = path;
   path += ".wav";
   dspPath += ".dsp";
-  std::ofstream w(path);
+  std::ofstream w(path, std::ios::binary);
 
   SampleFormat fmt = SampleFormat(ent.m_numSamples >> 24);
   uint32_t numSamples = ent.m_numSamples & 0xffffff;
@@ -728,13 +728,13 @@ void AudioGroupSampleDirectory::_extractCompressed(SampleId id, const EntryData&
     header.m_pitch = ent.m_pitch;
 
     path += ".dsp";
-    std::ofstream w(path);
+    std::ofstream w(path, std::ios::binary);
     header.write(w);
     dataLen = (header.x4_num_nibbles + 1) / 2;
     amuse::io::writeBytes(w, samp, dataLen);
   } else if (fmt == SampleFormat::N64) {
     path += ".vadpcm";
-    std::ofstream w(path);
+    std::ofstream w(path, std::ios::binary);
     VADPCMHeader header;
     header.m_pitchSampleRate = ent.m_pitch << 24;
     header.m_pitchSampleRate |= ent.m_sampleRate & 0xffff;
@@ -770,7 +770,7 @@ void AudioGroupSampleDirectory::_extractCompressed(SampleId id, const EntryData&
     DSPCorrelateCoefs(samps, numSamples, header.x1c_coef);
 
     path += ".dsp";
-    std::ofstream w(path);
+    std::ofstream w(path, std::ios::binary);
     header.write(w);
 
     uint32_t remSamples = numSamples;
@@ -799,7 +799,7 @@ void AudioGroupSampleDirectory::_extractCompressed(SampleId id, const EntryData&
       samps += sampleCount;
     }
 
-    w.seekg(0, std::ios_base::beg);
+    w.seekp(0, std::ios_base::beg);
     header.write(w);
   } else {
     return;
@@ -884,7 +884,7 @@ AudioGroupSampleDirectory::toGCNData(const AudioGroupDatabase& group) const {
       break;
     }
 
-    std::ifstream r(path);
+    std::ifstream r(path, std::ios::binary);
     if (!r.fail()) {
       EntryDNA<DNAE> entryDNA = ent.second.get()->toDNA<DNAE>(ent.first);
 

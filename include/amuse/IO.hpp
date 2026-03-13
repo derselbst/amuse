@@ -160,6 +160,31 @@ inline void writeInt64Little(std::ostream& os, int64_t val)      { uint64_t v; s
 inline void writeFloatLittle(std::ostream& os, float val)   { uint32_t v; std::memcpy(&v, &val, 4); v = SLittle(v); os.write(reinterpret_cast<const char*>(&v), 4); }
 inline void writeDoubleLittle(std::ostream& os, double val) { uint64_t v; std::memcpy(&v, &val, 8); v = SLittle(v); os.write(reinterpret_cast<const char*>(&v), 8); }
 
+// ── Endian-generic read/write helpers ─────────────────────────────────────
+// ReadVal<T, DNAE>({}, val, stream) — reads sizeof(T) bytes and byte-swaps
+// according to DNAE (std::endian::big or std::endian::little).
+// WriteVal<T, DNAE>({}, val, stream) — byte-swaps and writes sizeof(T) bytes.
+// The first argument is an unused tag for template deduction convenience.
+template <typename T, std::endian DNAE>
+inline void ReadVal(T, T& val, std::istream& is) {
+    static_assert(std::is_arithmetic_v<T>, "ReadVal requires arithmetic type");
+    is.read(reinterpret_cast<char*>(&val), sizeof(T));
+    if constexpr (DNAE == std::endian::big)
+        val = SBig(val);
+    else
+        val = SLittle(val);
+}
+
+template <typename T, std::endian DNAE>
+inline void WriteVal(T, T val, std::ostream& os) {
+    static_assert(std::is_arithmetic_v<T>, "WriteVal requires arithmetic type");
+    if constexpr (DNAE == std::endian::big)
+        val = SBig(val);
+    else
+        val = SLittle(val);
+    os.write(reinterpret_cast<const char*>(&val), sizeof(T));
+}
+
 // ── Alignment ────────────────────────────────────────────────────────────
 inline void seekAlign32(std::ostream& os) {
     auto pos = os.tellp();

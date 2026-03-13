@@ -4,8 +4,7 @@
 #include "amuse/AudioGroupSampleDirectory.hpp"
 #include "amuse/AudioGroupData.hpp"
 
-
-#include <fstream>
+#include <fmt/format.h>
 #include <fstream>
 
 
@@ -343,13 +342,13 @@ void SongGroupIndex::fromYAML(amuse::io::YAMLDocReader& r) {
     m_normPages.reserve(r.getCurNode()->m_mapChildren.size());
     for (const auto& pg : r.getCurNode()->m_mapChildren)
       if (auto __r2 = r.enterSubRecord(pg.first.c_str()))
-        m_normPages[strtoul(pg.first.c_str(), nullptr, 0)].read(r);
+        m_normPages[strtoul(pg.first.c_str(), nullptr, 0)].readYaml(r);
   }
   if (auto __v2 = r.enterSubRecord("drumPages")) {
     m_drumPages.reserve(r.getCurNode()->m_mapChildren.size());
     for (const auto& pg : r.getCurNode()->m_mapChildren)
       if (auto __r2 = r.enterSubRecord(pg.first.c_str()))
-        m_drumPages[strtoul(pg.first.c_str(), nullptr, 0)].read(r);
+        m_drumPages[strtoul(pg.first.c_str(), nullptr, 0)].readYaml(r);
   }
   if (auto __v2 = r.enterSubRecord("songs")) {
     m_midiSetups.reserve(r.getCurNode()->m_mapChildren.size());
@@ -365,7 +364,7 @@ void SongGroupIndex::fromYAML(amuse::io::YAMLDocReader& r) {
         std::array<SongGroupIndex::MIDISetup, 16>& setup = m_midiSetups[songId];
         for (size_t i = 0; i < 16 && i < chanCount; ++i)
           if (auto __r2 = r.enterSubRecord())
-            setup[i].read(r);
+            setup[i].readYaml(r);
       }
     }
   }
@@ -379,7 +378,7 @@ void SFXGroupIndex::fromYAML(amuse::io::YAMLDocReader& r) {
       if (sfxName.empty() || sfxId == 0xffff)
         continue;
       SFXId::CurNameDB->registerPair(sfxName, sfxId);
-      m_sfxEntries[sfxId].read(r);
+      m_sfxEntries[sfxId].readYaml(r);
     }
 }
 
@@ -387,7 +386,7 @@ AudioGroupProject AudioGroupProject::CreateAudioGroupProject(std::string_view gr
   AudioGroupProject ret;
   std::string projPath(groupPath);
   projPath += "/!project.yaml";
-  std::ifstream fi(projPath, 32 * 1024, false);
+  std::ifstream fi(projPath, std::ios::binary);
 
   if (!fi.fail()) {
     amuse::io::YAMLDocReader r;
@@ -637,7 +636,7 @@ void SongGroupIndex::toYAML(amuse::io::YAMLDocWriter& w) const {
       for (const auto& pg : SortUnorderedMap(m_normPages)) {
         if (auto __r2 = w.enterSubRecord(fmt::format(FMT_STRING("{}"), pg.first))) {
           w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-          pg.second.get().write(w);
+          pg.second.get().writeYaml(w);
         }
       }
     }
@@ -647,7 +646,7 @@ void SongGroupIndex::toYAML(amuse::io::YAMLDocWriter& w) const {
       for (const auto& pg : SortUnorderedMap(m_drumPages)) {
         if (auto __r2 = w.enterSubRecord(fmt::format(FMT_STRING("{}"), pg.first))) {
           w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-          pg.second.get().write(w);
+          pg.second.get().writeYaml(w);
         }
       }
     }
@@ -661,7 +660,7 @@ void SongGroupIndex::toYAML(amuse::io::YAMLDocWriter& w) const {
           for (int i = 0; i < 16; ++i)
             if (auto __r2 = w.enterSubRecord()) {
               w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-              song.second.get()[i].write(w);
+              song.second.get()[i].writeYaml(w);
             }
       }
     }
@@ -674,7 +673,7 @@ void SFXGroupIndex::toYAML(amuse::io::YAMLDocWriter& w) const {
         SFXId::CurNameDB->resolveNameFromId(sfx.first), sfx.first);
     if (auto __r2 = w.enterSubRecord(sfxString)) {
       w.setStyle(amuse::io::YAMLNodeStyle::Flow);
-      sfx.second.get().write(w);
+      sfx.second.get().writeYaml(w);
     }
   }
 }
@@ -843,39 +842,39 @@ std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
     if (search != m_songGroups.end()) {
       const SongGroupIndex& index = *search->second;
 
-      auto groupStart = fo.tellg();
+      auto groupStart = fo.tellp();
       GroupHeader<DNAE> header = {};
       header.write(fo);
 
       header.groupId = id;
       header.type = GroupType::Song;
 
-      header.soundMacroIdsOff = fo.tellg();
+      header.soundMacroIdsOff = fo.tellp();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.soundMacros()));
-      header.samplIdsOff = fo.tellg();
+      header.samplIdsOff = fo.tellp();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(sdir.sampleEntries()));
-      header.tableIdsOff = fo.tellg();
+      header.tableIdsOff = fo.tellp();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.tables()));
-      header.keymapIdsOff = fo.tellg();
+      header.keymapIdsOff = fo.tellp();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.keymaps()));
-      header.layerIdsOff = fo.tellg();
+      header.layerIdsOff = fo.tellp();
       WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.layers()));
 
-      header.pageTableOff = fo.tellg();
+      header.pageTableOff = fo.tellp();
       for (auto& p : SortUnorderedMap(index.m_normPages)) {
         SongGroupIndex::PageEntryDNA<DNAE> entry = p.second.get().toDNA<DNAE>(p.first);
         entry.write(fo);
       }
       amuse::io::WriteVal<decltype(term64), DNAE>({}, term64, fo);
 
-      header.drumTableOff = fo.tellg();
+      header.drumTableOff = fo.tellp();
       for (auto& p : SortUnorderedMap(index.m_drumPages)) {
         SongGroupIndex::PageEntryDNA<DNAE> entry = p.second.get().toDNA<DNAE>(p.first);
         entry.write(fo);
       }
       amuse::io::WriteVal<decltype(term64), DNAE>({}, term64, fo);
 
-      header.midiSetupsOff = fo.tellg();
+      header.midiSetupsOff = fo.tellp();
       for (auto& p : SortUnorderedMap(index.m_midiSetups)) {
         uint16_t songId = p.first.id;
         amuse::io::WriteVal<decltype(songId), DNAE>({}, songId, fo);
@@ -886,34 +885,34 @@ std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
           setup[i].write(fo);
       }
 
-      header.groupEndOff = fo.tellg();
-      fo.seekg(groupStart, std::ios_base::beg);
+      header.groupEndOff = fo.tellp();
+      fo.seekp(groupStart, std::ios_base::beg);
       header.write(fo);
-      fo.seekg(header.groupEndOff, std::ios_base::beg);
+      fo.seekp(header.groupEndOff, std::ios_base::beg);
     } else {
       auto search2 = m_sfxGroups.find(id);
       if (search2 != m_sfxGroups.end()) {
         const SFXGroupIndex& index = *search2->second;
 
-        auto groupStart = fo.tellg();
+        auto groupStart = fo.tellp();
         GroupHeader<DNAE> header = {};
         header.write(fo);
 
         header.groupId = id;
         header.type = GroupType::SFX;
 
-        header.soundMacroIdsOff = fo.tellg();
+        header.soundMacroIdsOff = fo.tellp();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.soundMacros()));
-        header.samplIdsOff = fo.tellg();
+        header.samplIdsOff = fo.tellp();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(sdir.sampleEntries()));
-        header.tableIdsOff = fo.tellg();
+        header.tableIdsOff = fo.tellp();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.tables()));
-        header.keymapIdsOff = fo.tellg();
+        header.keymapIdsOff = fo.tellp();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.keymaps()));
-        header.layerIdsOff = fo.tellg();
+        header.layerIdsOff = fo.tellp();
         WriteRangedObjectIds<DNAE>(fo, SortUnorderedMap(pool.layers()));
 
-        header.pageTableOff = fo.tellg();
+        header.pageTableOff = fo.tellp();
         uint16_t count = index.m_sfxEntries.size();
         amuse::io::WriteVal<decltype(count), DNAE>({}, count, fo);
         amuse::io::WriteVal<decltype(padding), DNAE>({}, padding, fo);
@@ -922,10 +921,10 @@ std::vector<uint8_t> AudioGroupProject::toGCNData(const AudioGroupPool& pool,
           entry.write(fo);
         }
 
-        header.groupEndOff = fo.tellg();
-        fo.seekg(groupStart, std::ios_base::beg);
+        header.groupEndOff = fo.tellp();
+        fo.seekp(groupStart, std::ios_base::beg);
         header.write(fo);
-        fo.seekg(header.groupEndOff, std::ios_base::beg);
+        fo.seekp(header.groupEndOff, std::ios_base::beg);
       }
     }
   }
