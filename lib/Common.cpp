@@ -1,5 +1,6 @@
 #include "amuse/Common.hpp"
 
+#include <fmt/format.h>
 #ifndef _WIN32
 #include <cstdio>
 #include <memory>
@@ -119,7 +120,7 @@ int Rename(const char* oldpath, const char* newpath) {
     id = type::CurNameDB->resolveIdFromName(name);                                                                     \
   }                                                                                                                    \
   template <std::endian DNAE>                                                                                        \
-  void type##DNA<DNAE>::_write(amuse::io::YAMLDocWriter& w) {                                                          \
+  void type##DNA<DNAE>::_write(amuse::io::YAMLDocWriter& w) const {                                                          \
     if (!type::CurNameDB)                                                                                              \
       Log.report(logvisor::Fatal, FMT_STRING("Unable to resolve " typeName " ID {}, no database present"), id);        \
     if (id.id == 0xffff)                                                                                               \
@@ -211,7 +212,7 @@ void PageObjectIdDNA<DNAE>::_read(amuse::io::YAMLDocReader& r) {
   id = search->second;
 }
 template <std::endian DNAE>
-void PageObjectIdDNA<DNAE>::_write(amuse::io::YAMLDocWriter& w) {
+void PageObjectIdDNA<DNAE>::_write(amuse::io::YAMLDocWriter& w) const {
   if (!KeymapId::CurNameDB || !LayersId::CurNameDB)
     Log.report(logvisor::Fatal, FMT_STRING("Unable to resolve keymap or layers ID {}, no database present"), id);
   if (id.id == 0xffff)

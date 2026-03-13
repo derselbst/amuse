@@ -5,8 +5,9 @@
 
 #include "amuse/AudioGroupData.hpp"
 
-#include <fstream>
+#include <fmt/format.h>
 #include <fmt/ostream.h>
+#include <fstream>
 
 
 using namespace std::literals;

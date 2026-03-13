@@ -20,7 +20,7 @@ class Voice;
 /** Header at the top of the pool file */
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PoolHeader : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t, DNAEn> soundMacrosOffset;
   Value<uint32_t, DNAEn> tablesOffset;
   Value<uint32_t, DNAEn> keymapsOffset;
@@ -30,7 +30,7 @@ struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PoolHeader : B
 /** Header present at the top of each pool object */
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) ObjectHeader : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t, DNAEn> size;
   ObjectIdDNA<DNAEn> objectId;
   Seek<2, amuse::SeekOrigin::Current> pad;
@@ -1092,7 +1092,7 @@ struct Curve : ITable {
  *  (macro-voice, keymap, layer) */
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) KeymapDNA : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   SoundMacroIdDNA<DNAEn> macro;
   Value<int8_t> transpose;
   Value<int8_t> pan; /* -128 for surround-channel only */
@@ -1130,7 +1130,7 @@ struct Keymap : BigDNA {
 /** Maps ranges of MIDI keys to sound-entity (macro-voice, keymap, layer) */
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) LayerMappingDNA : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   SoundMacroIdDNA<DNAEn> macro;
   Value<int8_t> keyLo;
   Value<int8_t> keyHi;

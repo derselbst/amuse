@@ -176,8 +176,9 @@ inline void ReadVal(T, T& val, std::istream& is) {
 }
 
 template <typename T, std::endian DNAE>
-inline void WriteVal(T, T val, std::ostream& os) {
-    static_assert(std::is_arithmetic_v<T>, "WriteVal requires arithmetic type");
+inline void WriteVal(T, T valIn, std::ostream& os) {
+    static_assert(std::is_arithmetic_v<std::remove_const_t<T>>, "WriteVal requires arithmetic type");
+    auto val = valIn;
     if constexpr (DNAE == std::endian::big)
         val = SBig(val);
     else

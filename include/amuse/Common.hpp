@@ -56,7 +56,7 @@ template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) ObjectIdDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
   void _read(amuse::io::YAMLDocReader& r);
-  void _write(amuse::io::YAMLDocWriter& w);
+  void _write(amuse::io::YAMLDocWriter& w) const;
   ObjectId id;
   constexpr ObjectIdDNA() noexcept = default;
   constexpr ObjectIdDNA(ObjectId idIn) noexcept : id(idIn) {}
@@ -74,7 +74,7 @@ struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) ObjectIdDNA : 
   struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) type##DNA : BigDNA {                           \
     AT_DECL_EXPLICIT_DNA_YAML                                                                                          \
     void _read(amuse::io::YAMLDocReader& r);                                                                           \
-    void _write(amuse::io::YAMLDocWriter& w);                                                                          \
+    void _write(amuse::io::YAMLDocWriter& w) const;                                                                          \
     type id;                                                                                                           \
     constexpr type##DNA() noexcept = default;                                                                          \
     constexpr type##DNA(type idIn) noexcept : id(idIn) {}                                                              \
@@ -96,7 +96,7 @@ template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) PageObjectIdDNA : BigDNA {
   AT_DECL_EXPLICIT_DNA_YAML
   void _read(amuse::io::YAMLDocReader& r);
-  void _write(amuse::io::YAMLDocWriter& w);
+  void _write(amuse::io::YAMLDocWriter& w) const;
   ObjectId id;
   constexpr PageObjectIdDNA() noexcept = default;
   constexpr PageObjectIdDNA(ObjectId idIn) noexcept : id(idIn) {}

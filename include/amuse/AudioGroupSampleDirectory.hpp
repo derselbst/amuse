@@ -11,7 +11,7 @@ class AudioGroupData;
 class AudioGroupDatabase;
 
 struct DSPADPCMHeader : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t> x0_num_samples;
   Value<uint32_t> x4_num_nibbles;
   Value<uint32_t> x8_sample_rate;
@@ -33,7 +33,7 @@ struct DSPADPCMHeader : BigDNA {
 };
 
 struct VADPCMHeader : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t> m_pitchSampleRate;
   Value<uint32_t> m_numSamples;
   Value<uint32_t> m_loopStartSample;
@@ -41,7 +41,7 @@ struct VADPCMHeader : BigDNA {
 };
 
 struct WAVFormatChunk : LittleDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint16_t> sampleFmt = 1;
   Value<uint16_t> numChannels = 1;
   Value<uint32_t> sampleRate;
@@ -51,7 +51,7 @@ struct WAVFormatChunk : LittleDNA {
 };
 
 struct WAVSampleChunk : LittleDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t> smplManufacturer = 0;
   Value<uint32_t> smplProduct = 0;
   Value<uint32_t> smplPeriod; // 1 / sampleRate in nanoseconds
@@ -64,7 +64,7 @@ struct WAVSampleChunk : LittleDNA {
 };
 
 struct WAVSampleLoop : LittleDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t> cuePointId = 0;
   Value<uint32_t> loopType = 0; // 0: forward loop
   Value<uint32_t> start;
@@ -74,7 +74,7 @@ struct WAVSampleLoop : LittleDNA {
 };
 
 struct WAVHeader : LittleDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t> riffMagic = SBIG('RIFF');
   Value<uint32_t> wavChuckSize; // everything - 8
   Value<uint32_t> wavMagic = SBIG('WAVE');
@@ -92,7 +92,7 @@ struct WAVHeader : LittleDNA {
 };
 
 struct WAVHeaderLoop : LittleDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t> riffMagic = SBIG('RIFF');
   Value<uint32_t> wavChuckSize; // everything - 8
   Value<uint32_t> wavMagic = SBIG('WAVE');
@@ -152,7 +152,7 @@ public:
 
   template <std::endian DNAEn>
   struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) EntryDNA : BigDNA {
-    AT_DECL_DNA
+    AT_DECL_DNA_YAML
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, amuse::SeekOrigin::Current> pad;
     Value<uint32_t, DNAEn> m_sampleOff;
@@ -173,7 +173,7 @@ public:
   };
   template <std::endian DNAEn>
   struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1SdirEntry : BigDNA {
-    AT_DECL_DNA
+    AT_DECL_DNA_YAML
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, amuse::SeekOrigin::Current> pad;
     Value<uint32_t, DNAEn> m_sampleOff;
@@ -184,7 +184,7 @@ public:
   };
   template <std::endian DNAEn>
   struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1AbsSdirEntry : BigDNA {
-    AT_DECL_DNA
+    AT_DECL_DNA_YAML
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, amuse::SeekOrigin::Current> pad;
     Value<uint32_t, DNAEn> m_sampleOff;

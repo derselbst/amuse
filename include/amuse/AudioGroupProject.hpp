@@ -17,7 +17,7 @@ enum class GroupType : uint16_t { Song, SFX };
 /** Header at top of project file */
 template <std::endian DNAEn>
 struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) GroupHeader : BigDNA {
-  AT_DECL_DNA
+  AT_DECL_DNA_YAML
   Value<uint32_t, DNAEn> groupEndOff;
   GroupIdDNA<DNAEn> groupId;
   Value<GroupType, DNAEn> type;
@@ -48,7 +48,7 @@ struct SongGroupIndex : AudioGroupIndex {
   };
   template <std::endian DNAEn>
   struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) MusyX1PageEntryDNA : BigDNA {
-    AT_DECL_DNA
+    AT_DECL_DNA_YAML
     PageObjectIdDNA<DNAEn> objId;
     Value<uint8_t> priority;
     Value<uint8_t> maxVoices;
@@ -120,7 +120,7 @@ struct SFXGroupIndex : AudioGroupIndex {
   /** Maps game-side SFX define IDs to sound entities */
   template <std::endian DNAEn>
   struct AT_SPECIALIZE_PARMS(std::endian::big, std::endian::little) SFXEntryDNA : BigDNA {
-    AT_DECL_DNA
+    AT_DECL_DNA_YAML
     SFXIdDNA<DNAEn> sfxId;
     PageObjectIdDNA<DNAEn> objId;
     Value<uint8_t> priority;

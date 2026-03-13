@@ -1,5 +1,6 @@
 #include "amuse/Sequencer.hpp"
 
+#include <fmt/format.h>
 #include <map>
 
 #include "amuse/Engine.hpp"

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fmt/format.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -483,7 +484,7 @@ static bool ValidateMP2(FILE* fp) {
           lzokay::decompress(compBuf, chunkSz, destBuf, 0x8000 * 2, dsz);
           memcpy(testBuf, destBuf, 4);
         }
-        if (amuse::SBig(*reinterpret_cast<uint32_t*>(testBuf)) == 0x1)
+        if (SBig(*reinterpret_cast<uint32_t*>(testBuf)) == 0x1)
           return true;
         else
           return false;
@@ -562,7 +563,7 @@ static std::vector<std::pair<std::string, IntrusiveAudioGroupData>> LoadMP2(FILE
           rewind(fp);
         }
         if (fread(testBuf, 1, 4, fp) == 4) {
-          if (amuse::SBig(*reinterpret_cast<uint32_t*>(testBuf)) == 0x1) {
+          if (SBig(*reinterpret_cast<uint32_t*>(testBuf)) == 0x1) {
             FSeek(fp, offset + 4, SEEK_SET);
             std::string name = ReadString(fp);
 

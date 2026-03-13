@@ -479,7 +479,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
               amuse::io::writeBytes(w, amuse::io::readUBytes(r, chunkSize).get(), chunkSize);
             }
 
-            uint64_t wavLen = w.tellg();
+            uint64_t wavLen = w.tellp();
             w.seekp(4, std::ios_base::beg);
             amuse::io::writeUint32Little(w, wavLen - 8);
           }
