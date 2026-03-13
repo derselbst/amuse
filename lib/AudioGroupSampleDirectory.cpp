@@ -386,7 +386,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataDSP(std::string_view dsp
     head.m_pitch = m_pitch;
     r.close();
 
-    std::ofstream w(std::string(dspPath), std::ios::binary | std::ios::in | std::ios::out);
+    std::fstream w(std::string(dspPath), std::ios::binary | std::ios::in | std::ios::out);
     if (!w.fail()) {
       w.seekp(0, std::ios_base::beg);
       head.write(w);
@@ -395,7 +395,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataDSP(std::string_view dsp
 }
 
 void AudioGroupSampleDirectory::EntryData::patchMetadataVADPCM(std::string_view vadpcmPath) {
-  std::ofstream w(std::string(vadpcmPath), std::ios::binary | std::ios::in | std::ios::out);
+  std::fstream w(std::string(vadpcmPath), std::ios::binary | std::ios::in | std::ios::out);
   if (!w.fail()) {
     w.seekp(0, std::ios_base::beg);
     VADPCMHeader header;
@@ -487,7 +487,7 @@ void AudioGroupSampleDirectory::EntryData::patchMetadataWAV(std::string_view wav
         } else {
           /* In-place patch of RIFF layout - edit smpl chunk */
           r.close();
-          std::ofstream w(std::string(wavPath), std::ios::binary | std::ios::in | std::ios::out);
+          std::fstream w(std::string(wavPath), std::ios::binary | std::ios::in | std::ios::out);
           if (!w.fail()) {
             w.seekp(smplOffset, std::ios_base::beg);
             WAVSampleChunk smpl;
