@@ -156,6 +156,13 @@ struct MacroExecContext {
 
   /* Controller value storage (0-127 for standard MIDI CCs) */
   int8_t ctrlVals[128] = {};
+
+  /* Accumulated fine-tune in cents, from SoundMacro detune commands.
+   * MusyX samples do not carry per-sample sub-semitone fine-tuning;
+   * fine-tuning is applied entirely at the command level via SetNote,
+   * AddNote, LastNote, RndNote (all have a ±99-cent 'detune' field)
+   * and SetPitch (absolute Hz + 1/65536 Hz fine). */
+  int curDetune = 0;
 };
 
 /* ═══════════════ Custom SoundFont loader for MusyX samples ═══════════════
@@ -758,6 +765,13 @@ bool FluidsyXApp::buildMusyXSoundFont() {
         static_cast<unsigned int>(ds.pcmData.size()),
         ds.sampleRate,
         1 /* copy_data */);
+    /* Set sample root key.  fine_tune is 0 because MusyX samples do not
+     * carry per-sample sub-semitone tuning; fine-tuning is applied at the
+     * SoundMacro command level via SetNote/AddNote/LastNote/RndNote detune
+     * fields (±99 cents) and SetPitch (absolute Hz).  Those detune values
+     * are sent to FluidSynth as pitch bend events at playback time.
+     * SF2 allows ±100 cents fine-tune per sample, but MusyX has no
+     * equivalent stored metadata. */
     fluid_sample_set_pitch(flSamp, ds.rootKey, 0);
     if (ds.looped) {
       fluid_sample_set_loop(flSamp, ds.loopStart, ds.loopEnd);
@@ -1070,9 +1084,14 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SetNote: {
     auto& c = static_cast<const SoundMacro::CmdSetNote&>(cmd);
     ctx.midiKey = static_cast<uint8_t>(std::clamp(static_cast<int>(c.key), 0, 127));
-    /* Schedule a pitch bend to account for detune */
-    if (c.detune != 0) {
-      int bend = 8192 + static_cast<int>(c.detune) * 64;
+    ctx.curDetune = c.detune; /* ±99 cents */
+    /* Apply detune as pitch bend.  MusyX stores detune per-voice (in the
+     * SoundMacro command), but FluidSynth pitch bend is per-channel.
+     * The default bend range is ±2 semitones = ±200 cents.
+     * 8192 = center (no bend), ±8191 = ±200 cents.
+     * So 1 cent ≈ 8192/200 ≈ 40.96 LSBs. */
+    {
+      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
       bend = std::clamp(bend, 0, 16383);
       fluid_event_pitch_bend(evt, ctx.channel, bend);
       fluid_sequencer_send_at(sequencer, evt, curTick, 1);
@@ -1088,8 +1107,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdAddNote&>(cmd);
     int newKey = ctx.midiKey + c.add;
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
-    if (c.detune != 0) {
-      int bend = 8192 + static_cast<int>(c.detune) * 64;
+    ctx.curDetune = c.detune;
+    {
+      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
       bend = std::clamp(bend, 0, 16383);
       fluid_event_pitch_bend(evt, ctx.channel, bend);
       fluid_sequencer_send_at(sequencer, evt, curTick, 1);
@@ -1105,8 +1125,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdLastNote&>(cmd);
     int newKey = ctx.midiKey + c.add;
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
-    if (c.detune != 0) {
-      int bend = 8192 + static_cast<int>(c.detune) * 64;
+    ctx.curDetune = c.detune;
+    {
+      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
       bend = std::clamp(bend, 0, 16383);
       fluid_event_pitch_bend(evt, ctx.channel, bend);
       fluid_sequencer_send_at(sequencer, evt, curTick, 1);
@@ -1122,6 +1143,14 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdRndNote&>(cmd);
     int lo = c.noteLo;
     int hi = c.noteHi;
+
+    /* absRel mode: range is relative to initial key (m_initKey in amuse).
+     * We approximate using ctx.midiKey as the anchor. */
+    if (c.absRel) {
+      lo = ctx.midiKey - c.noteLo;
+      hi = ctx.midiKey + c.noteHi;
+    }
+
     if (lo > hi)
       std::swap(lo, hi);
     std::uniform_int_distribution<int> dist(lo, hi);
@@ -1132,13 +1161,38 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       ctx.midiKey = static_cast<uint8_t>(
           std::clamp(ctx.midiKey + note, 0, 127));
     }
+    /* Apply RndNote detune (same +/-99 cent field as SetNote et al.) */
+    ctx.curDetune = c.detune;
+    {
+      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
+      bend = std::clamp(bend, 0, 16383);
+      fluid_event_pitch_bend(evt, ctx.channel, bend);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
     ctx.pc++;
     break;
   }
 
   /* ── Pitch control ── */
   case SoundMacro::CmdOp::SetPitch: {
-    /* SetPitch sets an absolute frequency; convert to pitch bend */
+    /* SetPitch sets an absolute frequency (hz + fine/65536 Hz).
+     * Convert to MIDI note + cent offset for FluidSynth.
+     * freq = 440 * 2^((note-69)/12)  =>  note = 69 + 12*log2(freq/440) */
+    auto& c = static_cast<const SoundMacro::CmdSetPitch&>(cmd);
+    double freq = static_cast<double>(c.hz) + c.fine / 65536.0;
+    if (freq > 0.0) {
+      double midiNote = 69.0 + 12.0 * std::log2(freq / 440.0);
+      int noteInt = static_cast<int>(std::round(midiNote));
+      noteInt = std::clamp(noteInt, 0, 127);
+      double centFrac = (midiNote - noteInt) * 100.0;
+      ctx.midiKey = static_cast<uint8_t>(noteInt);
+      ctx.curDetune = static_cast<int>(std::round(centFrac));
+      /* Send pitch bend for the sub-semitone fraction */
+      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
+      bend = std::clamp(bend, 0, 16383);
+      fluid_event_pitch_bend(evt, ctx.channel, bend);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
     ctx.pc++;
     break;
   }
