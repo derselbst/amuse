@@ -249,12 +249,12 @@ bool FluidsyXApp::initFluidSynth() {
     return false;
   }
 
-  /* Prefer PulseAudio, fall back to ALSA, then whatever is available */
-#ifndef _WIN32
-  fluid_settings_setstr(settings, "audio.driver", "pulseaudio");
-#endif
   fluid_settings_setnum(settings, "synth.gain", 0.5);
-  fluid_settings_setint(settings, "synth.polyphony", 256);
+  /* Use FluidSynth's linear portamento mode via the portamento-time
+   * setting.  NOTE: synth.portamento-time is a global setting, not
+   * per-channel.  If multiple channels set different portamento times
+   * concurrently, only the last value will take effect. */
+  fluid_settings_setstr(settings, "synth.portamento-time", "linear");
 
   synth = new_fluid_synth(settings);
   if (!synth) {
@@ -445,14 +445,9 @@ void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
   fluid_event_set_dest(e1, synthSeqId);
   fluid_event_control_change(e1, channel, 0x63 /*NRPN_MSB*/, 120);
   fluid_sequencer_send_at(sequencer, e1, tick, 1);
-  delete_fluid_event(e1);
 
-  fluid_event_t* e2 = new_fluid_event();
-  fluid_event_set_source(e2, callbackSeqId);
-  fluid_event_set_dest(e2, synthSeqId);
-  fluid_event_control_change(e2, channel, 0x62 /*NRPN_LSB*/, genId);
-  fluid_sequencer_send_at(sequencer, e2, tick, 1);
-  delete_fluid_event(e2);
+  fluid_event_control_change(e1, channel, 0x62 /*NRPN_LSB*/, genId);
+  fluid_sequencer_send_at(sequencer, e1, tick+1, 1);
 
   /* Scale and encode the value.  0x2000 is the NRPN zero offset.
    * Clamp to valid 14-bit NRPN range (0-16383). */
@@ -461,19 +456,13 @@ void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
   int valLsb = scaledVal % 128;
   int valMsb = scaledVal / 128;
 
-  fluid_event_t* e3 = new_fluid_event();
-  fluid_event_set_source(e3, callbackSeqId);
-  fluid_event_set_dest(e3, synthSeqId);
-  fluid_event_control_change(e3, channel, 0x26 /*DATA_ENTRY_LSB*/, valLsb);
-  fluid_sequencer_send_at(sequencer, e3, tick, 1);
-  delete_fluid_event(e3);
+  fluid_event_control_change(e1, channel, 0x26 /*DATA_ENTRY_LSB*/, valLsb);
+  fluid_sequencer_send_at(sequencer, e1, tick+2, 1);
 
-  fluid_event_t* e4 = new_fluid_event();
-  fluid_event_set_source(e4, callbackSeqId);
-  fluid_event_set_dest(e4, synthSeqId);
-  fluid_event_control_change(e4, channel, 0x06 /*DATA_ENTRY_MSB*/, valMsb);
-  fluid_sequencer_send_at(sequencer, e4, tick, 1);
-  delete_fluid_event(e4);
+  fluid_event_control_change(e1, channel, 0x06 /*DATA_ENTRY_MSB*/, valMsb);
+  fluid_sequencer_send_at(sequencer, e1, tick+3, 1);
+
+  delete_fluid_event(e1);
 }
 
 void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
@@ -957,12 +946,11 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       } else {
         timeMs = timeVal * 1000.0 / ctx.ticksPerSec;
       }
-
-      /* Use FluidSynth's linear portamento mode via the portamento-time
-       * setting.  NOTE: synth.portamento-time is a global setting, not
-       * per-channel.  If multiple channels set different portamento times
-       * concurrently, only the last value will take effect. */
-      fluid_settings_setnum(settings, "synth.portamento-time", timeMs);
+      // CC5 * 128 + CC37 = millisec
+      fluid_event_control_change(evt, ctx.channel, 5, static_cast<int>(timeMs) / 128);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_event_control_change(evt, ctx.channel, 37, static_cast<int>(timeMs) % 128);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
 
       /* Set portamento mode based on MusyX PortType.
        * LastPressed → legato-only mode, Always → each-note mode. */
@@ -1149,8 +1137,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
   case SoundMacro::CmdOp::PortamentoSelect: {
-    /* Portamento is configured via the Portamento command and
-     * fluid_settings_setnum; the select just sets up the evaluator. */
+    /* Portamento is configured via the Portamento command;
+     * the select just sets up the evaluator. */
     ctx.pc++;
     break;
   }
