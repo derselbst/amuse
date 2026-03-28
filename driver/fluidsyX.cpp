@@ -100,6 +100,12 @@ static void signalHandler(int) { g_running.store(false); }
  *  (without any delay). Prevents infinite loops from freezing the app. */
 static constexpr int kMaxMacroCmdsPerBurst = 4096;
 
+/* ── Audio codec frame constants ── */
+static constexpr unsigned kDSPFrameSamples = 14;   /**< DSP ADPCM: 14 samples per frame */
+static constexpr unsigned kDSPFrameBytes   = 8;    /**< DSP ADPCM: 8 bytes per frame */
+static constexpr unsigned kN64FrameSamples = 64;   /**< N64 VADPCM: 64 samples per frame */
+static constexpr unsigned kN64FrameBytes   = 40;   /**< N64 VADPCM: 40 bytes per frame */
+
 /* ────────────── Seconds ↔ timecents conversion ────────────── */
 
 /** Convert seconds to SF2 timecents (duplicated from FluidSynth's fluid_conv.c).
@@ -228,13 +234,13 @@ static std::vector<int16_t> decodeSampleToPCM(
     size_t outOff = 0;
     while (remSamples > 0) {
       int16_t decomp[14] = {};
-      unsigned thisSamples = std::min(remSamples, 14u);
+      unsigned thisSamples = std::min(remSamples, kDSPFrameSamples);
       DSPDecompressFrame(decomp, cur, ent.m_ADPCMParms.dsp.m_coefs,
                          &prev1, &prev2, thisSamples);
       std::memcpy(&out[outOff], decomp, thisSamples * sizeof(int16_t));
       outOff += thisSamples;
       remSamples -= thisSamples;
-      cur += 8;
+      cur += kDSPFrameBytes;
     }
   } else if (fmt == SampleFormat::N64) {
     uint32_t remSamples = numSamples;
@@ -243,13 +249,13 @@ static std::vector<int16_t> decodeSampleToPCM(
     size_t outOff = 0;
     while (remSamples > 0) {
       int16_t decomp[64] = {};
-      unsigned thisSamples = std::min(remSamples, 64u);
+      unsigned thisSamples = std::min(remSamples, kN64FrameSamples);
       N64MusyXDecompressFrame(decomp, cur, ent.m_ADPCMParms.vadpcm.m_coefs,
                               thisSamples);
       std::memcpy(&out[outOff], decomp, thisSamples * sizeof(int16_t));
       outOff += thisSamples;
       remSamples -= thisSamples;
-      cur += 40;
+      cur += kN64FrameBytes;
     }
   } else if (fmt == SampleFormat::PCM) {
     /* Big-endian 16-bit PCM */
