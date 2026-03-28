@@ -11,6 +11,7 @@
 #include "amuse/AudioGroupPool.hpp"
 #include "amuse/AudioGroupProject.hpp"
 #include "amuse/AudioGroupData.hpp"
+#include "amuse/Envelope.hpp"
 #include "amuse/Common.hpp"
 
 #include <fluidsynth.h>
@@ -438,29 +439,41 @@ const AudioGroupPool* FluidsyXApp::findPoolForGroup() {
 /* ═══════════════════ NRPN / ADSR helpers ═══════════════════ */
 
 void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
-                                    double value, unsigned int tick) {
+                                    double value, unsigned int tick)
+{
   /* Send NRPN select (MSB=120 requests SF2 generator NRPN) */
   fluid_event_t* e1 = new_fluid_event();
   fluid_event_set_source(e1, callbackSeqId);
   fluid_event_set_dest(e1, synthSeqId);
+
+  // CCs must be received in order
+  auto safe_send = [sequencer, e1, tick](unsigned int at) -> int
+  {
+      if (tick <= 3) {
+          fluid_sequencer_send_now(sequencer, e1);
+          return 0;
+      }
+
+      return fluid_sequencer_send_at(sequencer, e1, at, 1);
+  };
+
   fluid_event_control_change(e1, channel, 0x63 /*NRPN_MSB*/, 120);
-  fluid_sequencer_send_at(sequencer, e1, tick, 1);
+  safe_send(tick-3);
 
   fluid_event_control_change(e1, channel, 0x62 /*NRPN_LSB*/, genId);
-  fluid_sequencer_send_at(sequencer, e1, tick+1, 1);
+  safe_send(tick-2);
 
   /* Scale and encode the value.  0x2000 is the NRPN zero offset.
    * Clamp to valid 14-bit NRPN range (0-16383). */
-  int scaledVal = std::clamp(0x2000 + static_cast<int>(value / nrpnScale),
-                             0, 16383);
+  int scaledVal = std::clamp(0x2000 + static_cast<int>(value / nrpnScale), 0, 16383);
   int valLsb = scaledVal % 128;
   int valMsb = scaledVal / 128;
 
   fluid_event_control_change(e1, channel, 0x26 /*DATA_ENTRY_LSB*/, valLsb);
-  fluid_sequencer_send_at(sequencer, e1, tick+2, 1);
+  safe_send(tick-1);
 
   fluid_event_control_change(e1, channel, 0x06 /*DATA_ENTRY_MSB*/, valMsb);
-  fluid_sequencer_send_at(sequencer, e1, tick+3, 1);
+  safe_send(tick);
 
   delete_fluid_event(e1);
 }
@@ -469,24 +482,14 @@ void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
   if (!ctx.useAdsrControllers)
     return;
 
-  /* Convert CC values (0-127) to seconds and then to timecents.
-   * The CC value maps linearly to seconds, following the amuse convention
-   * where the default bootstrap values are: attack=10, sustain=127, release=10.
-   * We scale CC 0..127 → 0.001s..10s for attack/decay/release. */
-  auto ccToSeconds = [](int8_t cc) -> double {
-    double val = std::clamp(static_cast<int>(cc), 0, 127);
-    /* Map 0→0.001s (1ms), 127→~10s (exponential-ish for musical feel) */
-    return 0.001 + (val / 127.0) * 9.999;
-  };
-
   /* Attack (CC → seconds → timecents) */
-  double attackSec = ccToSeconds(ctx.ctrlVals[ctx.midiAttack]);
+  double attackSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiAttack]), 0, 103)] / 1000.0;
   double attackTc  = secondsToTimecents(attackSec);
   sendNrpnGenChange(ctx.channel, GEN_VOLENVATTACK, kGenNrpnScale_VolEnvAttack,
                     attackTc, tick);
 
   /* Decay */
-  double decaySec = ccToSeconds(ctx.ctrlVals[ctx.midiDecay]);
+  double decaySec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiDecay]), 0, 103)] / 1000.0;
   double decayTc  = secondsToTimecents(decaySec);
   sendNrpnGenChange(ctx.channel, GEN_VOLENVDECAY, kGenNrpnScale_VolEnvDecay,
                     decayTc, tick);
@@ -494,14 +497,13 @@ void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
   /* Sustain – in SF2, sustain is in centibels (0=max, 1440=silence).
    * CC 127 = full sustain (0 cB), CC 0 = silence (1440 cB). */
   {
-    int sustainCc = std::clamp(static_cast<int>(ctx.ctrlVals[ctx.midiSustain]), 0, 127);
-    double sustainCb = (1.0 - sustainCc / 127.0) * 1440.0;
-    sendNrpnGenChange(ctx.channel, GEN_VOLENVSUSTAIN,
-                      kGenNrpnScale_VolEnvSustain, sustainCb, tick);
+    double sustainFactor = std::clamp(static_cast<int>(ctx.ctrlVals[ctx.midiSustain]), 0, 127) / 127.0;
+    double sustaincB = (1.0 - sustainFactor) * 1440.0;
+    std::cerr << "sustain: " << sustainFactor << " %, " << sustaincB << " cB - NOT IMPLEMENTED!" << std::endl;
   }
 
   /* Release */
-  double releaseSec = ccToSeconds(ctx.ctrlVals[ctx.midiRelease]);
+  double releaseSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiRelease]), 0, 103)] / 1000.0;
   double releaseTc  = secondsToTimecents(releaseSec);
   sendNrpnGenChange(ctx.channel, GEN_VOLENVRELEASE, kGenNrpnScale_VolEnvRelease,
                     releaseTc, tick);
