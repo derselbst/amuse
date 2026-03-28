@@ -138,6 +138,7 @@ struct MacroExecContext {
    * FluidSynth, we manipulate the SF2 volume-envelope generators via
    * NRPN, which is per-channel.  This is a known limitation. */
   bool useAdsrControllers = false;
+  bool adsrBootstrapped = false;
   uint8_t midiAttack  = 0;
   uint8_t midiDecay   = 0;
   uint8_t midiSustain = 0;
@@ -189,6 +190,11 @@ struct FluidsyXApp {
    * cannot invalidate references stored in timer events. */
   std::map<int, MacroExecContext> activeMacros;
   int nextMacroId = 0;
+
+  /* Per-channel CC state tracking (propagated to new MacroExecContexts).
+   * Updated when MIDI setup is applied and when CC-manipulating commands
+   * modify values. */
+  int8_t channelCtrlVals[16][128] = {};
 
   /* RNG */
   std::mt19937 rng{std::random_device{}()};
@@ -448,8 +454,10 @@ void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
   fluid_sequencer_send_at(sequencer, e2, tick, 1);
   delete_fluid_event(e2);
 
-  /* Scale and encode the value.  0x2000 is the NRPN zero offset. */
-  int scaledVal = 0x2000 + static_cast<int>(value / nrpnScale);
+  /* Scale and encode the value.  0x2000 is the NRPN zero offset.
+   * Clamp to valid 14-bit NRPN range (0-16383). */
+  int scaledVal = std::clamp(0x2000 + static_cast<int>(value / nrpnScale),
+                             0, 16383);
   int valLsb = scaledVal % 128;
   int valMsb = scaledVal / 128;
 
@@ -769,9 +777,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.midiSustain = c.sustain;
     ctx.midiRelease = c.release;
 
-    /* Bootstrap ADSR defaults if the sustain CC has not been set yet,
-     * matching the amuse convention in SoundMacroState.cpp. */
-    if (!ctx.ctrlVals[ctx.midiSustain]) {
+    /* Bootstrap ADSR defaults on first encounter, matching the amuse
+     * convention in SoundMacroState.cpp. */
+    if (!ctx.adsrBootstrapped) {
+      ctx.adsrBootstrapped = true;
       ctx.ctrlVals[ctx.midiAttack]  = 10;
       ctx.ctrlVals[ctx.midiSustain] = 127;
       ctx.ctrlVals[ctx.midiRelease] = 10;
@@ -950,7 +959,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       }
 
       /* Use FluidSynth's linear portamento mode via the portamento-time
-       * setting.  This is a global setting, not per-channel. */
+       * setting.  NOTE: synth.portamento-time is a global setting, not
+       * per-channel.  If multiple channels set different portamento times
+       * concurrently, only the last value will take effect. */
       fluid_settings_setnum(settings, "synth.portamento-time", timeMs);
 
       /* Set portamento mode based on MusyX PortType.
@@ -1204,6 +1215,11 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   ctx.midiKey = key;
   ctx.midiVel = vel;
 
+  /* Initialize controller values from channel state so that selectors
+   * and ADSR controllers see the current MIDI setup. */
+  if (channel >= 0 && channel < 16)
+    std::memcpy(ctx.ctrlVals, channelCtrlVals[channel], sizeof(ctx.ctrlVals));
+
   /* Walk through commands that execute instantly (no delay).
    * When a command introduces a delay, schedule a timer event and stop. */
   unsigned int tick = startTick;
@@ -1301,6 +1317,12 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
       fluid_synth_cc(synth, ch, 10, midiSetup[ch].panning); /* pan */
       fluid_synth_cc(synth, ch, 91, midiSetup[ch].reverb);  /* reverb */
       fluid_synth_cc(synth, ch, 93, midiSetup[ch].chorus);  /* chorus */
+
+      /* Mirror into channel CC state so newly spawned macros see these */
+      channelCtrlVals[ch][7]  = static_cast<int8_t>(midiSetup[ch].volume);
+      channelCtrlVals[ch][10] = static_cast<int8_t>(midiSetup[ch].panning);
+      channelCtrlVals[ch][91] = static_cast<int8_t>(midiSetup[ch].reverb);
+      channelCtrlVals[ch][93] = static_cast<int8_t>(midiSetup[ch].chorus);
     }
   }
 
