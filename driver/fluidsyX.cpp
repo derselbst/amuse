@@ -96,6 +96,26 @@ static void signalHandler(int) { g_running.store(false); }
  *  (without any delay). Prevents infinite loops from freezing the app. */
 static constexpr int kMaxMacroCmdsPerBurst = 4096;
 
+/* ────────────── Seconds ↔ timecents conversion ────────────── */
+
+/** Convert seconds to SF2 timecents (duplicated from FluidSynth's fluid_conv.c).
+ *  timecents = 1200 / ln(2) * ln(sec). */
+static double secondsToTimecents(double sec) {
+  if (sec <= 0.0)
+    return -32768.0;
+  double res = (1200.0 / M_LN2) * std::log(sec);
+  if (res < -32768.0)
+    res = -32768.0;
+  return res;
+}
+
+/** NRPN scale factors for SF2 generators, from SFSpec21 §8.1.3.
+ *  Used when sending generator values via NRPN CC messages. */
+static constexpr int kGenNrpnScale_VolEnvAttack  = 2;
+static constexpr int kGenNrpnScale_VolEnvDecay   = 2;
+static constexpr int kGenNrpnScale_VolEnvSustain = 1;
+static constexpr int kGenNrpnScale_VolEnvRelease = 2;
+
 /* ────────────── Runtime state for a single SoundMacro VM ────────────── */
 
 struct MacroExecContext {
@@ -112,6 +132,19 @@ struct MacroExecContext {
   bool waitingSampleEnd = false;
   /* variable bank (32 × 32-bit) */
   int32_t vars[32] = {};
+
+  /* ADSR controller mapping (CmdSetAdsrCtrl).
+   * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).  In
+   * FluidSynth, we manipulate the SF2 volume-envelope generators via
+   * NRPN, which is per-channel.  This is a known limitation. */
+  bool useAdsrControllers = false;
+  uint8_t midiAttack  = 0;
+  uint8_t midiDecay   = 0;
+  uint8_t midiSustain = 0;
+  uint8_t midiRelease = 0;
+
+  /* Controller value storage (0-127 for standard MIDI CCs) */
+  int8_t ctrlVals[128] = {};
 };
 
 /* ──────────────────── FluidSynth state ──────────────────── */
@@ -185,6 +218,17 @@ struct FluidsyXApp {
   /** Timer callback trampoline */
   static void timerCallback(unsigned int time, fluid_event_t* event,
                             fluid_sequencer_t* seq, void* data);
+
+  /** Send an SF2 generator change via NRPN CCs.
+   *  \p genId is a GEN_* constant, \p value is in the generator's native
+   *  unit (timecents for envelope times, centibels for sustain, etc.).
+   *  The NRPN scale for the given generator must be supplied. */
+  void sendNrpnGenChange(int channel, int genId, int nrpnScale,
+                         double value, unsigned int tick);
+
+  /** Apply the current ADSR controller values from a MacroExecContext
+   *  to the FluidSynth channel via NRPN. */
+  void applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick);
 
   /** Kick off the next pending timer step for all active macros */
   void scheduleNextTimerStep();
@@ -383,6 +427,87 @@ const AudioGroupPool* FluidsyXApp::findPoolForGroup() {
       return &pools[i];
   }
   return nullptr;
+}
+
+/* ═══════════════════ NRPN / ADSR helpers ═══════════════════ */
+
+void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
+                                    double value, unsigned int tick) {
+  /* Send NRPN select (MSB=120 requests SF2 generator NRPN) */
+  fluid_event_t* e1 = new_fluid_event();
+  fluid_event_set_source(e1, callbackSeqId);
+  fluid_event_set_dest(e1, synthSeqId);
+  fluid_event_control_change(e1, channel, 0x63 /*NRPN_MSB*/, 120);
+  fluid_sequencer_send_at(sequencer, e1, tick, 1);
+  delete_fluid_event(e1);
+
+  fluid_event_t* e2 = new_fluid_event();
+  fluid_event_set_source(e2, callbackSeqId);
+  fluid_event_set_dest(e2, synthSeqId);
+  fluid_event_control_change(e2, channel, 0x62 /*NRPN_LSB*/, genId);
+  fluid_sequencer_send_at(sequencer, e2, tick, 1);
+  delete_fluid_event(e2);
+
+  /* Scale and encode the value.  0x2000 is the NRPN zero offset. */
+  int scaledVal = 0x2000 + static_cast<int>(value / nrpnScale);
+  int valLsb = scaledVal % 128;
+  int valMsb = scaledVal / 128;
+
+  fluid_event_t* e3 = new_fluid_event();
+  fluid_event_set_source(e3, callbackSeqId);
+  fluid_event_set_dest(e3, synthSeqId);
+  fluid_event_control_change(e3, channel, 0x26 /*DATA_ENTRY_LSB*/, valLsb);
+  fluid_sequencer_send_at(sequencer, e3, tick, 1);
+  delete_fluid_event(e3);
+
+  fluid_event_t* e4 = new_fluid_event();
+  fluid_event_set_source(e4, callbackSeqId);
+  fluid_event_set_dest(e4, synthSeqId);
+  fluid_event_control_change(e4, channel, 0x06 /*DATA_ENTRY_MSB*/, valMsb);
+  fluid_sequencer_send_at(sequencer, e4, tick, 1);
+  delete_fluid_event(e4);
+}
+
+void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
+  if (!ctx.useAdsrControllers)
+    return;
+
+  /* Convert CC values (0-127) to seconds and then to timecents.
+   * The CC value maps linearly to seconds, following the amuse convention
+   * where the default bootstrap values are: attack=10, sustain=127, release=10.
+   * We scale CC 0..127 → 0.001s..10s for attack/decay/release. */
+  auto ccToSeconds = [](int8_t cc) -> double {
+    double val = std::clamp(static_cast<int>(cc), 0, 127);
+    /* Map 0→0.001s (1ms), 127→~10s (exponential-ish for musical feel) */
+    return 0.001 + (val / 127.0) * 9.999;
+  };
+
+  /* Attack (CC → seconds → timecents) */
+  double attackSec = ccToSeconds(ctx.ctrlVals[ctx.midiAttack]);
+  double attackTc  = secondsToTimecents(attackSec);
+  sendNrpnGenChange(ctx.channel, GEN_VOLENVATTACK, kGenNrpnScale_VolEnvAttack,
+                    attackTc, tick);
+
+  /* Decay */
+  double decaySec = ccToSeconds(ctx.ctrlVals[ctx.midiDecay]);
+  double decayTc  = secondsToTimecents(decaySec);
+  sendNrpnGenChange(ctx.channel, GEN_VOLENVDECAY, kGenNrpnScale_VolEnvDecay,
+                    decayTc, tick);
+
+  /* Sustain – in SF2, sustain is in centibels (0=max, 1440=silence).
+   * CC 127 = full sustain (0 cB), CC 0 = silence (1440 cB). */
+  {
+    int sustainCc = std::clamp(static_cast<int>(ctx.ctrlVals[ctx.midiSustain]), 0, 127);
+    double sustainCb = (1.0 - sustainCc / 127.0) * 1440.0;
+    sendNrpnGenChange(ctx.channel, GEN_VOLENVSUSTAIN,
+                      kGenNrpnScale_VolEnvSustain, sustainCb, tick);
+  }
+
+  /* Release */
+  double releaseSec = ccToSeconds(ctx.ctrlVals[ctx.midiRelease]);
+  double releaseTc  = secondsToTimecents(releaseSec);
+  sendNrpnGenChange(ctx.channel, GEN_VOLENVRELEASE, kGenNrpnScale_VolEnvRelease,
+                    releaseTc, tick);
 }
 
 /* ═══════════════════ SoundMacro → FluidSynth translation ═══════════════════ */
@@ -587,6 +712,14 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::PitchWheelR: {
     auto& c = static_cast<const SoundMacro::CmdPitchWheelR&>(cmd);
+    if (c.rangeUp != c.rangeDown) {
+      fprintf(stderr,
+              "fluidsyX: warning: PitchWheelR has asymmetric range "
+              "(up=%d, down=%d); FluidSynth only supports symmetric "
+              "pitch bend range, using rangeUp=%d\n",
+              static_cast<int>(c.rangeUp), static_cast<int>(c.rangeDown),
+              static_cast<int>(c.rangeUp));
+    }
     fluid_event_pitch_wheelsens(evt, ctx.channel, c.rangeUp);
     fluid_sequencer_send_at(sequencer, evt, curTick, 1);
     ctx.pc++;
@@ -629,7 +762,24 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
   case SoundMacro::CmdOp::SetAdsrCtrl: {
-    /* Map MIDI CC to ADSR params – advance for now */
+    auto& c = static_cast<const SoundMacro::CmdSetAdsrCtrl&>(cmd);
+    ctx.useAdsrControllers = true;
+    ctx.midiAttack  = c.attack;
+    ctx.midiDecay   = c.decay;
+    ctx.midiSustain = c.sustain;
+    ctx.midiRelease = c.release;
+
+    /* Bootstrap ADSR defaults if the sustain CC has not been set yet,
+     * matching the amuse convention in SoundMacroState.cpp. */
+    if (!ctx.ctrlVals[ctx.midiSustain]) {
+      ctx.ctrlVals[ctx.midiAttack]  = 10;
+      ctx.ctrlVals[ctx.midiSustain] = 127;
+      ctx.ctrlVals[ctx.midiRelease] = 10;
+    }
+
+    /* Apply immediately via NRPN to the FluidSynth channel.
+     * NOTE: in MusyX, ADSR is per-voice; here it is per-channel. */
+    applyAdsrCtrl(ctx, curTick);
     ctx.pc++;
     break;
   }
@@ -637,11 +787,15 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Panning ── */
   case SoundMacro::CmdOp::Panning: {
     auto& c = static_cast<const SoundMacro::CmdPanning&>(cmd);
-    /* panPosition is -127..127; map to MIDI 0..127 */
-    int pan = (static_cast<int>(c.panPosition) + 127) / 2;
-    pan = std::clamp(pan, 0, 127);
-    fluid_event_pan(evt, ctx.channel, pan);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    if (c.panPosition == -128) {
+      /* -128 = surround-channel only; no-op in FluidSynth */
+    } else {
+      /* panPosition is -127..127; map to MIDI 0..127 */
+      int pan = (static_cast<int>(c.panPosition) + 127) / 2;
+      pan = std::clamp(pan, 0, 127);
+      fluid_event_pan(evt, ctx.channel, pan);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
     ctx.pc++;
     break;
   }
@@ -657,11 +811,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
   case SoundMacro::CmdOp::Spanning: {
-    auto& c = static_cast<const SoundMacro::CmdSpanning&>(cmd);
-    int pan = (static_cast<int>(c.spanPosition) + 127) / 2;
-    pan = std::clamp(pan, 0, 127);
-    fluid_event_pan(evt, ctx.channel, pan);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    /* Spanning controls surround panning, which FluidSynth does not
+     * currently support.  Logged as a no-op. */
     ctx.pc++;
     break;
   }
@@ -782,20 +933,34 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::Portamento: {
     auto& c = static_cast<const SoundMacro::CmdPortamento&>(cmd);
-    /* CC 65 = portamento on/off, CC 5 = portamento time */
     bool enable = (c.portState != SoundMacro::CmdPortamento::PortState::Disable);
+
+    /* CC 65 = portamento on/off */
     fluid_event_control_change(evt, ctx.channel, 65, enable ? 127 : 0);
     fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+
     if (enable) {
-      /* Reuse event for portamento time */
-      fluid_event_t* evt2 = new_fluid_event();
-      fluid_event_set_source(evt2, callbackSeqId);
-      fluid_event_set_dest(evt2, synthSeqId);
+      /* Convert time value to milliseconds */
       uint16_t timeVal = c.ticksOrMs;
-      int ccVal = std::clamp(static_cast<int>(timeVal) / 8, 0, 127);
-      fluid_event_control_change(evt2, ctx.channel, 5, ccVal);
-      fluid_sequencer_send_at(sequencer, evt2, curTick, 1);
-      delete_fluid_event(evt2);
+      double timeMs;
+      if (c.msSwitch) {
+        timeMs = static_cast<double>(timeVal);
+      } else {
+        timeMs = timeVal * 1000.0 / ctx.ticksPerSec;
+      }
+
+      /* Use FluidSynth's linear portamento mode via the portamento-time
+       * setting.  This is a global setting, not per-channel. */
+      fluid_settings_setnum(settings, "synth.portamento-time", timeMs);
+
+      /* Set portamento mode based on MusyX PortType.
+       * LastPressed → legato-only mode, Always → each-note mode. */
+      if (c.portType == SoundMacro::CmdPortamento::PortType::LastPressed)
+        fluid_synth_set_portamento_mode(synth, ctx.channel,
+                                        FLUID_CHANNEL_PORTAMENTO_MODE_LEGATO_ONLY);
+      else
+        fluid_synth_set_portamento_mode(synth, ctx.channel,
+                                        FLUID_CHANNEL_PORTAMENTO_MODE_EACH_NOTE);
     }
     ctx.pc++;
     break;
@@ -923,16 +1088,74 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
 
-  /* ── Selector evaluators (advanced controller mapping) ── */
-  case SoundMacro::CmdOp::VolSelect:
-  case SoundMacro::CmdOp::PanSelect:
-  case SoundMacro::CmdOp::PitchWheelSelect:
-  case SoundMacro::CmdOp::ModWheelSelect:
-  case SoundMacro::CmdOp::PedalSelect:
-  case SoundMacro::CmdOp::PortamentoSelect:
-  case SoundMacro::CmdOp::ReverbSelect:
-  case SoundMacro::CmdOp::SpanSelect:
-  case SoundMacro::CmdOp::DopplerSelect:
+  /* ── Selector evaluators (controller → parameter mapping) ── */
+  case SoundMacro::CmdOp::VolSelect: {
+    auto& c = static_cast<const SoundMacro::CmdVolSelect&>(cmd);
+    /* In MusyX, VolSelect binds a CC to the volume evaluator.
+     * We forward the referenced CC value as a volume CC to FluidSynth. */
+    if (!c.isVar && c.midiControl < 128) {
+      fluid_event_control_change(evt, ctx.channel, 7,
+          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::PanSelect: {
+    auto& c = static_cast<const SoundMacro::CmdPanSelect&>(cmd);
+    if (!c.isVar && c.midiControl < 128) {
+      fluid_event_control_change(evt, ctx.channel, 10,
+          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::PitchWheelSelect: {
+    /* Pitchbend is handled through PitchWheelR and pitch bend events */
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::ModWheelSelect: {
+    auto& c = static_cast<const SoundMacro::CmdModWheelSelect&>(cmd);
+    if (!c.isVar && c.midiControl < 128) {
+      fluid_event_modulation(evt, ctx.channel,
+          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::PedalSelect: {
+    auto& c = static_cast<const SoundMacro::CmdPedalSelect&>(cmd);
+    /* CC 64 = sustain pedal */
+    if (!c.isVar && c.midiControl < 128) {
+      fluid_event_control_change(evt, ctx.channel, 64,
+          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::PortamentoSelect: {
+    /* Portamento is configured via the Portamento command and
+     * fluid_settings_setnum; the select just sets up the evaluator. */
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::ReverbSelect: {
+    auto& c = static_cast<const SoundMacro::CmdReverbSelect&>(cmd);
+    /* CC 91 = reverb send */
+    if (!c.isVar && c.midiControl < 128) {
+      fluid_event_control_change(evt, ctx.channel, 91,
+          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
+    ctx.pc++;
+    break;
+  }
+  case SoundMacro::CmdOp::SpanSelect:      /* surround panning – no-op (FluidSynth limitation) */
+  case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::TremoloSelect:
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
