@@ -92,6 +92,10 @@ static std::atomic<bool> g_running{true};
 
 static void signalHandler(int) { g_running.store(false); }
 
+/** Maximum number of SoundMacro commands processed in a single burst
+ *  (without any delay). Prevents infinite loops from freezing the app. */
+static constexpr int kMaxMacroCmdsPerBurst = 4096;
+
 /* ────────────── Runtime state for a single SoundMacro VM ────────────── */
 
 struct MacroExecContext {
@@ -147,8 +151,11 @@ struct FluidsyXApp {
   int8_t velocity = 64;
   float volume = 0.8f;
 
-  /* Active macro execution contexts (for timer-driven processing) */
-  std::vector<MacroExecContext> activeMacros;
+  /* Active macro execution contexts (for timer-driven processing).
+   * Uses a map with stable integer IDs so that vector reallocation
+   * cannot invalidate references stored in timer events. */
+  std::map<int, MacroExecContext> activeMacros;
+  int nextMacroId = 0;
 
   /* RNG */
   std::mt19937 rng{std::random_device{}()};
@@ -978,21 +985,19 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
    * When a command introduces a delay, schedule a timer event and stop. */
   unsigned int tick = startTick;
   int safetyCounter = 0;
-  while (!ctx.ended && safetyCounter < 4096) {
+  while (!ctx.ended && safetyCounter < kMaxMacroCmdsPerBurst) {
     unsigned int d = processMacroCmd(ctx, tick);
     tick += d;
     safetyCounter++;
     if (d > 0 && !ctx.ended) {
-      /* Schedule a timer callback to resume processing */
-      activeMacros.push_back(ctx);
-      int idx = static_cast<int>(activeMacros.size()) - 1;
+      /* Store context in the stable map and schedule a timer callback */
+      int macroId = nextMacroId++;
+      activeMacros[macroId] = ctx;
 
       fluid_event_t* tevt = new_fluid_event();
       fluid_event_set_source(tevt, callbackSeqId);
       fluid_event_set_dest(tevt, callbackSeqId);
-      /* Store the macro index as user data via the event's timer payload.
-       * We pack the index into a pointer; recovered in the callback. */
-      fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(idx)));
+      fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
       fluid_sequencer_send_at(sequencer, tevt, tick, /*absolute=*/1);
       delete_fluid_event(tevt);
       return;
@@ -1007,18 +1012,21 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
   if (!app || fluid_event_get_type(event) != FLUID_SEQ_TIMER)
     return;
 
-  int idx = static_cast<int>(
+  int macroId = static_cast<int>(
       reinterpret_cast<intptr_t>(fluid_event_get_data(event)));
-  if (idx < 0 || idx >= static_cast<int>(app->activeMacros.size()))
+  auto it = app->activeMacros.find(macroId);
+  if (it == app->activeMacros.end())
     return;
 
-  MacroExecContext& ctx = app->activeMacros[idx];
-  if (ctx.ended)
+  MacroExecContext& ctx = it->second;
+  if (ctx.ended) {
+    app->activeMacros.erase(it);
     return;
+  }
 
   unsigned int tick = time;
   int safetyCounter = 0;
-  while (!ctx.ended && safetyCounter < 4096) {
+  while (!ctx.ended && safetyCounter < kMaxMacroCmdsPerBurst) {
     unsigned int d = app->processMacroCmd(ctx, tick);
     tick += d;
     safetyCounter++;
@@ -1027,12 +1035,16 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       fluid_event_t* tevt = new_fluid_event();
       fluid_event_set_source(tevt, app->callbackSeqId);
       fluid_event_set_dest(tevt, app->callbackSeqId);
-      fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(idx)));
+      fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
       fluid_sequencer_send_at(app->sequencer, tevt, tick, /*absolute=*/1);
       delete_fluid_event(tevt);
       return;
     }
   }
+
+  /* If the macro ended, clean it up */
+  if (ctx.ended)
+    app->activeMacros.erase(it);
 }
 
 /* ═══════════════════ Song playback loop ═══════════════════ */
