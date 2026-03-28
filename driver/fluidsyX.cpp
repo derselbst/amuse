@@ -11,6 +11,9 @@
 #include "amuse/AudioGroupPool.hpp"
 #include "amuse/AudioGroupProject.hpp"
 #include "amuse/AudioGroupData.hpp"
+#include "amuse/AudioGroupSampleDirectory.hpp"
+#include "amuse/DSPCodec.hpp"
+#include "amuse/N64MusyXCodec.hpp"
 #include "amuse/Envelope.hpp"
 #include "amuse/Common.hpp"
 
@@ -149,6 +152,244 @@ struct MacroExecContext {
   int8_t ctrlVals[128] = {};
 };
 
+/* ═══════════════ Custom SoundFont loader for MusyX samples ═══════════════
+ *
+ * We decode MusyX compressed samples (DSP ADPCM, N64 VADPCM, PCM) to
+ * 16-bit signed PCM, wrap them in fluid_sample_t objects, and create
+ * a virtual SoundFont so FluidSynth can synthesise the original sounds.
+ *
+ * The mapping is:
+ *   bank 0, program N  →  MusyX SoundMacro lookup for program N
+ *   noteon callback     →  finds CmdStartSample in the macro, plays
+ *                          the corresponding decoded fluid_sample_t
+ *
+ * Limitations:
+ *   - Only the *first* CmdStartSample in a SoundMacro is used here;
+ *     the macro VM still runs to handle control flow, envelopes, etc.
+ *   - One preset per program number (bank 0 only).
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+/** Decoded PCM sample data kept alive for the lifetime of the soundfont. */
+struct DecodedSample {
+  SampleId id;
+  std::string name;
+  std::vector<int16_t> pcmData;   /**< 16-bit signed mono PCM */
+  uint32_t sampleRate = 32000;
+  uint8_t rootKey = 60;           /**< MIDI root key */
+  bool looped = false;
+  uint32_t loopStart = 0;
+  uint32_t loopEnd = 0;
+  fluid_sample_t* flSample = nullptr; /**< Owned by FluidSynth after loading */
+};
+
+/** Per-preset data: which fluid_sample to play for a given MIDI note. */
+struct MusyXPresetData {
+  int bank = 0;
+  int program = 0;
+  /** Default sample for this preset (from the first CmdStartSample in the
+   *  macro associated with this program number).  May be null. */
+  fluid_sample_t* defaultSample = nullptr;
+  uint8_t rootKey = 60;
+  bool looped = false;
+  uint32_t loopStart = 0;
+  uint32_t loopEnd = 0;
+};
+
+/** The entire virtual soundfont: owns decoded samples + presets. */
+struct MusyXSoundFontData {
+  std::string name;
+  std::vector<DecodedSample> samples;
+  /** Map SampleId → index in `samples` */
+  std::unordered_map<uint16_t, size_t> sampleIndex;
+  /** Preset list (one per program number that has a SoundMacro). */
+  std::vector<MusyXPresetData> presets;
+  /** fluid_preset_t objects kept alive */
+  std::vector<fluid_preset_t*> flPresets;
+  int iterIdx = 0; /**< for iteration */
+};
+
+/* ── Decode helpers ── */
+
+/** Decode a single MusyX sample entry to 16-bit PCM. */
+static std::vector<int16_t> decodeSampleToPCM(
+    const AudioGroupSampleDirectory::EntryData& ent,
+    const unsigned char* sampBase)
+{
+  const unsigned char* samp = sampBase + ent.m_sampleOff;
+  SampleFormat fmt = ent.getSampleFormat();
+  uint32_t numSamples = ent.getNumSamples();
+  std::vector<int16_t> out(numSamples);
+
+  if (fmt == SampleFormat::DSP || fmt == SampleFormat::DSP_DRUM) {
+    uint32_t remSamples = numSamples;
+    const unsigned char* cur = samp;
+    int16_t prev1 = ent.m_ADPCMParms.dsp.m_hist1;
+    int16_t prev2 = ent.m_ADPCMParms.dsp.m_hist2;
+    size_t outOff = 0;
+    while (remSamples > 0) {
+      int16_t decomp[14] = {};
+      unsigned thisSamples = std::min(remSamples, 14u);
+      DSPDecompressFrame(decomp, cur, ent.m_ADPCMParms.dsp.m_coefs,
+                         &prev1, &prev2, thisSamples);
+      std::memcpy(&out[outOff], decomp, thisSamples * sizeof(int16_t));
+      outOff += thisSamples;
+      remSamples -= thisSamples;
+      cur += 8;
+    }
+  } else if (fmt == SampleFormat::N64) {
+    uint32_t remSamples = numSamples;
+    /* N64: codebook is at the beginning of the sample data */
+    const unsigned char* cur = samp + sizeof(AudioGroupSampleDirectory::ADPCMParms::VADPCMParms);
+    size_t outOff = 0;
+    while (remSamples > 0) {
+      int16_t decomp[64] = {};
+      unsigned thisSamples = std::min(remSamples, 64u);
+      N64MusyXDecompressFrame(decomp, cur, ent.m_ADPCMParms.vadpcm.m_coefs,
+                              thisSamples);
+      std::memcpy(&out[outOff], decomp, thisSamples * sizeof(int16_t));
+      outOff += thisSamples;
+      remSamples -= thisSamples;
+      cur += 40;
+    }
+  } else if (fmt == SampleFormat::PCM) {
+    /* Big-endian 16-bit PCM */
+    const uint8_t* cur = samp;
+    for (uint32_t i = 0; i < numSamples; ++i) {
+      int16_t s = static_cast<int16_t>((cur[0] << 8) | cur[1]);
+      out[i] = s;
+      cur += 2;
+    }
+  } else {
+    /* PCM_PC: little-endian 16-bit PCM (native on x86) */
+    std::memcpy(out.data(), samp, numSamples * sizeof(int16_t));
+  }
+  return out;
+}
+
+/* ── FluidSynth SoundFont loader callbacks ── */
+
+/* -- sfont callbacks -- */
+static const char* musyx_sfont_get_name(fluid_sfont_t* sfont) {
+  auto* d = static_cast<MusyXSoundFontData*>(fluid_sfont_get_data(sfont));
+  return d ? d->name.c_str() : "MusyX";
+}
+
+static fluid_preset_t* musyx_sfont_get_preset(fluid_sfont_t* sfont,
+                                               int bank, int prenum) {
+  auto* d = static_cast<MusyXSoundFontData*>(fluid_sfont_get_data(sfont));
+  if (!d)
+    return nullptr;
+  for (size_t i = 0; i < d->presets.size(); ++i) {
+    if (d->presets[i].bank == bank && d->presets[i].program == prenum)
+      return d->flPresets[i];
+  }
+  return nullptr;
+}
+
+static void musyx_sfont_iter_start(fluid_sfont_t* sfont) {
+  auto* d = static_cast<MusyXSoundFontData*>(fluid_sfont_get_data(sfont));
+  if (d)
+    d->iterIdx = 0;
+}
+
+static fluid_preset_t* musyx_sfont_iter_next(fluid_sfont_t* sfont) {
+  auto* d = static_cast<MusyXSoundFontData*>(fluid_sfont_get_data(sfont));
+  if (!d || d->iterIdx >= static_cast<int>(d->flPresets.size()))
+    return nullptr;
+  return d->flPresets[d->iterIdx++];
+}
+
+static int musyx_sfont_free(fluid_sfont_t* sfont) {
+  auto* d = static_cast<MusyXSoundFontData*>(fluid_sfont_get_data(sfont));
+  /* Presets are owned by their parent sfont in FluidSynth - just clean up
+   * our data.  The fluid_sample_t objects are destroyed with the synth. */
+  delete d;
+  delete_fluid_sfont(sfont);
+  return 0;
+}
+
+/* -- preset callbacks -- */
+static const char* musyx_preset_get_name(fluid_preset_t* preset) {
+  auto* d = static_cast<MusyXPresetData*>(fluid_preset_get_data(preset));
+  (void)d;
+  return "MusyX Preset";
+}
+
+static int musyx_preset_get_bank(fluid_preset_t* preset) {
+  auto* d = static_cast<MusyXPresetData*>(fluid_preset_get_data(preset));
+  return d ? d->bank : 0;
+}
+
+static int musyx_preset_get_num(fluid_preset_t* preset) {
+  auto* d = static_cast<MusyXPresetData*>(fluid_preset_get_data(preset));
+  return d ? d->program : 0;
+}
+
+static int musyx_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
+                                int chan, int key, int vel) {
+  auto* d = static_cast<MusyXPresetData*>(fluid_preset_get_data(preset));
+  if (!d || !d->defaultSample)
+    return FLUID_FAILED;
+
+  fluid_voice_t* voice = fluid_synth_alloc_voice(synth, d->defaultSample,
+                                                  chan, key, vel);
+  if (!voice)
+    return FLUID_FAILED;
+
+  /* Set sample mode: 0=no loop, 1=loop continuously, 3=loop until noteoff */
+  if (d->looped)
+    fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
+
+  fluid_synth_start_voice(synth, voice);
+  return FLUID_OK;
+}
+
+static void musyx_preset_free(fluid_preset_t* preset) {
+  /* MusyXPresetData is owned by MusyXSoundFontData; don't free it here. */
+  delete_fluid_preset(preset);
+}
+
+/* -- sfloader callbacks -- */
+static fluid_sfont_t* musyx_sfloader_load(fluid_sfloader_t* loader,
+                                           const char* filename) {
+  auto* sfData = static_cast<MusyXSoundFontData*>(fluid_sfloader_get_data(loader));
+  if (!sfData)
+    return nullptr;
+
+  /* Create the FluidSynth SoundFont object */
+  fluid_sfont_t* sfont = new_fluid_sfont(
+      musyx_sfont_get_name,
+      musyx_sfont_get_preset,
+      musyx_sfont_iter_start,
+      musyx_sfont_iter_next,
+      musyx_sfont_free);
+  fluid_sfont_set_data(sfont, sfData);
+
+  /* Create presets */
+  sfData->flPresets.resize(sfData->presets.size(), nullptr);
+  for (size_t i = 0; i < sfData->presets.size(); ++i) {
+    fluid_preset_t* preset = new_fluid_preset(
+        sfont,
+        musyx_preset_get_name,
+        musyx_preset_get_bank,
+        musyx_preset_get_num,
+        musyx_preset_noteon,
+        musyx_preset_free);
+    fluid_preset_set_data(preset, &sfData->presets[i]);
+    sfData->flPresets[i] = preset;
+  }
+
+  printf("fluidsyX: MusyX SoundFont loaded with %zu samples, %zu presets\n",
+         sfData->samples.size(), sfData->presets.size());
+  return sfont;
+}
+
+static void musyx_sfloader_free(fluid_sfloader_t* loader) {
+  /* The MusyXSoundFontData is transferred to the sfont on load, so the
+   * loader does not own it any more. */
+  delete_fluid_sfloader(loader);
+}
+
 /* ──────────────────── FluidSynth state ──────────────────── */
 
 struct FluidsyXApp {
@@ -164,6 +405,7 @@ struct FluidsyXApp {
   std::vector<std::pair<std::string, IntrusiveAudioGroupData>> data;
   std::list<AudioGroupProject> projs;
   std::vector<AudioGroupPool> pools;
+  std::vector<AudioGroupSampleDirectory> sdirs; /**< one per data entry */
   std::map<GroupId, std::pair<std::pair<std::string, IntrusiveAudioGroupData>*,
                               ObjToken<SongGroupIndex>>>
       allSongGroups;
@@ -211,6 +453,10 @@ struct FluidsyXApp {
 
   void songLoop(const SongGroupIndex& index);
   void sfxLoop(const SFXGroupIndex& index);
+
+  /** Build a custom MusyX SoundFont from the parsed sample directory
+   *  and pool, register it with FluidSynth. */
+  bool buildMusyXSoundFont();
 
   /* ── SoundMacro → FluidSynth translation ── */
 
@@ -339,6 +585,9 @@ bool FluidsyXApp::loadMusyXData(const char* path) {
 
     /* Also parse the pool so we can access SoundMacro commands */
     pools.push_back(AudioGroupPool::CreateAudioGroupPool(grp.second));
+
+    /* Parse the sample directory */
+    sdirs.push_back(AudioGroupSampleDirectory::CreateAudioGroupSampleDirectory(grp.second));
   }
 
   return true;
@@ -436,6 +685,189 @@ const AudioGroupPool* FluidsyXApp::findPoolForGroup() {
   return nullptr;
 }
 
+/* ═══════════════════ Build MusyX SoundFont ═══════════════════ */
+
+bool FluidsyXApp::buildMusyXSoundFont() {
+  if (!activePool)
+    return false;
+
+  /* Find which data entry & sdir belongs to the active group */
+  IntrusiveAudioGroupData* selData = nullptr;
+  size_t dataIdx = 0;
+  {
+    auto songIt = allSongGroups.find(groupId);
+    if (songIt != allSongGroups.end())
+      selData = &songIt->second.first->second;
+    else {
+      auto sfxIt = allSFXGroups.find(groupId);
+      if (sfxIt != allSFXGroups.end())
+        selData = &sfxIt->second.first->second;
+    }
+    if (!selData)
+      return false;
+    for (size_t i = 0; i < data.size(); ++i) {
+      if (&data[i].second == selData) {
+        dataIdx = i;
+        break;
+      }
+    }
+  }
+
+  const AudioGroupSampleDirectory& sdir = sdirs[dataIdx];
+  const unsigned char* sampBase = selData->getSamp();
+  if (!sampBase)
+    return false;
+
+  auto* sfData = new MusyXSoundFontData;
+  sfData->name = "MusyX:" + data[dataIdx].first;
+
+  /* 1. Decode all samples to PCM and create fluid_sample_t objects */
+  for (const auto& [sampleId, entry] : sdir.sampleEntries()) {
+    if (!entry || !entry->m_data)
+      continue;
+    const auto& ent = *entry->m_data;
+    uint32_t numSamples = ent.getNumSamples();
+    if (numSamples == 0)
+      continue;
+
+    DecodedSample ds;
+    ds.id = sampleId;
+    ds.name = "sample_" + std::to_string(sampleId.id);
+    ds.pcmData = decodeSampleToPCM(ent, sampBase);
+    ds.sampleRate = ent.m_sampleRate ? ent.m_sampleRate : 32000;
+    ds.rootKey = ent.getPitch();
+    ds.looped = ent.isLooped();
+    if (ds.looped) {
+      ds.loopStart = ent.getLoopStartSample();
+      ds.loopEnd = ent.getLoopEndSample();
+    }
+
+    /* Create FluidSynth sample */
+    fluid_sample_t* flSamp = new_fluid_sample();
+    fluid_sample_set_name(flSamp, ds.name.c_str());
+    fluid_sample_set_sound_data(
+        flSamp,
+        ds.pcmData.data(),
+        nullptr,                          /* no 24-bit extension */
+        static_cast<unsigned int>(ds.pcmData.size()),
+        ds.sampleRate,
+        1 /* copy_data */);
+    fluid_sample_set_pitch(flSamp, ds.rootKey, 0);
+    if (ds.looped) {
+      fluid_sample_set_loop(flSamp, ds.loopStart, ds.loopEnd);
+    }
+    ds.flSample = flSamp;
+    sfData->sampleIndex[sampleId.id] = sfData->samples.size();
+    sfData->samples.push_back(std::move(ds));
+  }
+
+  printf("fluidsyX: decoded %zu samples from MusyX data\n",
+         sfData->samples.size());
+
+  /* 2. Build presets from the group's page entries or SFX entries.
+   *    For each program number, find the SoundMacro, scan for the first
+   *    CmdStartSample, and map it to the decoded fluid_sample_t. */
+
+  auto findFirstSampleInMacro = [&](const SoundMacro* sm) -> fluid_sample_t* {
+    if (!sm)
+      return nullptr;
+    for (const auto& cmd : sm->m_cmds) {
+      if (cmd->Isa() == SoundMacro::CmdOp::StartSample) {
+        auto& startCmd = static_cast<const SoundMacro::CmdStartSample&>(*cmd);
+        auto sIt = sfData->sampleIndex.find(startCmd.sample.id.id);
+        if (sIt != sfData->sampleIndex.end())
+          return sfData->samples[sIt->second].flSample;
+      }
+    }
+    return nullptr;
+  };
+
+  auto addPresetForMacro = [&](int program, const SoundMacro* sm) {
+    fluid_sample_t* flSamp = findFirstSampleInMacro(sm);
+    if (!flSamp)
+      return;
+
+    /* Find sample metadata for loop info */
+    MusyXPresetData pd;
+    pd.bank = 0;
+    pd.program = program;
+    pd.defaultSample = flSamp;
+
+    /* Look up decoded sample for metadata */
+    for (const auto& ds : sfData->samples) {
+      if (ds.flSample == flSamp) {
+        pd.rootKey = ds.rootKey;
+        pd.looped = ds.looped;
+        pd.loopStart = ds.loopStart;
+        pd.loopEnd = ds.loopEnd;
+        break;
+      }
+    }
+    sfData->presets.push_back(pd);
+  };
+
+  if (sfxGroup) {
+    /* SFX group: map SFX entries as presets (program = SFX index) */
+    auto sfxIt = allSFXGroups.find(groupId);
+    if (sfxIt != allSFXGroups.end()) {
+      int prog = 0;
+      for (const auto& [sfxId, entry] : sfxIt->second.second->m_sfxEntries) {
+        const SoundMacro* sm = activePool->soundMacro(entry.objId);
+        addPresetForMacro(prog, sm);
+        ++prog;
+      }
+    }
+  } else {
+    /* Song group: map normal pages to presets */
+    auto songIt = allSongGroups.find(groupId);
+    if (songIt != allSongGroups.end()) {
+      for (const auto& [prog, pageEntry] : songIt->second.second->m_normPages) {
+        /* PageEntry objId can be a keymap or layer.  Try keymap first. */
+        const auto* keymap = activePool->keymap(pageEntry.objId);
+        if (keymap) {
+          /* Use the macro from key 60 (middle C) as the default */
+          const SoundMacro* sm = activePool->soundMacro(keymap[60].macro);
+          addPresetForMacro(prog, sm);
+        } else {
+          /* Try layers */
+          const auto* layers = activePool->layer(pageEntry.objId);
+          if (layers && !layers->empty()) {
+            const SoundMacro* sm = activePool->soundMacro((*layers)[0].macro);
+            addPresetForMacro(prog, sm);
+          }
+        }
+      }
+      /* Also map drum pages (bank 128 in MIDI, but we use bank 0 prog 128+) */
+      for (const auto& [prog, pageEntry] : songIt->second.second->m_drumPages) {
+        const auto* keymap = activePool->keymap(pageEntry.objId);
+        if (keymap) {
+          const SoundMacro* sm = activePool->soundMacro(keymap[60].macro);
+          addPresetForMacro(128 + prog, sm);
+        }
+      }
+    }
+  }
+
+  printf("fluidsyX: created %zu presets from MusyX data\n",
+         sfData->presets.size());
+
+  /* 3. Register the custom loader and load the soundfont */
+  fluid_sfloader_t* loader = new_fluid_sfloader(
+      musyx_sfloader_load, musyx_sfloader_free);
+  fluid_sfloader_set_data(loader, sfData);
+  fluid_synth_add_sfloader(synth, loader);
+
+  /* Trigger the load via sfload with our magic filename */
+  int sfId = fluid_synth_sfload(synth, "MusyX_Virtual", /*reset_presets=*/1);
+  if (sfId < 0) {
+    fprintf(stderr, "fluidsyX: warning: failed to activate MusyX SoundFont\n");
+    return false;
+  }
+
+  printf("fluidsyX: MusyX SoundFont activated (id=%d)\n", sfId);
+  return true;
+}
+
 /* ═══════════════════ NRPN / ADSR helpers ═══════════════════ */
 
 void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
@@ -447,7 +879,7 @@ void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
   fluid_event_set_dest(e1, synthSeqId);
 
   // CCs must be received in order
-  auto safe_send = [sequencer, e1, tick](unsigned int at) -> int
+  auto safe_send = [this, e1, tick](unsigned int at) -> int
   {
       if (tick <= 3) {
           fluid_sequencer_send_now(sequencer, e1);
@@ -499,7 +931,8 @@ void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
   {
     double sustainFactor = std::clamp(static_cast<int>(ctx.ctrlVals[ctx.midiSustain]), 0, 127) / 127.0;
     double sustaincB = (1.0 - sustainFactor) * 1440.0;
-    std::cerr << "sustain: " << sustainFactor << " %, " << sustaincB << " cB - NOT IMPLEMENTED!" << std::endl;
+    sendNrpnGenChange(ctx.channel, GEN_VOLENVSUSTAIN, kGenNrpnScale_VolEnvSustain,
+                      sustaincB, tick);
   }
 
   /* Release */
@@ -1624,7 +2057,9 @@ int main(int argc, char** argv) {
             "Usage: fluidsyX <musyx-group-path> [soundfont.sf2]\n"
             "\n"
             "  Plays MusyX SoundMacro data using FluidSynth.\n"
-            "  An optional SoundFont can be specified for audible output.\n");
+            "  MusyX samples are decoded and loaded as a virtual SoundFont.\n"
+            "  An optional external .sf2 SoundFont can be specified as a\n"
+            "  fallback for programs not covered by the MusyX data.\n");
     return 1;
   }
 
@@ -1644,9 +2079,8 @@ int main(int argc, char** argv) {
       printf("fluidsyX: loaded SoundFont '%s' (id=%d)\n", argv[2], sfId);
     }
   } else {
-    printf("fluidsyX: no SoundFont specified – sequencer events will be "
-           "processed but may be inaudible\n"
-           "          (pass a .sf2 file as second argument for audio)\n\n");
+    printf("fluidsyX: no external SoundFont specified; MusyX samples will "
+           "be used for playback\n\n");
   }
 
   /* 3. Load MusyX data */
@@ -1728,6 +2162,13 @@ int main(int argc, char** argv) {
   printf("fluidsyX: group %d selected (%s), %zu SoundMacros in pool\n",
          app.groupId, app.sfxGroup ? "SFX" : "Song",
          app.activePool->soundMacros().size());
+
+  /* 7b. Build the MusyX virtual SoundFont from decoded samples.
+   *     This gives FluidSynth access to the original MusyX sounds. */
+  if (!app.buildMusyXSoundFont()) {
+    fprintf(stderr, "fluidsyX: warning: could not build MusyX SoundFont; "
+            "playback will use external SoundFont if available\n");
+  }
 
   /* 8. Enter playback loop */
   if (app.sfxGroup) {
