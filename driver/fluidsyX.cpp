@@ -822,6 +822,23 @@ struct FluidsyXApp {
   /* Selected song data (set from main() when a song is chosen) */
   const ContainerRegistry::SongData* selectedSong = nullptr;
 
+  /* Active SongGroupIndex for note→SoundMacro resolution during playback */
+  const SongGroupIndex* activeSongGroup = nullptr;
+
+  /* Per-channel program number (set from MIDI setup and SNG program changes) */
+  uint8_t channelPrograms[16] = {};
+
+  /* Pending SNG events dispatched via timer callbacks.
+   * Timer data encodes a negative index into this vector: data = -(1 + idx). */
+  struct PendingSngNoteEvent {
+    enum Type { NoteOn, NoteOff, ProgramChange };
+    Type    type;
+    uint8_t channel;
+    uint8_t note;
+    uint8_t velocity;
+  };
+  std::vector<PendingSngNoteEvent> pendingSngEvents;
+
   /* ── lifecycle helpers ── */
 
   bool initFluidSynth();
@@ -843,6 +860,11 @@ struct FluidsyXApp {
   bool buildMusyXSoundFont();
 
   /* ── SoundMacro → FluidSynth translation ── */
+
+  /** Resolve a note-on through the SongGroupIndex page→keymap/layer→SoundMacro
+   *  chain and enqueue the resulting SoundMacro(s) for execution. */
+  void resolveAndEnqueueNote(uint8_t channel, uint8_t note, uint8_t vel,
+                             unsigned int tick);
 
   /** Enqueue all commands of a SoundMacro, starting at \p step. */
   void enqueueSoundMacro(const SoundMacro* sm, int step, int channel,
@@ -2058,6 +2080,70 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   return delay;
 }
 
+/* ── Resolve note → SoundMacro via SongGroupIndex pages ── */
+
+void FluidsyXApp::resolveAndEnqueueNote(uint8_t channel, uint8_t note,
+                                        uint8_t vel, unsigned int tick) {
+  if (!activeSongGroup || !activePool)
+    return;
+
+  /* Look up the page entry for the channel's current program */
+  uint8_t prog = channelPrograms[channel];
+  const SongGroupIndex::PageEntry* page = nullptr;
+
+  if (channel == 9) {
+    auto it = activeSongGroup->m_drumPages.find(prog);
+    if (it != activeSongGroup->m_drumPages.end())
+      page = &it->second;
+  } else {
+    auto it = activeSongGroup->m_normPages.find(prog);
+    if (it != activeSongGroup->m_normPages.end())
+      page = &it->second;
+  }
+
+  if (!page)
+    return;
+
+  ObjectId objId = page->objId;
+
+  /* Resolve the ObjectId to SoundMacro(s) via keymap/layer/direct lookup.
+   * Replicates the logic from Voice::loadPageObject(). */
+  if (objId.id & 0x8000) {
+    /* Layer: multiple SoundMacros mapped by key range */
+    const std::vector<LayerMapping>* layer = activePool->layer(objId);
+    if (layer) {
+      for (const auto& mapping : *layer) {
+        if (note >= static_cast<uint8_t>(mapping.keyLo) &&
+            note <= static_cast<uint8_t>(mapping.keyHi)) {
+          const SoundMacro* sm = activePool->soundMacro(mapping.macro);
+          if (sm) {
+            uint8_t mappedKey = static_cast<uint8_t>(
+                std::clamp(static_cast<int>(note) + mapping.transpose, 0, 127));
+            enqueueSoundMacro(sm, 0, channel, mappedKey, vel, tick);
+          }
+        }
+      }
+    }
+  } else if (objId.id & 0x4000) {
+    /* Keymap: per-key SoundMacro lookup (128-entry array indexed by MIDI key) */
+    const Keymap* keymap = activePool->keymap(objId);
+    if (keymap) {
+      const Keymap& km = keymap[note];
+      const SoundMacro* sm = activePool->soundMacro(km.macro);
+      if (sm) {
+        uint8_t mappedKey = static_cast<uint8_t>(
+            std::clamp(static_cast<int>(note) + km.transpose, 0, 127));
+        enqueueSoundMacro(sm, 0, channel, mappedKey, vel, tick);
+      }
+    }
+  } else {
+    /* Direct SoundMacro reference */
+    const SoundMacro* sm = activePool->soundMacro(objId);
+    if (sm)
+      enqueueSoundMacro(sm, 0, channel, note, vel, tick);
+  }
+}
+
 void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
                                     int channel, uint8_t key, uint8_t vel,
                                     unsigned int startTick) {
@@ -2097,15 +2183,45 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   }
 }
 
-/* Timer callback – resume a SoundMacro that was waiting */
+/* Timer callback – resume a SoundMacro that was waiting, or dispatch a
+ * pending SNG event.  Negative data values encode SNG events:
+ *   data = -(1 + eventIndex)  →  pendingSngEvents[eventIndex]
+ * Non-negative values are macro context IDs (existing behavior). */
 void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
                                 fluid_sequencer_t* /*seq*/, void* data) {
   auto* app = static_cast<FluidsyXApp*>(data);
   if (!app || fluid_event_get_type(event) != FLUID_SEQ_TIMER)
     return;
 
-  int macroId = static_cast<int>(
-      reinterpret_cast<intptr_t>(fluid_event_get_data(event)));
+  intptr_t rawData = reinterpret_cast<intptr_t>(fluid_event_get_data(event));
+
+  if (rawData < 0) {
+    /* ── SNG event dispatch ── */
+    int idx = static_cast<int>(-(rawData + 1));
+    if (idx < 0 || idx >= static_cast<int>(app->pendingSngEvents.size()))
+      return;
+
+    const auto& sngEvt = app->pendingSngEvents[static_cast<size_t>(idx)];
+    switch (sngEvt.type) {
+    case PendingSngNoteEvent::NoteOn:
+      app->resolveAndEnqueueNote(sngEvt.channel, sngEvt.note,
+                                 sngEvt.velocity, time);
+      break;
+
+    case PendingSngNoteEvent::NoteOff:
+      fluid_synth_noteoff(app->synth, sngEvt.channel, sngEvt.note);
+      break;
+
+    case PendingSngNoteEvent::ProgramChange:
+      app->channelPrograms[sngEvt.channel] = sngEvt.note; /* note field = program */
+      fluid_synth_program_change(app->synth, sngEvt.channel, sngEvt.note);
+      break;
+    }
+    return;
+  }
+
+  /* ── Macro timer resume (existing behavior) ── */
+  int macroId = static_cast<int>(rawData);
   auto it = app->activeMacros.find(macroId);
   if (it == app->activeMacros.end())
     return;
@@ -2172,9 +2288,20 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
   unsigned int baseTick = fluid_sequencer_get_tick(sequencer);
 
+  /* Clear any pending SNG events from a previous playback */
+  pendingSngEvents.clear();
+
+  /* Pre-allocate: count note-on, note-off, and program events */
+  size_t noteEventCount = 0;
+  for (const auto& e : events) {
+    if (e.type == SngEvent::NoteOn || e.type == SngEvent::NoteOff ||
+        e.type == SngEvent::Program)
+      noteEventCount++;
+  }
+  pendingSngEvents.reserve(noteEventCount);
+
   fluid_event_t* evt = new_fluid_event();
   fluid_event_set_source(evt, -1);
-  fluid_event_set_dest(evt, synthSeqId);
 
   uint32_t lastTick = 0;
 
@@ -2182,33 +2309,66 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
     unsigned int schedTick = baseTick + e.absTick;
 
     switch (e.type) {
-    case SngEvent::NoteOn:
-      fluid_event_noteon(evt, e.channel, e.data1, e.data2);
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
-      break;
+    case SngEvent::NoteOn: {
+      /* Route through timer callback → resolveAndEnqueueNote() so that
+       * the SoundMacro system processes the note with proper ADSR, pitch,
+       * panning, etc. */
+      int idx = static_cast<int>(pendingSngEvents.size());
+      pendingSngEvents.push_back(
+          {PendingSngNoteEvent::NoteOn, e.channel, e.data1, e.data2});
+      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
 
-    case SngEvent::NoteOff:
-      fluid_event_noteoff(evt, e.channel, e.data1);
+      fluid_event_set_dest(evt, callbackSeqId);
+      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
+    }
+
+    case SngEvent::NoteOff: {
+      /* Route through timer callback for synchronized note-off */
+      int idx = static_cast<int>(pendingSngEvents.size());
+      pendingSngEvents.push_back(
+          {PendingSngNoteEvent::NoteOff, e.channel, e.data1, 0});
+      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
+
+      fluid_event_set_dest(evt, callbackSeqId);
+      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+    }
 
     case SngEvent::CC:
+      /* CC events go directly to FluidSynth + update channel state */
+      fluid_event_set_dest(evt, synthSeqId);
       fluid_event_control_change(evt, e.channel, e.data1, e.data2);
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      if (e.channel < 16 && e.data1 < 128)
+        channelCtrlVals[e.channel][e.data1] = static_cast<int8_t>(e.data2);
       break;
 
-    case SngEvent::Program:
-      fluid_event_program_change(evt, e.channel, e.data1);
+    case SngEvent::Program: {
+      /* Route through timer callback to update channelPrograms atomically
+       * with the sequencer timeline */
+      int idx = static_cast<int>(pendingSngEvents.size());
+      pendingSngEvents.push_back(
+          {PendingSngNoteEvent::ProgramChange, e.channel, e.data1, 0});
+      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
+
+      fluid_event_set_dest(evt, callbackSeqId);
+      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
+    }
 
     case SngEvent::PitchBend:
+      fluid_event_set_dest(evt, synthSeqId);
       fluid_event_pitch_bend(evt, e.channel, e.pitchBend14);
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
 
     case SngEvent::Tempo:
       /* Change sequencer time-scale at this tick */
+      fluid_event_set_dest(evt, synthSeqId);
       fluid_event_scale(evt, e.tempoScale);
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
@@ -2220,13 +2380,19 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
   delete_fluid_event(evt);
 
-  printf("fluidsyX: scheduled %u SNG ticks of song data\n", lastTick);
+  printf("fluidsyX: scheduled %u SNG ticks of song data (%zu events, "
+         "%zu routed through SoundMacro)\n",
+         lastTick, events.size(), pendingSngEvents.size());
   return static_cast<double>(lastTick);
 }
 
 /* ═══════════════════ Song playback loop ═══════════════════ */
 
 void FluidsyXApp::songLoop(const SongGroupIndex& index) {
+  /* Store a reference to the SongGroupIndex so that timer callbacks can
+   * resolve note events through the page→keymap/layer→SoundMacro chain. */
+  activeSongGroup = &index;
+
   /* Apply the MIDI setup for the selected song to FluidSynth channels */
   std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
       index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
@@ -2235,6 +2401,7 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
   if (setupIt != sortEntries.end()) {
     const auto& midiSetup = setupIt->second;
     for (int ch = 0; ch < 16; ++ch) {
+      channelPrograms[ch] = midiSetup[ch].programNo;
       fluid_synth_program_change(synth, ch, midiSetup[ch].programNo);
       fluid_synth_cc(synth, ch, 7, midiSetup[ch].volume);
       fluid_synth_cc(synth, ch, 10, midiSetup[ch].panning);
@@ -2310,6 +2477,8 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
   for (int c = 0; c < 16; ++c)
     fluid_synth_all_notes_off(synth, c);
   activeMacros.clear();
+  pendingSngEvents.clear();
+  activeSongGroup = nullptr;
   printf("\n");
 }
 
