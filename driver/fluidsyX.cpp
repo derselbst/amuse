@@ -1551,12 +1551,13 @@ static fluid_voice_t* findVoiceById(fluid_synth_t* synth, unsigned int voiceId) 
   if (voiceId == 0) return nullptr;
   int poly = fluid_synth_get_polyphony(synth);
   std::vector<fluid_voice_t*> voices(static_cast<size_t>(poly));
-  int n = fluid_synth_get_voicelist(synth, voices.data(), poly, -1);
-  for (int i = 0; i < n; ++i) {
-    if (fluid_voice_get_id(voices[i]) == voiceId)
-      return voices[i];
+  fluid_synth_get_voicelist(synth, voices.data(), poly, voiceId);
+  
+  if(voices[0] != nullptr && voices[1] != nullptr)
+  {
+    fprintf(stderr, "Warning: multiple voices with the same ID %u found!\n", voiceId);
   }
-  return nullptr;
+  return voices[0];
 }
 
 /** Return the live FluidSynth voice for this macro context, or nullptr. */
