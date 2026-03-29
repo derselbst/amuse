@@ -145,6 +145,24 @@ static constexpr int kGenNrpnScale_VolEnvRelease = 2;
 static constexpr float kInstantReleaseTimecents = -12000.0f; /**< Near-instant release (~1 ms) */
 static constexpr uint16_t kInfiniteLoopSentinel = 65535;     /**< CmdLoop::times value for endless loop */
 
+/** Override the SF2 default modulator that maps velocity → initial attenuation
+ *  (default #1: velocity concave negative → GEN_ATTENUATION, amount 960).
+ *  MusyX handles velocity-based volume entirely through SoundMacro ScaleVolume
+ *  commands, so the default FluidSynth modulator would double-attenuate.
+ *  Setting amount=0 effectively disables this modulator for the voice. */
+static void disableVelocityToAttenuation(fluid_voice_t* voice) {
+  fluid_mod_t* mod = new_fluid_mod();
+  /* Match the default modulator's source signature exactly */
+  fluid_mod_set_source1(mod, FLUID_MOD_VELOCITY,
+                        FLUID_MOD_GC | FLUID_MOD_CONCAVE |
+                        FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE);
+  fluid_mod_set_source2(mod, FLUID_MOD_NONE, 0);
+  fluid_mod_set_dest(mod, GEN_ATTENUATION);
+  fluid_mod_set_amount(mod, 0);
+  fluid_voice_add_mod(voice, mod, FLUID_VOICE_OVERWRITE);
+  delete_fluid_mod(mod);
+}
+
 /* ═══════════════════ SNG binary format structures ═══════════════════
  *
  * Replicated locally from SongState (whose members are private) so that
@@ -772,6 +790,9 @@ static int musyx_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
   if (!voice)
     return FLUID_FAILED;
 
+  /* Disable velocity→attenuation default modulator */
+  disableVelocityToAttenuation(voice);
+
   /* Set sample mode: 0=no loop, 1=loop continuously, 3=loop until noteoff */
   if (d->looped)
     fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
@@ -1011,6 +1032,10 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
   fluid_voice_t* voice = fluid_synth_alloc_voice(synth, p.flSamp, chan, key, vel);
   if (!voice)
     return FLUID_FAILED;
+
+  /* Disable velocity→attenuation default modulator since MusyX handles
+   * velocity scaling through SoundMacro ScaleVolume commands. */
+  disableVelocityToAttenuation(voice);
 
   auto& ctx = *p.macroContext;
   if (p.looped)
@@ -2611,19 +2636,24 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
        * (channel, note).  We match on triggerNote (the original SNG note
        * before keymap/layer transpose).
        * Original amuse: voice->keyOff() → _doKeyOff() → ADSR release +
-       * keyoffNotify (sets m_keyoff flag so waiting macros can resume). */
+       * keyoffNotify (sets m_keyoff flag so waiting macros can resume).
+       * When the macro is in a keyoff-wait, amuse only triggers ADSR
+       * release if ADSR controllers are configured; otherwise it just
+       * resumes the macro without releasing the voice. */
       uint8_t ch = sngEvt.channel;
       uint8_t note = sngEvt.note;
       for (auto& [id, mctx] : app->activeMacros) {
         if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
-          /* Trigger ADSR release (voice fades out naturally) */
-          releaseVoice(app->synth, mctx);
           mctx.keyoffReceived = true;
 
-          /* If the macro is waiting for keyoff (either indefinite or timed),
-           * schedule a timer to resume it now so it can break out of the
-           * wait early (original amuse: m_keyoff → m_inWait = false). */
+          /* Mirror amuse's _doKeyOff() logic: when the macro is in a
+           * keyoff-wait, only trigger ADSR release if ADSR controllers
+           * are configured.  Otherwise the voice should keep playing
+           * while the macro resumes (it may issue its own KeyOff later). */
           if (mctx.waitingKeyoff) {
+            if (mctx.useAdsrControllers)
+              releaseVoice(app->synth, mctx);
+            /* Resume the macro from the keyoff-wait */
             mctx.inIndefiniteWait = false;
             mctx.waitingKeyoff = false;
             fluid_event_t* resumeEvt = new_fluid_event();
@@ -2633,6 +2663,9 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
                 static_cast<intptr_t>(id)));
             fluid_sequencer_send_at(app->sequencer, resumeEvt, time, 1);
             delete_fluid_event(resumeEvt);
+          } else {
+            /* Not in a keyoff-wait — trigger ADSR release directly */
+            releaseVoice(app->synth, mctx);
           }
         }
       }
