@@ -1818,9 +1818,14 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
                                                      ctx.midiKey,
                                                      ctx.midiVel);
       if (voice) {
+        /* Sample mode: 0=no loop, 1=loop continuously, 3=loop until noteoff */
         if (looped)
           fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
         fluid_synth_start_voice(synth, voice);
+      } else {
+        fprintf(stderr, "fluidsyX: warning: voice allocation failed for "
+                        "sample %u on ch %d key %d\n",
+                c.sample.id.id, ctx.channel, ctx.midiKey);
       }
     } else {
       /* Fallback: send note-on to trigger preset (wrong sample possible) */
