@@ -828,14 +828,29 @@ struct FluidsyXApp {
   /* Per-channel program number (set from MIDI setup and SNG program changes) */
   uint8_t channelPrograms[16] = {};
 
+  /* Per-channel ADSR controller mapping.  When a SoundMacro executes
+   * SetAdsrCtrl, it records which CC numbers control Attack/Decay/Sustain/
+   * Release for that channel.  Subsequent CC events matching those numbers
+   * are intercepted and converted to NRPN generator changes so FluidSynth's
+   * volume envelope is adjusted.
+   * NOTE: MusyX ADSR is per-voice; FluidSynth NRPN is per-channel. */
+  struct ChannelAdsrMapping {
+    bool active = false;
+    uint8_t attackCC  = 0;
+    uint8_t decayCC   = 0;
+    uint8_t sustainCC = 0;
+    uint8_t releaseCC = 0;
+  };
+  ChannelAdsrMapping channelAdsrMap[16] = {};
+
   /* Pending SNG events dispatched via timer callbacks.
    * Timer data encodes a negative index into this vector: data = -(1 + idx). */
   struct PendingSngNoteEvent {
-    enum Type { NoteOn, NoteOff, ProgramChange };
+    enum Type { NoteOn, NoteOff, ProgramChange, CC };
     Type    type;
     uint8_t channel;
-    uint8_t note;
-    uint8_t velocity;
+    uint8_t note;     /* also: CC number for Type::CC */
+    uint8_t velocity; /* also: CC value for Type::CC */
   };
   std::vector<PendingSngNoteEvent> pendingSngEvents;
 
@@ -888,6 +903,10 @@ struct FluidsyXApp {
   /** Apply the current ADSR controller values from a MacroExecContext
    *  to the FluidSynth channel via NRPN. */
   void applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick);
+
+  /** Apply ADSR NRPN for a channel using channelAdsrMap + channelCtrlVals.
+   *  Called when a SNG CC event matches a mapped ADSR controller. */
+  void applyChannelAdsr(int channel, unsigned int tick);
 
   /** Kick off the next pending timer step for all active macros */
   void scheduleNextTimerStep();
@@ -1354,6 +1373,43 @@ void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
                     releaseTc, tick);
 }
 
+void FluidsyXApp::applyChannelAdsr(int channel, unsigned int tick) {
+  if (channel < 0 || channel >= 16)
+    return;
+  const auto& m = channelAdsrMap[channel];
+  if (!m.active)
+    return;
+
+  const int8_t* cv = channelCtrlVals[channel];
+
+  /* Attack (CC → seconds → timecents) */
+  double attackSec = MIDItoTIME[std::clamp(int(cv[m.attackCC]), 0, 103)] / 1000.0;
+  double attackTc  = secondsToTimecents(attackSec);
+  sendNrpnGenChange(channel, GEN_VOLENVATTACK, kGenNrpnScale_VolEnvAttack,
+                    attackTc, tick);
+
+  /* Decay */
+  double decaySec = MIDItoTIME[std::clamp(int(cv[m.decayCC]), 0, 103)] / 1000.0;
+  double decayTc  = secondsToTimecents(decaySec);
+  sendNrpnGenChange(channel, GEN_VOLENVDECAY, kGenNrpnScale_VolEnvDecay,
+                    decayTc, tick);
+
+  /* Sustain – in SF2, sustain is in centibels (0=max, 1440=silence).
+   * CC 127 = full sustain (0 cB), CC 0 = silence (1440 cB). */
+  {
+    double sustainFactor = std::clamp(int(cv[m.sustainCC]), 0, 127) / 127.0;
+    double sustaincB = (1.0 - sustainFactor) * 1440.0;
+    sendNrpnGenChange(channel, GEN_VOLENVSUSTAIN, kGenNrpnScale_VolEnvSustain,
+                      sustaincB, tick);
+  }
+
+  /* Release */
+  double releaseSec = MIDItoTIME[std::clamp(int(cv[m.releaseCC]), 0, 103)] / 1000.0;
+  double releaseTc  = secondsToTimecents(releaseSec);
+  sendNrpnGenChange(channel, GEN_VOLENVRELEASE, kGenNrpnScale_VolEnvRelease,
+                    releaseTc, tick);
+}
+
 /* ═══════════════════ SoundMacro → FluidSynth translation ═══════════════════ */
 
 unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
@@ -1660,6 +1716,23 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       ctx.ctrlVals[ctx.midiAttack]  = 10;
       ctx.ctrlVals[ctx.midiSustain] = 127;
       ctx.ctrlVals[ctx.midiRelease] = 10;
+
+      /* Also bootstrap into channel-level CC state so that future macros
+       * on this channel inherit the defaults. */
+      channelCtrlVals[ctx.channel][ctx.midiAttack]  = 10;
+      channelCtrlVals[ctx.channel][ctx.midiSustain] = 127;
+      channelCtrlVals[ctx.channel][ctx.midiRelease] = 10;
+    }
+
+    /* Record the CC→ADSR mapping at channel level so that incoming SNG CC
+     * events can be intercepted and converted to NRPN generator changes. */
+    if (ctx.channel < 16) {
+      auto& m = channelAdsrMap[ctx.channel];
+      m.active    = true;
+      m.attackCC  = c.attack;
+      m.decayCC   = c.decay;
+      m.sustainCC = c.sustain;
+      m.releaseCC = c.release;
     }
 
     /* Apply immediately via NRPN to the FluidSynth channel.
@@ -2216,6 +2289,37 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       app->channelPrograms[sngEvt.channel] = sngEvt.note; /* note field = program */
       fluid_synth_program_change(app->synth, sngEvt.channel, sngEvt.note);
       break;
+
+    case PendingSngNoteEvent::CC: {
+      uint8_t ch  = sngEvt.channel;
+      uint8_t cc  = sngEvt.note;     /* note field = CC number */
+      uint8_t val = sngEvt.velocity; /* velocity field = CC value */
+
+      /* Update global CC state */
+      if (ch < 16 && cc < 128)
+        app->channelCtrlVals[ch][cc] = static_cast<int8_t>(val);
+
+      /* Also propagate to any active macro contexts on this channel so
+       * that ADSR controllers see the updated value. */
+      for (auto& [id, mctx] : app->activeMacros) {
+        if (mctx.channel == ch && !mctx.ended)
+          mctx.ctrlVals[cc] = static_cast<int8_t>(val);
+      }
+
+      /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
+      fluid_synth_cc(app->synth, ch, cc, val);
+
+      /* If this CC matches an ADSR controller on this channel, re-apply
+       * the full ADSR via NRPN so FluidSynth's volume envelope updates. */
+      if (ch < 16) {
+        const auto& m = app->channelAdsrMap[ch];
+        if (m.active && (cc == m.attackCC || cc == m.decayCC ||
+                         cc == m.sustainCC || cc == m.releaseCC)) {
+          app->applyChannelAdsr(ch, time);
+        }
+      }
+      break;
+    }
     }
     return;
   }
@@ -2337,14 +2441,21 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       break;
     }
 
-    case SngEvent::CC:
-      /* CC events go directly to FluidSynth + update channel state */
-      fluid_event_set_dest(evt, synthSeqId);
-      fluid_event_control_change(evt, e.channel, e.data1, e.data2);
+    case SngEvent::CC: {
+      /* Route CC events through timer callback so that:
+       *  1. channelCtrlVals is updated atomically with the sequencer timeline
+       *  2. CC values mapped to ADSR controllers trigger NRPN gen changes
+       *  The raw CC is also sent to FluidSynth for non-ADSR controllers. */
+      size_t idx = pendingSngEvents.size();
+      pendingSngEvents.push_back(
+          {PendingSngNoteEvent::CC, e.channel, e.data1, e.data2});
+      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
+
+      fluid_event_set_dest(evt, callbackSeqId);
+      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
-      if (e.channel < 16 && e.data1 < 128)
-        channelCtrlVals[e.channel][e.data1] = static_cast<int8_t>(e.data2);
       break;
+    }
 
     case SngEvent::Program: {
       /* Route through timer callback to update channelPrograms atomically
@@ -2392,6 +2503,10 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
   /* Store a reference to the SongGroupIndex so that timer callbacks can
    * resolve note events through the page→keymap/layer→SoundMacro chain. */
   activeSongGroup = &index;
+
+  /* Reset per-channel ADSR mappings from any previous playback */
+  for (auto& m : channelAdsrMap)
+    m = {};
 
   /* Apply the MIDI setup for the selected song to FluidSynth channels */
   std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
