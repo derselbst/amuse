@@ -2485,37 +2485,6 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth, ch, cc, val);
 
-      /* For volume (CC 7) and pan (CC 10), also update voice-level
-       * generators on all active voices on this channel.  Voices started
-       * with fluid_synth_start_voice() may not respond to channel CC. */
-      if (cc == 7) {
-        /* CC 7 = channel volume → GEN_ATTENUATION */
-        float attn = (val > 0)
-            ? static_cast<float>(-200.0f * std::log10(val / 127.0f))
-            : 1440.0f;
-        attn = std::clamp(attn, 0.0f, 1440.0f);
-        for (auto& [id, mctx] : app->activeMacros) {
-          if (mctx.channel == ch && !mctx.ended) {
-            if (auto* v = getActiveVoice(app->synth, mctx)) {
-              fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
-              fluid_voice_update_param(v, GEN_ATTENUATION);
-            }
-          }
-        }
-      } else if (cc == 10) {
-        /* CC 10 = pan → GEN_PAN (-500..+500, 0=center).
-         * Pre-compute the generator value once; it is the same for all voices. */
-        float panGen = ((static_cast<int>(val) - 64) / 64.0f) * 500.0f;
-        for (auto& [id, mctx] : app->activeMacros) {
-          if (mctx.channel == ch && !mctx.ended) {
-            if (auto* v = getActiveVoice(app->synth, mctx)) {
-              fluid_voice_gen_set(v, GEN_PAN, panGen);
-              fluid_voice_update_param(v, GEN_PAN);
-            }
-          }
-        }
-      }
-
       /* If this CC matches an ADSR controller on this channel, update
        * ADSR on all active voices on the channel (voice-level) and also
        * via channel-level NRPN as fallback. */
