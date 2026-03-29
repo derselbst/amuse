@@ -503,8 +503,12 @@ struct MacroExecContext {
   int loopCountdown = -1;
   int loopStep = 0;
   bool ended = false;
+  bool keyoffReceived = false;   /**< True once a key-off event was delivered to this voice */
+  bool sampleEndReceived = false;
   bool waitingKeyoff = false;
   bool waitingSampleEnd = false;
+  bool inIndefiniteWait = false; /**< Macro paused in an indefinite wait (ticks=0, keyOff/sampleEnd) */
+  int lastPlayMacroId = -1;     /**< activeMacros key of the last child spawned by PlayMacro */
   /* variable bank (32 × 32-bit) */
   int32_t vars[32] = {};
 
@@ -930,8 +934,10 @@ struct FluidsyXApp {
   void resolveAndEnqueueNote(uint8_t channel, uint8_t note, uint8_t vel,
                              unsigned int tick);
 
-  /** Enqueue all commands of a SoundMacro, starting at \p step. */
-  void enqueueSoundMacro(const SoundMacro* sm, int step, int channel,
+  /** Enqueue all commands of a SoundMacro, starting at \p step.
+   *  Returns the activeMacros key if the macro was stored (for timer-driven
+   *  continuation), or -1 if it ran to completion synchronously. */
+  int enqueueSoundMacro(const SoundMacro* sm, int step, int channel,
                          uint8_t key, uint8_t vel, unsigned int startTick,
                          uint8_t triggerNote = 0xff);
 
@@ -1435,11 +1441,29 @@ static fluid_voice_t* getActiveVoice(fluid_synth_t* synth, MacroExecContext& ctx
   return findVoiceById(synth, ctx.voiceId);
 }
 
-/** Stop a voice that was started with fluid_synth_start_voice().
- *  fluid_synth_stop() is the proper counterpart: it takes the synth and the
- *  unique voice ID returned by fluid_voice_get_id() at allocation time. */
-static void stopVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
+/** Trigger the ADSR release phase of a voice (equivalent to note-off).
+ *  fluid_synth_stop() sends a note-off to the voice identified by the unique
+ *  ID, causing the volume envelope to enter the release phase.  The voice
+ *  continues playing (fading out) until the release completes.
+ *  voiceId is NOT cleared – the voice may still be looked up for further
+ *  manipulation while it is in the release phase. */
+static void releaseVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
+  if (ctx.voiceId != 0)
+    fluid_synth_stop(synth, ctx.voiceId);
+}
+
+/** Immediately silence a voice (near-instant release).
+ *  Sets the volume envelope release to the minimum timecent value before
+ *  calling fluid_synth_stop(), making the release effectively instant.
+ *  fluid_voice_off() is only available in FluidSynth 2.4+. */
+static void killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
   if (ctx.voiceId != 0) {
+    fluid_voice_t* v = findVoiceById(synth, ctx.voiceId);
+    if (v) {
+      /* Set release to near-instant (-12000 timecents ≈ 1ms) */
+      fluid_voice_gen_set(v, GEN_VOLENVRELEASE, -12000.0f);
+      fluid_voice_update_param(v, GEN_VOLENVRELEASE);
+    }
     fluid_synth_stop(synth, ctx.voiceId);
   }
   ctx.voiceId = 0;
@@ -1513,8 +1537,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Termination ── */
   case SoundMacro::CmdOp::End:
   case SoundMacro::CmdOp::Stop: {
-    /* Stop the voice that was started via fluid_synth_start_voice(). */
-    stopVoice(synth, ctx);
+    /* Original amuse: CmdEnd/CmdStop just set PC=-1 (stop macro execution).
+     * The voice is NOT stopped – it continues playing until its ADSR envelope
+     * completes naturally or an external note-off arrives. */
     ctx.ended = true;
     break;
   }
@@ -1522,20 +1547,38 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Wait / Timing ── */
   case SoundMacro::CmdOp::WaitTicks: {
     auto& c = static_cast<const SoundMacro::CmdWaitTicks&>(cmd);
-    if (c.keyOff) {
+    if (c.keyOff)
       ctx.waitingKeyoff = true;
-    }
-    if (c.sampleEnd) {
+    if (c.sampleEnd)
       ctx.waitingSampleEnd = true;
+
+    /* If the wait condition is already satisfied, skip the wait entirely
+     * (matches original amuse: m_keyoffWait && m_keyoff → no wait). */
+    if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
+        (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
+      ctx.waitingKeyoff = false;
+      ctx.waitingSampleEnd = false;
+      ctx.pc++;
+      break;
     }
+
     uint16_t ticks = c.ticksOrMs;
-    if (c.msSwitch) {
+    if (ticks == 0) {
+      /* Indefinite wait – macro pauses until keyOff or sampleEnd.
+       * Original amuse: m_indefiniteWait = true, m_inWait = true.
+       * We use UINT_MAX as sentinel; the processing loop will store the
+       * context but NOT schedule a timer. */
+      ctx.inIndefiniteWait = true;
+      ctx.pc++;
+      delay = UINT_MAX;
+    } else if (c.msSwitch) {
       /* value is already in ms */
       delay = ticks;
+      ctx.pc++;
     } else {
       delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
+      ctx.pc++;
     }
-    ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::WaitMs: {
@@ -1544,8 +1587,24 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       ctx.waitingKeyoff = true;
     if (c.sampleEnd)
       ctx.waitingSampleEnd = true;
-    delay = c.ms;
-    ctx.pc++;
+
+    /* Already satisfied? Skip immediately. */
+    if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
+        (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
+      ctx.waitingKeyoff = false;
+      ctx.waitingSampleEnd = false;
+      ctx.pc++;
+      break;
+    }
+
+    if (c.ms == 0) {
+      ctx.inIndefiniteWait = true;
+      ctx.pc++;
+      delay = UINT_MAX;
+    } else {
+      delay = c.ms;
+      ctx.pc++;
+    }
     break;
   }
 
@@ -1568,9 +1627,22 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::Loop: {
     auto& c = static_cast<const SoundMacro::CmdLoop&>(cmd);
+    /* Original amuse: if keyOff/sampleEnd conditions are met, break out
+     * of the loop immediately (st.m_keyoff / st.m_sampleEnd). */
+    if ((c.keyOff && ctx.keyoffReceived) || (c.sampleEnd && ctx.sampleEndReceived)) {
+      ctx.loopCountdown = -1;
+      ctx.pc++;
+      break;
+    }
     if (ctx.loopCountdown < 0) {
-      /* First encounter: initialize loop */
-      ctx.loopCountdown = (c.times == 0) ? -2 : static_cast<int>(c.times);
+      /* First encounter: initialize loop.
+       * times==0 → infinite (original uses 65535 for endless, 0 for 0). */
+      uint16_t useTimes = c.times;
+      if (useTimes == 65535) {
+        ctx.loopCountdown = -2; /* infinite */
+      } else {
+        ctx.loopCountdown = static_cast<int>(useTimes);
+      }
       ctx.loopStep = c.macroStep.step;
     }
     if (ctx.loopCountdown == -2) {
@@ -1923,21 +1995,38 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
   case SoundMacro::CmdOp::StopSample: {
-    /* Voice was started with fluid_synth_start_voice(); stop via synth. */
-    stopVoice(synth, ctx);
+    /* Original amuse: vox.stopSample() = m_curSample.reset() – immediate stop.
+     * In FluidSynth we kill the voice outright (no release phase). */
+    killVoice(synth, ctx);
     ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::KeyOff: {
-    /* Trigger the release phase.  FluidSynth has no per-voice key-off for
-     * voices started with fluid_synth_start_voice(), so we stop them. */
-    stopVoice(synth, ctx);
+    /* Original amuse: vox._macroKeyOff() triggers ADSR release phase.
+     * The voice continues fading out; the macro continues executing.
+     * fluid_synth_stop() sends a note-off triggering the release envelope. */
+    releaseVoice(synth, ctx);
+    ctx.keyoffReceived = true;
     ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::SendKeyOff: {
-    /* Send key-off to another voice – simplified to same voice. */
-    stopVoice(synth, ctx);
+    /* Original amuse: sends key-off to another voice (last started or by var).
+     * Simplified: if we have a last-played child macro, release its voice. */
+    auto& c = static_cast<const SoundMacro::CmdSendKeyOff&>(cmd);
+    int targetMacroId = -1;
+    if (c.lastStarted) {
+      targetMacroId = ctx.lastPlayMacroId;
+    } else {
+      targetMacroId = ctx.vars[c.variable & 0x1f];
+    }
+    if (targetMacroId >= 0) {
+      auto childIt = activeMacros.find(targetMacroId);
+      if (childIt != activeMacros.end() && !childIt->second.ended) {
+        releaseVoice(synth, childIt->second);
+        childIt->second.keyoffReceived = true;
+      }
+    }
     ctx.pc++;
     break;
   }
@@ -1950,9 +2039,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       if (child) {
         /* Original amuse: startChildMacro uses m_initKey + addNote */
         int childKey = std::clamp(static_cast<int>(ctx.initKey) + c.addNote, 0, 127);
-        enqueueSoundMacro(child, c.macroStep.step, ctx.channel,
+        int childId = enqueueSoundMacro(child, c.macroStep.step, ctx.channel,
                           static_cast<uint8_t>(childKey), ctx.midiVel,
                           curTick);
+        ctx.lastPlayMacroId = childId;
       }
     }
     ctx.pc++;
@@ -2378,7 +2468,7 @@ void FluidsyXApp::resolveAndEnqueueNote(uint8_t channel, uint8_t note,
   }
 }
 
-void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
+int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
                                     int channel, uint8_t key, uint8_t vel,
                                     unsigned int startTick,
                                     uint8_t triggerNote) {
@@ -2404,6 +2494,13 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   int safetyCounter = 0;
   while (!ctx.ended && safetyCounter < kMaxMacroCmdsPerBurst) {
     unsigned int d = processMacroCmd(ctx, tick);
+    if (d == UINT_MAX) {
+      /* Indefinite wait – store context but do NOT schedule a timer.
+       * The macro will be resumed by an external event (keyoff, sampleEnd). */
+      int macroId = nextMacroId++;
+      activeMacros[macroId] = ctx;
+      return macroId;
+    }
     tick += d;
     safetyCounter++;
     if (d > 0 && !ctx.ended) {
@@ -2417,9 +2514,10 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
       fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
       fluid_sequencer_send_at(sequencer, tevt, tick, /*absolute=*/1);
       delete_fluid_event(tevt);
-      return;
+      return macroId;
     }
   }
+  return -1;
 }
 
 /* Timer callback – resume a SoundMacro that was waiting, or dispatch a
@@ -2448,15 +2546,33 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       break;
 
     case PendingSngNoteEvent::NoteOff: {
-      /* Stop all active macro voices triggered by this (channel, note).
-       * We match on triggerNote (the original SNG note before keymap/layer
-       * transpose) rather than allocKey. */
+      /* Trigger ADSR release on all active macro voices triggered by this
+       * (channel, note).  We match on triggerNote (the original SNG note
+       * before keymap/layer transpose).
+       * Original amuse: voice->keyOff() → _doKeyOff() → ADSR release +
+       * keyoffNotify (sets m_keyoff flag so waiting macros can resume). */
       uint8_t ch = sngEvt.channel;
       uint8_t note = sngEvt.note;
       for (auto& [id, mctx] : app->activeMacros) {
         if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
-          stopVoice(app->synth, mctx);
-          mctx.ended = true;
+          /* Trigger ADSR release (voice fades out naturally) */
+          releaseVoice(app->synth, mctx);
+          mctx.keyoffReceived = true;
+
+          /* If the macro is waiting for keyoff (either indefinite or timed),
+           * schedule a timer to resume it now so it can break out of the
+           * wait early (original amuse: m_keyoff → m_inWait = false). */
+          if (mctx.waitingKeyoff) {
+            mctx.inIndefiniteWait = false;
+            mctx.waitingKeyoff = false;
+            fluid_event_t* resumeEvt = new_fluid_event();
+            fluid_event_set_source(resumeEvt, app->callbackSeqId);
+            fluid_event_set_dest(resumeEvt, app->callbackSeqId);
+            fluid_event_timer(resumeEvt, reinterpret_cast<void*>(
+                static_cast<intptr_t>(id)));
+            fluid_sequencer_send_at(app->sequencer, resumeEvt, time, 1);
+            delete_fluid_event(resumeEvt);
+          }
         }
       }
       break;
@@ -2523,6 +2639,11 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
   int safetyCounter = 0;
   while (!ctx.ended && safetyCounter < kMaxMacroCmdsPerBurst) {
     unsigned int d = app->processMacroCmd(ctx, tick);
+    if (d == UINT_MAX) {
+      /* Indefinite wait – macro pauses until external event (keyoff/sampleEnd).
+       * Keep in activeMacros but don't schedule a timer. */
+      return;
+    }
     tick += d;
     safetyCounter++;
     if (d > 0 && !ctx.ended) {
