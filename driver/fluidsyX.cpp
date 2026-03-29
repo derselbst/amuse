@@ -497,6 +497,7 @@ struct MacroExecContext {
   int pc = 0; /* program counter (command index) */
   uint8_t midiKey = 60;
   uint8_t midiVel = 100;
+  uint8_t initKey = 60;  /**< Original trigger key (never modified by SetNote etc.) */
   int channel = 0;
   double ticksPerSec = 1000.0; /* default: 1 tick = 1 ms */
   int loopCountdown = -1;
@@ -798,6 +799,11 @@ struct FluidsyXApp {
 
   /* The pool that belongs to the active group */
   const AudioGroupPool* activePool = nullptr;
+
+  /** Pointer to the MusyX virtual SoundFont data.
+   *  Kept here so processMacroCmd can look up specific samples by SampleId
+   *  when CmdStartSample fires.  Ownership is held by FluidSynth's sfont. */
+  MusyXSoundFontData* musyxSfData = nullptr;
 
   /* Interactive playback state */
   int chanId = 0;
@@ -1285,6 +1291,9 @@ bool FluidsyXApp::buildMusyXSoundFont() {
   printf("fluidsyX: created %zu presets from MusyX data\n",
          sfData->presets.size());
 
+  /* Keep a pointer so processMacroCmd can look up samples by SampleId */
+  musyxSfData = sfData;
+
   /* 3. Register the custom loader and load the soundfont */
   fluid_sfloader_t* loader = new_fluid_sfloader(
       musyx_sfloader_load, musyx_sfloader_free);
@@ -1578,7 +1587,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::LastNote: {
     auto& c = static_cast<const SoundMacro::CmdLastNote&>(cmd);
-    int newKey = ctx.midiKey + c.add;
+    /* Original amuse: m_curPitch = (add + vox.getLastNote()) * 100 + detune
+     * getLastNote() returns m_state.m_initKey — the original trigger key,
+     * NOT the current midiKey (which may have been modified by SetNote). */
+    int newKey = static_cast<int>(ctx.initKey) + c.add;
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
     ctx.curDetune = c.detune;
     {
@@ -1599,11 +1611,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     int lo = c.noteLo;
     int hi = c.noteHi;
 
-    /* absRel mode: range is relative to initial key (m_initKey in amuse).
-     * We approximate using ctx.midiKey as the anchor. */
+    /* absRel mode: range is relative to initial key (m_initKey in amuse). */
     if (c.absRel) {
-      lo = ctx.midiKey - c.noteLo;
-      hi = ctx.midiKey + c.noteHi;
+      lo = ctx.initKey - c.noteLo;
+      hi = ctx.initKey + c.noteHi;
     }
 
     if (lo > hi)
@@ -1766,8 +1777,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::PianoPan: {
     auto& c = static_cast<const SoundMacro::CmdPianoPan&>(cmd);
-    /* Compute panning based on key relative to center */
-    int diff = ctx.midiKey - c.centerKey;
+    /* Original amuse uses m_initKey (the original trigger key), not the
+     * current midiKey which may have been changed by SetNote/AddNote. */
+    int diff = ctx.initKey - c.centerKey;
     int pan = c.centerPan + diff * c.scale / 127;
     pan = std::clamp((pan + 127) / 2, 0, 127);
     fluid_event_pan(evt, ctx.channel, pan);
@@ -1782,12 +1794,39 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
 
-  /* ── Sample commands (no-ops without sample loading) ── */
+  /* ── Sample commands ── */
   case SoundMacro::CmdOp::StartSample: {
-    /* We cannot play the actual MusyX sample; send a note-on instead
-     * so fluidsynth plays whatever SoundFont preset is loaded */
-    fluid_event_noteon(evt, ctx.channel, ctx.midiKey, ctx.midiVel);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    auto& c = static_cast<const SoundMacro::CmdStartSample&>(cmd);
+    /* Look up the specific sample referenced by this command.
+     * In the original amuse, CmdStartSample loads the exact sample by ID
+     * and sets the voice pitch from m_curPitch.  Here we allocate a
+     * FluidSynth voice directly with the correct sample, bypassing
+     * the preset system (which only knows one "default" sample). */
+    fluid_sample_t* flSamp = nullptr;
+    bool looped = false;
+    if (musyxSfData) {
+      auto sIt = musyxSfData->sampleIndex.find(c.sample.id.id);
+      if (sIt != musyxSfData->sampleIndex.end()) {
+        auto& ds = musyxSfData->samples[sIt->second];
+        flSamp = ds.flSample;
+        looped = ds.looped;
+      }
+    }
+    if (flSamp) {
+      fluid_voice_t* voice = fluid_synth_alloc_voice(synth, flSamp,
+                                                     ctx.channel,
+                                                     ctx.midiKey,
+                                                     ctx.midiVel);
+      if (voice) {
+        if (looped)
+          fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
+        fluid_synth_start_voice(synth, voice);
+      }
+    } else {
+      /* Fallback: send note-on to trigger preset (wrong sample possible) */
+      fluid_event_noteon(evt, ctx.channel, ctx.midiKey, ctx.midiVel);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
     ctx.pc++;
     break;
   }
@@ -1817,7 +1856,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     if (activePool && c.macro.id.id != 0xffff) {
       const SoundMacro* child = activePool->soundMacro(c.macro.id);
       if (child) {
-        int childKey = std::clamp(ctx.midiKey + c.addNote, 0, 127);
+        /* Original amuse: startChildMacro uses m_initKey + addNote */
+        int childKey = std::clamp(static_cast<int>(ctx.initKey) + c.addNote, 0, 127);
         enqueueSoundMacro(child, c.macroStep.step, ctx.channel,
                           static_cast<uint8_t>(childKey), ctx.midiVel,
                           curTick);
@@ -1830,7 +1870,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Split / Branch ── */
   case SoundMacro::CmdOp::SplitKey: {
     auto& c = static_cast<const SoundMacro::CmdSplitKey&>(cmd);
-    if (ctx.midiKey >= static_cast<uint8_t>(c.key)) {
+    /* Original amuse uses m_initKey for the comparison, not the current key */
+    if (ctx.initKey >= static_cast<uint8_t>(c.key)) {
       if (c.macro.id.id != 0xffff && c.macro.id.id != 0 && activePool) {
         const SoundMacro* target = activePool->soundMacro(c.macro.id);
         if (target) {
@@ -2232,6 +2273,7 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   ctx.pc = step;
   ctx.channel = channel;
   ctx.midiKey = key;
+  ctx.initKey = key;
   ctx.midiVel = vel;
 
   /* Initialize controller values from channel state so that selectors
