@@ -522,14 +522,8 @@ bool FluidsyXApp::initFluidSynth() {
     return false;
   }
 
-  adriver = new_fluid_audio_driver(settings, synth);
-  if (!adriver) {
-    fprintf(stderr, "fluidsyX: failed to create FluidSynth audio driver\n");
-    return false;
-  }
-
   /* Create sequencer (use system timer so it advances in real-time) */
-  sequencer = new_fluid_sequencer2(/*use_system_timer=*/1);
+  sequencer = new_fluid_sequencer2(0);
   if (!sequencer) {
     fprintf(stderr, "fluidsyX: failed to create FluidSynth sequencer\n");
     return false;
@@ -542,20 +536,25 @@ bool FluidsyXApp::initFluidSynth() {
   callbackSeqId = fluid_sequencer_register_client(
       sequencer, "fluidsyX", &FluidsyXApp::timerCallback, this);
 
+  adriver = new_fluid_audio_driver(settings, synth);
+  if (!adriver) {
+    fprintf(stderr, "fluidsyX: failed to create FluidSynth audio driver\n");
+    return false;
+  }
   return true;
 }
 
 void FluidsyXApp::shutdownFluidSynth() {
+  if (adriver) {
+    delete_fluid_audio_driver(adriver);
+    adriver = nullptr;
+  }
   if (sequencer) {
     if (callbackSeqId >= 0)
       fluid_sequencer_unregister_client(sequencer, callbackSeqId);
     /* synthSeqId is cleaned up by delete_fluid_sequencer */
     delete_fluid_sequencer(sequencer);
     sequencer = nullptr;
-  }
-  if (adriver) {
-    delete_fluid_audio_driver(adriver);
-    adriver = nullptr;
   }
   if (synth) {
     delete_fluid_synth(synth);
