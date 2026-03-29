@@ -2694,6 +2694,21 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
 
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth, ch, cc, val);
+
+      /* If this CC matches an ADSR controller on this channel, update
+       * ADSR generators on all active voices via applyAdsrToVoice(). */
+      if (ch < 16) {
+        const auto& m = app->channelAdsrMap[ch];
+        if (m.active && (cc == m.attackCC || cc == m.decayCC ||
+                         cc == m.sustainCC || cc == m.releaseCC)) {
+          for (auto& [id2, mctx] : app->activeMacros) {
+            if (mctx.channel == ch && !mctx.ended && mctx.useAdsrControllers) {
+              if (auto* v = findVoiceById(app->synth, mctx.voiceId))
+                app->applyAdsrToVoice(v, mctx, /*started=*/true);
+            }
+          }
+        }
+      }
       break;
     }
     }
