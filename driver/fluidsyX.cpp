@@ -950,10 +950,6 @@ struct FluidsyXApp {
   void sendNrpnGenChange(int channel, int genId, int nrpnScale,
                          double value, unsigned int tick);
 
-  /** Apply the current ADSR controller values from a MacroExecContext
-   *  to the FluidSynth channel via NRPN. */
-  void applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick);
-
   /** Apply ADSR NRPN for a channel using channelAdsrMap + channelCtrlVals.
    *  Called when a SNG CC event matches a mapped ADSR controller. */
   void applyChannelAdsr(int channel, unsigned int tick);
@@ -1469,38 +1465,6 @@ void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
   delete_fluid_event(e1);
 }
 
-void FluidsyXApp::applyAdsrCtrl(MacroExecContext& ctx, unsigned int tick) {
-  if (!ctx.useAdsrControllers)
-    return;
-
-  /* Attack (CC → seconds → timecents) */
-  double attackSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiAttack]), 0, 103)] / 1000.0;
-  double attackTc  = secondsToTimecents(attackSec);
-  sendNrpnGenChange(ctx.channel, GEN_VOLENVATTACK, kGenNrpnScale_VolEnvAttack,
-                    attackTc, tick);
-
-  /* Decay */
-  double decaySec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiDecay]), 0, 103)] / 1000.0;
-  double decayTc  = secondsToTimecents(decaySec);
-  sendNrpnGenChange(ctx.channel, GEN_VOLENVDECAY, kGenNrpnScale_VolEnvDecay,
-                    decayTc, tick);
-
-  /* Sustain – in SF2, sustain is in centibels (0=max, 1440=silence).
-   * CC 127 = full sustain (0 cB), CC 0 = silence (1440 cB). */
-  {
-    double sustainFactor = std::clamp(static_cast<int>(ctx.ctrlVals[ctx.midiSustain]), 0, 127) / 127.0;
-    double sustaincB = (1.0 - sustainFactor) * 1440.0;
-    sendNrpnGenChange(ctx.channel, GEN_VOLENVSUSTAIN, kGenNrpnScale_VolEnvSustain,
-                      sustaincB, tick);
-  }
-
-  /* Release */
-  double releaseSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiRelease]), 0, 103)] / 1000.0;
-  double releaseTc  = secondsToTimecents(releaseSec);
-  sendNrpnGenChange(ctx.channel, GEN_VOLENVRELEASE, kGenNrpnScale_VolEnvRelease,
-                    releaseTc, tick);
-}
-
 void FluidsyXApp::applyChannelAdsr(int channel, unsigned int tick) {
   if (channel < 0 || channel >= 16)
     return;
@@ -1942,8 +1906,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     if (auto* v = getActiveVoice(synth, ctx)) {
       applyAdsrToVoice(v, ctx, /*started=*/true);
     }
-    /* Also apply via channel NRPN as fallback for voices not yet started */
-    applyAdsrCtrl(ctx, curTick);
     ctx.pc++;
     break;
   }
