@@ -802,6 +802,9 @@ struct FluidsyXApp {
   fluid_seq_id_t synthSeqId = -1;
   fluid_seq_id_t callbackSeqId = -1;
 
+  fluid_mod_t *modBlueprintADR = nullptr;
+  fluid_mod_t *modBlueprintSustain = nullptr;
+
   /* Amuse parsed data */
   std::vector<std::pair<std::string, IntrusiveAudioGroupData>> data;
   std::list<AudioGroupProject> projs;
@@ -849,17 +852,7 @@ struct FluidsyXApp {
   struct PendingVoiceStart {
     fluid_sample_t* flSamp  = nullptr;
     bool            looped  = false;
-    float           pendingPanGen  = 0.0f;
-    bool            hasPendingPan  = false;
-    float           pendingAttnGen = 0.0f;
-    bool            hasPendingAttn = false;
-    float           curDetune      = 0.0f;
-    bool            useAdsr        = false;
-    uint8_t         midiAttack     = 0;
-    uint8_t         midiDecay      = 0;
-    uint8_t         midiSustain    = 0;
-    uint8_t         midiRelease    = 0;
-    std::array<int8_t, 128> ctrlVals = {};
+    MacroExecContext *macroContext = nullptr;
   };
   PendingVoiceStart pendingVoiceStart;
 
@@ -978,29 +971,17 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
   if (!voice)
     return FLUID_FAILED;
 
+  auto& ctx = *p.macroContext;
   if (p.looped)
     fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
-  if (p.hasPendingPan)
-    fluid_voice_gen_set(voice, GEN_PAN, p.pendingPanGen);
-  if (p.hasPendingAttn)
-    fluid_voice_gen_set(voice, GEN_ATTENUATION, p.pendingAttnGen);
-  if (p.curDetune != 0.0f)
-    fluid_voice_gen_set(voice, GEN_FINETUNE, p.curDetune);
+  if (ctx.hasPendingPan)
+    fluid_voice_gen_set(voice, GEN_PAN, ctx.pendingPanGen);
+  if (ctx.hasPendingAttn)
+    fluid_voice_gen_set(voice, GEN_ATTENUATION, ctx.pendingAttnGen);
+  if (ctx.curDetune != 0.0f)
+    fluid_voice_gen_set(voice, GEN_FINETUNE, ctx.curDetune);
 
-  if (p.useAdsr) {
-    double attackSec  = MIDItoTIME[std::clamp(int(p.ctrlVals[p.midiAttack]),  0, 103)] / 1000.0;
-    double decaySec   = MIDItoTIME[std::clamp(int(p.ctrlVals[p.midiDecay]),   0, 103)] / 1000.0;
-    double releaseSec = MIDItoTIME[std::clamp(int(p.ctrlVals[p.midiRelease]), 0, 103)] / 1000.0;
-    double sustainFactor = std::clamp(int(p.ctrlVals[p.midiSustain]), 0, 127) / 127.0;
-    fluid_voice_gen_set(voice, GEN_VOLENVATTACK,
-                        static_cast<float>(secondsToTimecents(attackSec)));
-    fluid_voice_gen_set(voice, GEN_VOLENVDECAY,
-                        static_cast<float>(secondsToTimecents(decaySec)));
-    fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN,
-                        static_cast<float>((1.0 - sustainFactor) * 1440.0));
-    fluid_voice_gen_set(voice, GEN_VOLENVRELEASE,
-                        static_cast<float>(secondsToTimecents(releaseSec)));
-  }
+  app->applyAdsrToVoice(voice, ctx, false);
 
   fluid_synth_start_voice(synth, voice);
   return FLUID_OK;
@@ -1013,6 +994,34 @@ static void dummy_preset_free(fluid_preset_t* preset) {
 /* ═══════════════════ FluidSynth init / shutdown ═══════════════════ */
 
 bool FluidsyXApp::initFluidSynth() {
+
+    fluid_mod_t *blueprint = new_fluid_mod();
+
+    fluid_mod_set_source1(blueprint, FLUID_MOD_NONE,
+                          FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+    fluid_mod_set_source2(blueprint, FLUID_MOD_NONE, 0);
+    fluid_mod_set_dest(blueprint, GEN_CUSTOM_FILTERQ);
+    fluid_mod_set_amount(blueprint, 1);
+    fluid_mod_set_custom_mapping(blueprint, [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
+    {
+        return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0);
+    }, nullptr);
+
+    modBlueprintADR = new_fluid_mod();
+    fluid_mod_clone(modBlueprintADR, blueprint);
+
+    fluid_mod_set_custom_mapping(blueprint, [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
+    {
+        double sustainFactor = value * 1.0 / range;
+        return (1.0 - sustainFactor) * 1440.0;
+    }, nullptr);
+
+
+    modBlueprintSustain = new_fluid_mod();
+    fluid_mod_clone(modBlueprintSustain, blueprint);
+
+    delete_fluid_mod(blueprint);
+
   settings = new_fluid_settings();
   if (!settings) {
     fprintf(stderr, "fluidsyX: failed to create FluidSynth settings\n");
@@ -1058,29 +1067,24 @@ bool FluidsyXApp::initFluidSynth() {
 }
 
 void FluidsyXApp::shutdownFluidSynth() {
-  if (adriver) {
     delete_fluid_audio_driver(adriver);
     adriver = nullptr;
-  }
-  if (sequencer) {
     if (callbackSeqId >= 0)
       fluid_sequencer_unregister_client(sequencer, callbackSeqId);
     /* synthSeqId is cleaned up by delete_fluid_sequencer */
     delete_fluid_sequencer(sequencer);
     sequencer = nullptr;
-  }
-  if (dummyPreset) {
     dummy_preset_free(dummyPreset);
     dummyPreset = nullptr;
-  }
-  if (synth) {
     delete_fluid_synth(synth);
     synth = nullptr;
-  }
-  if (settings) {
     delete_fluid_settings(settings);
     settings = nullptr;
-  }
+
+    delete_fluid_mod(modBlueprintADR);
+    modBlueprintADR = nullptr;
+    delete_fluid_mod(modBlueprintSustain);
+    modBlueprintSustain = nullptr;
 }
 
 /* ═══════════════════ MusyX data loading ═══════════════════ */
@@ -1478,24 +1482,19 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
     return;
 
   /* Attack */
-  double attackSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiAttack]), 0, 103)] / 1000.0;
-  fluid_voice_gen_set(v, GEN_VOLENVATTACK,
-                      static_cast<float>(secondsToTimecents(attackSec)));
+  fluid_mod_set_source1(modBlueprintADR, ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR));
+  fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
 
   /* Decay */
-  double decaySec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiDecay]), 0, 103)] / 1000.0;
-  fluid_voice_gen_set(v, GEN_VOLENVDECAY,
-                      static_cast<float>(secondsToTimecents(decaySec)));
-
-  /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
-  double sustainFactor = std::clamp(int(ctx.ctrlVals[ctx.midiSustain]), 0, 127) / 127.0;
-  fluid_voice_gen_set(v, GEN_VOLENVSUSTAIN,
-                      static_cast<float>((1.0 - sustainFactor) * 1440.0));
+  fluid_mod_set_source1(modBlueprintADR, ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADR));
+  fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
 
   /* Release */
-  double releaseSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiRelease]), 0, 103)] / 1000.0;
-  fluid_voice_gen_set(v, GEN_VOLENVRELEASE,
-                      static_cast<float>(secondsToTimecents(releaseSec)));
+  fluid_mod_set_source1(modBlueprintADR, ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR));
+  fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
+  /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
+  fluid_mod_set_source1(modBlueprintSustain, ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain));
+  fluid_voice_add_mod(v, modBlueprintSustain, FLUID_VOICE_OVERWRITE);
 
   if (started) {
     fluid_voice_update_param(v, GEN_VOLENVATTACK);
@@ -1956,20 +1955,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       /* Populate the pending voice start context for the noteon callback */
       pendingVoiceStart.flSamp        = flSamp;
       pendingVoiceStart.looped        = looped;
-      pendingVoiceStart.pendingPanGen = ctx.pendingPanGen;
-      pendingVoiceStart.hasPendingPan = ctx.hasPendingPan;
-      pendingVoiceStart.pendingAttnGen = ctx.pendingAttnGen;
-      pendingVoiceStart.hasPendingAttn = ctx.hasPendingAttn;
-      pendingVoiceStart.curDetune     = static_cast<float>(ctx.curDetune);
-      pendingVoiceStart.useAdsr       = ctx.useAdsrControllers;
-      if (ctx.useAdsrControllers) {
-        pendingVoiceStart.midiAttack  = ctx.midiAttack;
-        pendingVoiceStart.midiDecay   = ctx.midiDecay;
-        pendingVoiceStart.midiSustain = ctx.midiSustain;
-        pendingVoiceStart.midiRelease = ctx.midiRelease;
-        std::copy(std::begin(ctx.ctrlVals), std::end(ctx.ctrlVals),
-                  pendingVoiceStart.ctrlVals.begin());
-      }
+      pendingVoiceStart.macroContext = &ctx;
 
       /* Allocate a unique non-zero ID */
       unsigned int id = nextVoiceId++;
@@ -2603,23 +2589,6 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
 
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth, ch, cc, val);
-
-      /* If this CC matches an ADSR controller on this channel, update
-       * ADSR on all active voices on the channel (voice-level) and also
-       * via channel-level NRPN as fallback. */
-      if (ch < 16) {
-        const auto& m = app->channelAdsrMap[ch];
-        if (m.active && (cc == m.attackCC || cc == m.decayCC ||
-                         cc == m.sustainCC || cc == m.releaseCC)) {
-          /* Voice-level: apply ADSR generators to each active voice */
-          for (auto& [id, mctx] : app->activeMacros) {
-            if (mctx.channel == ch && !mctx.ended) {
-              if (auto* v = getActiveVoice(app->synth, mctx))
-                app->applyAdsrToVoice(v, mctx, /*started=*/true);
-            }
-          }
-        }
-      }
       break;
     }
     }
