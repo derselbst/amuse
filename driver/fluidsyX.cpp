@@ -134,6 +134,9 @@ static constexpr int kGenNrpnScale_VolEnvDecay   = 2;
 static constexpr int kGenNrpnScale_VolEnvSustain = 1;
 static constexpr int kGenNrpnScale_VolEnvRelease = 2;
 
+static constexpr float kInstantReleaseTimecents = -12000.0f; /**< Near-instant release (~1 ms) */
+static constexpr uint16_t kInfiniteLoopSentinel = 65535;     /**< CmdLoop::times value for endless loop */
+
 /* ═══════════════════ SNG binary format structures ═══════════════════
  *
  * Replicated locally from SongState (whose members are private) so that
@@ -503,12 +506,12 @@ struct MacroExecContext {
   int loopCountdown = -1;
   int loopStep = 0;
   bool ended = false;
-  bool keyoffReceived = false;   /**< True once a key-off event was delivered to this voice */
-  bool sampleEndReceived = false;
+  bool keyoffReceived = false;    /**< True once a key-off event was delivered to this voice */
+  bool sampleEndReceived = false; /**< True once the sample-end event was delivered */
   bool waitingKeyoff = false;
   bool waitingSampleEnd = false;
-  bool inIndefiniteWait = false; /**< Macro paused in an indefinite wait (ticks=0, keyOff/sampleEnd) */
-  int lastPlayMacroId = -1;     /**< activeMacros key of the last child spawned by PlayMacro */
+  bool inIndefiniteWait = false;  /**< Macro paused in an indefinite wait (ticks=0, keyOff/sampleEnd) */
+  int lastPlayMacroId = -1;      /**< activeMacros key of the last child spawned by PlayMacro */
   /* variable bank (32 × 32-bit) */
   int32_t vars[32] = {};
 
@@ -1460,8 +1463,8 @@ static void killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
   if (ctx.voiceId != 0) {
     fluid_voice_t* v = findVoiceById(synth, ctx.voiceId);
     if (v) {
-      /* Set release to near-instant (-12000 timecents ≈ 1ms) */
-      fluid_voice_gen_set(v, GEN_VOLENVRELEASE, -12000.0f);
+      /* Set release to near-instant */
+      fluid_voice_gen_set(v, GEN_VOLENVRELEASE, kInstantReleaseTimecents);
       fluid_voice_update_param(v, GEN_VOLENVRELEASE);
     }
     fluid_synth_stop(synth, ctx.voiceId);
@@ -1636,9 +1639,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     }
     if (ctx.loopCountdown < 0) {
       /* First encounter: initialize loop.
-       * times==0 → infinite (original uses 65535 for endless, 0 for 0). */
+       * times==65535 → infinite loop (original amuse convention). */
       uint16_t useTimes = c.times;
-      if (useTimes == 65535) {
+      if (useTimes == kInfiniteLoopSentinel) {
         ctx.loopCountdown = -2; /* infinite */
       } else {
         ctx.loopCountdown = static_cast<int>(useTimes);
