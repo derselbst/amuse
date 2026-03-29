@@ -950,10 +950,6 @@ struct FluidsyXApp {
   void sendNrpnGenChange(int channel, int genId, int nrpnScale,
                          double value, unsigned int tick);
 
-  /** Apply ADSR NRPN for a channel using channelAdsrMap + channelCtrlVals.
-   *  Called when a SNG CC event matches a mapped ADSR controller. */
-  void applyChannelAdsr(int channel, unsigned int tick);
-
   /** Apply ADSR generator values directly to a FluidSynth voice.
    *  If \p started is true, also calls fluid_voice_update_param() for
    *  each generator so the change takes effect on an already-playing voice. */
@@ -1463,47 +1459,6 @@ void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
   safe_send(tick);
 
   delete_fluid_event(e1);
-}
-
-void FluidsyXApp::applyChannelAdsr(int channel, unsigned int tick) {
-  if (channel < 0 || channel >= 16)
-    return;
-  const auto& m = channelAdsrMap[channel];
-  if (!m.active)
-    return;
-  /* CC numbers must be in valid MIDI range (0-127) for array access */
-  if (m.attackCC >= 128 || m.decayCC >= 128 ||
-      m.sustainCC >= 128 || m.releaseCC >= 128)
-    return;
-
-  const int8_t* cv = channelCtrlVals[channel];
-
-  /* Attack (CC → seconds → timecents) */
-  double attackSec = MIDItoTIME[std::clamp(int(cv[m.attackCC]), 0, 103)] / 1000.0;
-  double attackTc  = secondsToTimecents(attackSec);
-  sendNrpnGenChange(channel, GEN_VOLENVATTACK, kGenNrpnScale_VolEnvAttack,
-                    attackTc, tick);
-
-  /* Decay */
-  double decaySec = MIDItoTIME[std::clamp(int(cv[m.decayCC]), 0, 103)] / 1000.0;
-  double decayTc  = secondsToTimecents(decaySec);
-  sendNrpnGenChange(channel, GEN_VOLENVDECAY, kGenNrpnScale_VolEnvDecay,
-                    decayTc, tick);
-
-  /* Sustain – in SF2, sustain is in centibels (0=max, 1440=silence).
-   * CC 127 = full sustain (0 cB), CC 0 = silence (1440 cB). */
-  {
-    double sustainFactor = std::clamp(int(cv[m.sustainCC]), 0, 127) / 127.0;
-    double sustaincB = (1.0 - sustainFactor) * 1440.0;
-    sendNrpnGenChange(channel, GEN_VOLENVSUSTAIN, kGenNrpnScale_VolEnvSustain,
-                      sustaincB, tick);
-  }
-
-  /* Release */
-  double releaseSec = MIDItoTIME[std::clamp(int(cv[m.releaseCC]), 0, 103)] / 1000.0;
-  double releaseTc  = secondsToTimecents(releaseSec);
-  sendNrpnGenChange(channel, GEN_VOLENVRELEASE, kGenNrpnScale_VolEnvRelease,
-                    releaseTc, tick);
 }
 
 /* ═══════════════════ Voice-level helpers ═══════════════════ */
@@ -2624,8 +2579,6 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
                 app->applyAdsrToVoice(v, mctx, /*started=*/true);
             }
           }
-          /* Channel-level NRPN fallback */
-          app->applyChannelAdsr(ch, time);
         }
       }
       break;
