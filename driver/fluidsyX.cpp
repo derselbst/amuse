@@ -509,14 +509,11 @@ struct MacroExecContext {
   int32_t vars[32] = {};
 
   /* ── FluidSynth voice tracking ──
-   * Each SoundMacro owns a single voice.  After CmdStartSample allocates
-   * a voice via fluid_synth_alloc_voice(), we store its pointer and ID so
-   * that subsequent commands (pitch, pan, volume, ADSR, etc.) can
-   * manipulate the voice's SF2 generators directly instead of using
-   * channel-level events (which would affect *all* voices on the channel).
-   * Before each access, validate with fluid_voice_is_playing() + ID check
-   * (voices are pooled and recycled by FluidSynth). */
-  fluid_voice_t* voice = nullptr;
+   * Each SoundMacro owns a single voice.  CmdStartSample routes voice
+   * creation through fluid_synth_start() (via dummyPreset) so that the
+   * voice receives a unique user-controlled ID (fluid_synth_alloc_voice()
+   * alone leaves ID=0, which is treated as "not started").
+   * Subsequent commands look up the voice by ID via findVoiceById(). */
   unsigned int voiceId = 0;
   uint8_t allocKey = 60;      /**< MIDI key at voice allocation time */
   uint8_t triggerNote = 60;   /**< Original SNG note (before keymap/layer transpose), used for NoteOff matching */
@@ -836,6 +833,33 @@ struct FluidsyXApp {
   std::map<int, MacroExecContext> activeMacros;
   int nextMacroId = 0;
 
+  /* Monotonic counter for unique voice IDs (passed to fluid_synth_start).
+   * 0 is reserved as "not started". */
+  unsigned int nextVoiceId = 1;
+
+  /** Context passed to the dummy preset's noteon callback so CmdStartSample
+   *  can alloc a voice with the specific MusyX sample and initial state. */
+  struct PendingVoiceStart {
+    fluid_sample_t* flSamp  = nullptr;
+    bool            looped  = false;
+    float           pendingPanGen  = 0.0f;
+    bool            hasPendingPan  = false;
+    float           pendingAttnGen = 0.0f;
+    bool            hasPendingAttn = false;
+    float           curDetune      = 0.0f;
+    bool            useAdsr        = false;
+    uint8_t         midiAttack     = 0;
+    uint8_t         midiDecay      = 0;
+    uint8_t         midiSustain    = 0;
+    uint8_t         midiRelease    = 0;
+    std::array<int8_t, 128> ctrlVals = {};
+  };
+  PendingVoiceStart pendingVoiceStart;
+
+  /** Dummy preset used to route voice creation through fluid_synth_start()
+   *  so that voices receive a proper unique ID (set via nextVoiceId). */
+  fluid_preset_t* dummyPreset = nullptr;
+
   /* Per-channel CC state tracking (propagated to new MacroExecContexts).
    * Updated when MIDI setup is applied and when CC-manipulating commands
    * modify values. */
@@ -947,6 +971,51 @@ struct FluidsyXApp {
   void scheduleNextTimerStep();
 };
 
+/* ═══════════════════ Dummy preset callbacks ═══════════════════ */
+
+static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
+                                int chan, int key, int vel) {
+  auto* app = static_cast<FluidsyXApp*>(fluid_preset_get_data(preset));
+  if (!app || !app->pendingVoiceStart.flSamp)
+    return FLUID_FAILED;
+
+  auto& p = app->pendingVoiceStart;
+  fluid_voice_t* voice = fluid_synth_alloc_voice(synth, p.flSamp, chan, key, vel);
+  if (!voice)
+    return FLUID_FAILED;
+
+  if (p.looped)
+    fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
+  if (p.hasPendingPan)
+    fluid_voice_gen_set(voice, GEN_PAN, p.pendingPanGen);
+  if (p.hasPendingAttn)
+    fluid_voice_gen_set(voice, GEN_ATTENUATION, p.pendingAttnGen);
+  if (p.curDetune != 0.0f)
+    fluid_voice_gen_set(voice, GEN_FINETUNE, p.curDetune);
+
+  if (p.useAdsr) {
+    double attackSec  = MIDItoTIME[std::clamp(int(p.ctrlVals[p.midiAttack]),  0, 103)] / 1000.0;
+    double decaySec   = MIDItoTIME[std::clamp(int(p.ctrlVals[p.midiDecay]),   0, 103)] / 1000.0;
+    double releaseSec = MIDItoTIME[std::clamp(int(p.ctrlVals[p.midiRelease]), 0, 103)] / 1000.0;
+    double sustainFactor = std::clamp(int(p.ctrlVals[p.midiSustain]), 0, 127) / 127.0;
+    fluid_voice_gen_set(voice, GEN_VOLENVATTACK,
+                        static_cast<float>(secondsToTimecents(attackSec)));
+    fluid_voice_gen_set(voice, GEN_VOLENVDECAY,
+                        static_cast<float>(secondsToTimecents(decaySec)));
+    fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN,
+                        static_cast<float>((1.0 - sustainFactor) * 1440.0));
+    fluid_voice_gen_set(voice, GEN_VOLENVRELEASE,
+                        static_cast<float>(secondsToTimecents(releaseSec)));
+  }
+
+  fluid_synth_start_voice(synth, voice);
+  return FLUID_OK;
+}
+
+static void dummy_preset_free(fluid_preset_t* preset) {
+  delete_fluid_preset(preset);
+}
+
 /* ═══════════════════ FluidSynth init / shutdown ═══════════════════ */
 
 bool FluidsyXApp::initFluidSynth() {
@@ -1005,6 +1074,10 @@ void FluidsyXApp::shutdownFluidSynth() {
     /* synthSeqId is cleaned up by delete_fluid_sequencer */
     delete_fluid_sequencer(sequencer);
     sequencer = nullptr;
+  }
+  if (dummyPreset) {
+    dummy_preset_free(dummyPreset);
+    dummyPreset = nullptr;
   }
   if (synth) {
     delete_fluid_synth(synth);
@@ -1337,6 +1410,20 @@ bool FluidsyXApp::buildMusyXSoundFont() {
   }
 
   printf("fluidsyX: MusyX SoundFont activated (id=%d)\n", sfId);
+
+  /* Create the dummy preset used to route CmdStartSample through
+   * fluid_synth_start() so that voices receive a user-controlled unique ID. */
+  fluid_sfont_t* musyxSfont = fluid_synth_get_sfont_by_id(synth, sfId);
+  dummyPreset = new_fluid_preset(
+      musyxSfont,
+      [](fluid_preset_t*) -> const char* { return "MusyX Voice"; },
+      [](fluid_preset_t*) -> int { return 0; },
+      [](fluid_preset_t*) -> int { return 128; },
+      dummy_preset_noteon,
+      dummy_preset_free);
+  if (dummyPreset)
+    fluid_preset_set_data(dummyPreset, this);
+
   return true;
 }
 
@@ -1457,16 +1544,24 @@ void FluidsyXApp::applyChannelAdsr(int channel, unsigned int tick) {
 
 /* ═══════════════════ Voice-level helpers ═══════════════════ */
 
-/** Check if the macro's FluidSynth voice is still alive.
- *  FluidSynth recycles voices from a pool; before touching a stored pointer
- *  we must verify it is still playing AND that the unique ID has not changed.
- *  If the voice is gone, clear the pointer so callers fall through. */
-static fluid_voice_t* getActiveVoice(MacroExecContext& ctx) {
-  if (ctx.voice && fluid_voice_is_playing(ctx.voice) &&
-      fluid_voice_get_id(ctx.voice) == ctx.voiceId)
-    return ctx.voice;
-  ctx.voice = nullptr;
+/** Find a FluidSynth voice by its unique ID. Scans the voice list via
+ *  fluid_synth_get_voicelist() — safe because we never store raw voice
+ *  pointers across scheduling boundaries. Returns nullptr if not found. */
+static fluid_voice_t* findVoiceById(fluid_synth_t* synth, unsigned int voiceId) {
+  if (voiceId == 0) return nullptr;
+  int poly = fluid_synth_get_polyphony(synth);
+  std::vector<fluid_voice_t*> voices(static_cast<size_t>(poly));
+  int n = fluid_synth_get_voicelist(synth, voices.data(), poly, -1);
+  for (int i = 0; i < n; ++i) {
+    if (fluid_voice_get_id(voices[i]) == voiceId)
+      return voices[i];
+  }
   return nullptr;
+}
+
+/** Return the live FluidSynth voice for this macro context, or nullptr. */
+static fluid_voice_t* getActiveVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
+  return findVoiceById(synth, ctx.voiceId);
 }
 
 /** Stop a voice that was started with fluid_synth_start_voice().
@@ -1476,9 +1571,6 @@ static void stopVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
   if (ctx.voiceId != 0) {
     fluid_synth_stop(synth, ctx.voiceId);
   }
-  /* Always clear tracking state so getActiveVoice() returns null
-   * on any subsequent call, even if no voice was playing. */
-  ctx.voice = nullptr;
   ctx.voiceId = 0;
 }
 
@@ -1516,7 +1608,7 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 }
 
 void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
-  fluid_voice_t* v = getActiveVoice(ctx);
+  fluid_voice_t* v = getActiveVoice(synth, ctx);
   if (!v) return;
   int offsetCents = (ctx.midiKey - ctx.allocKey) * 100 + ctx.curDetune;
   int coarse = offsetCents / 100;
@@ -1771,7 +1863,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
         : 1440.0f;
     attn = std::clamp(attn, 0.0f, 1440.0f);
-    if (auto* v = getActiveVoice(ctx)) {
+    if (auto* v = getActiveVoice(synth, ctx)) {
       fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
       fluid_voice_update_param(v, GEN_ATTENUATION);
     } else {
@@ -1789,7 +1881,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
         : 1440.0f;
     attn = std::clamp(attn, 0.0f, 1440.0f);
-    if (auto* v = getActiveVoice(ctx)) {
+    if (auto* v = getActiveVoice(synth, ctx)) {
       fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
       fluid_voice_update_param(v, GEN_ATTENUATION);
     } else {
@@ -1846,7 +1938,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
     /* Apply ADSR immediately.  If the voice is already playing, use
      * voice-level generators; otherwise defer to StartSample. */
-    if (auto* v = getActiveVoice(ctx)) {
+    if (auto* v = getActiveVoice(synth, ctx)) {
       applyAdsrToVoice(v, ctx, /*started=*/true);
     }
     /* Also apply via channel NRPN as fallback for voices not yet started */
@@ -1863,7 +1955,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     } else {
       /* GEN_PAN: -500..+500 (0.1% units).  panPosition is -127..+127 */
       float panGen = (c.panPosition / 127.0f) * 500.0f;
-      if (auto* v = getActiveVoice(ctx)) {
+      if (auto* v = getActiveVoice(synth, ctx)) {
         fluid_voice_gen_set(v, GEN_PAN, panGen);
         fluid_voice_update_param(v, GEN_PAN);
       } else {
@@ -1882,7 +1974,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     int panPos = c.centerPan + diff * c.scale / 127;
     panPos = std::clamp(panPos, -127, 127);
     float panGen = (panPos / 127.0f) * 500.0f;
-    if (auto* v = getActiveVoice(ctx)) {
+    if (auto* v = getActiveVoice(synth, ctx)) {
       fluid_voice_gen_set(v, GEN_PAN, panGen);
       fluid_voice_update_param(v, GEN_PAN);
     } else {
@@ -1903,12 +1995,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::StartSample: {
     auto& c = static_cast<const SoundMacro::CmdStartSample&>(cmd);
     /* Look up the specific sample referenced by this command.
-     * In the original amuse, CmdStartSample loads the exact sample by ID
-     * and sets the voice pitch from m_curPitch.  Here we allocate a
-     * FluidSynth voice directly with the correct sample, then set all
-     * pending generator values (pan, volume, ADSR, pitch) before starting
-     * the voice.  Subsequent SoundMacro commands manipulate the voice's
-     * generators directly via fluid_voice_gen_set() + update_param(). */
+     * Route voice creation through fluid_synth_start() so the voice receives
+     * a unique user-controlled ID (fluid_synth_alloc_voice() alone leaves ID=0).
+     * This allows fluid_synth_stop(synth, id) to properly stop the voice. */
     fluid_sample_t* flSamp = nullptr;
     bool looped = false;
     if (musyxSfData) {
@@ -1919,45 +2008,43 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         looped = ds.looped;
       }
     }
-    if (flSamp) {
-      fluid_voice_t* newVoice = fluid_synth_alloc_voice(synth, flSamp,
-                                                        ctx.channel,
-                                                        ctx.midiKey,
-                                                        ctx.midiVel);
-      if (newVoice) {
-        /* Sample mode: 0=no loop, 1=loop continuously */
-        if (looped)
-          fluid_voice_gen_set(newVoice, GEN_SAMPLEMODE, 1);
+    if (flSamp && dummyPreset) {
+      /* Populate the pending voice start context for the noteon callback */
+      pendingVoiceStart.flSamp        = flSamp;
+      pendingVoiceStart.looped        = looped;
+      pendingVoiceStart.pendingPanGen = ctx.pendingPanGen;
+      pendingVoiceStart.hasPendingPan = ctx.hasPendingPan;
+      pendingVoiceStart.pendingAttnGen = ctx.pendingAttnGen;
+      pendingVoiceStart.hasPendingAttn = ctx.hasPendingAttn;
+      pendingVoiceStart.curDetune     = static_cast<float>(ctx.curDetune);
+      pendingVoiceStart.useAdsr       = ctx.useAdsrControllers;
+      if (ctx.useAdsrControllers) {
+        pendingVoiceStart.midiAttack  = ctx.midiAttack;
+        pendingVoiceStart.midiDecay   = ctx.midiDecay;
+        pendingVoiceStart.midiSustain = ctx.midiSustain;
+        pendingVoiceStart.midiRelease = ctx.midiRelease;
+        std::copy(std::begin(ctx.ctrlVals), std::end(ctx.ctrlVals),
+                  pendingVoiceStart.ctrlVals.begin());
+      }
 
-        /* Apply any pending state accumulated before StartSample */
-        if (ctx.hasPendingPan) {
-          fluid_voice_gen_set(newVoice, GEN_PAN, ctx.pendingPanGen);
-          ctx.hasPendingPan = false;
-        }
-        if (ctx.hasPendingAttn) {
-          fluid_voice_gen_set(newVoice, GEN_ATTENUATION, ctx.pendingAttnGen);
-          ctx.hasPendingAttn = false;
-        }
+      /* Allocate a unique non-zero ID */
+      unsigned int id = nextVoiceId++;
+      if (id == 0) id = nextVoiceId++;
 
-        /* Apply ADSR if controllers are configured */
-        applyAdsrToVoice(newVoice, ctx, /*started=*/false);
-
-        /* Apply pre-StartSample detune via GEN_FINETUNE */
-        if (ctx.curDetune != 0)
-          fluid_voice_gen_set(newVoice, GEN_FINETUNE,
-                              static_cast<float>(ctx.curDetune));
-
-        fluid_synth_start_voice(synth, newVoice);
-
-        /* Store voice for future manipulation by this SoundMacro */
-        ctx.voice   = newVoice;
-        ctx.voiceId = fluid_voice_get_id(newVoice);
+      /* fluid_synth_start() sets synth->noteid = id before calling noteon,
+       * so the voice allocated inside dummy_preset_noteon gets our custom ID. */
+      if (fluid_synth_start(synth, id, dummyPreset, 0, ctx.channel,
+                             ctx.midiKey, ctx.midiVel) == FLUID_OK) {
+        ctx.voiceId  = id;
         ctx.allocKey = ctx.midiKey;
+        ctx.hasPendingPan  = false;
+        ctx.hasPendingAttn = false;
       } else {
-        fprintf(stderr, "fluidsyX: warning: voice allocation failed for "
+        fprintf(stderr, "fluidsyX: warning: voice start failed for "
                         "sample %u on ch %d key %d\n",
                 c.sample.id.id, ctx.channel, ctx.midiKey);
       }
+      pendingVoiceStart.flSamp = nullptr; /* prevent accidental reuse */
     } else {
       /* Fallback: send note-on to trigger preset (wrong sample possible) */
       fluid_event_noteon(evt, ctx.channel, ctx.midiKey, ctx.midiVel);
@@ -2066,7 +2153,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Vibrato / Tremolo / Portamento ── */
   case SoundMacro::CmdOp::Vibrato: {
     auto& c = static_cast<const SoundMacro::CmdVibrato&>(cmd);
-    if (auto* v = getActiveVoice(ctx)) {
+    if (auto* v = getActiveVoice(synth, ctx)) {
       /* GEN_VIBLFOTOPITCH: vibrato depth in cents */
       float depthCents = static_cast<float>(c.levelNote * 100 + c.levelFine);
       fluid_voice_gen_set(v, GEN_VIBLFOTOPITCH, depthCents);
@@ -2540,7 +2627,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
         attn = std::clamp(attn, 0.0f, 1440.0f);
         for (auto& [id, mctx] : app->activeMacros) {
           if (mctx.channel == ch && !mctx.ended) {
-            if (auto* v = getActiveVoice(mctx)) {
+            if (auto* v = getActiveVoice(app->synth, mctx)) {
               fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
               fluid_voice_update_param(v, GEN_ATTENUATION);
             }
@@ -2552,7 +2639,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
         float panGen = ((static_cast<int>(val) - 64) / 64.0f) * 500.0f;
         for (auto& [id, mctx] : app->activeMacros) {
           if (mctx.channel == ch && !mctx.ended) {
-            if (auto* v = getActiveVoice(mctx)) {
+            if (auto* v = getActiveVoice(app->synth, mctx)) {
               fluid_voice_gen_set(v, GEN_PAN, panGen);
               fluid_voice_update_param(v, GEN_PAN);
             }
@@ -2570,7 +2657,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
           /* Voice-level: apply ADSR generators to each active voice */
           for (auto& [id, mctx] : app->activeMacros) {
             if (mctx.channel == ch && !mctx.ended) {
-              if (auto* v = getActiveVoice(mctx))
+              if (auto* v = getActiveVoice(app->synth, mctx))
                 app->applyAdsrToVoice(v, mctx, /*started=*/true);
             }
           }
