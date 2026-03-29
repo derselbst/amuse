@@ -1379,6 +1379,10 @@ void FluidsyXApp::applyChannelAdsr(int channel, unsigned int tick) {
   const auto& m = channelAdsrMap[channel];
   if (!m.active)
     return;
+  /* CC numbers must be in valid MIDI range (0-127) for array access */
+  if (m.attackCC >= 128 || m.decayCC >= 128 ||
+      m.sustainCC >= 128 || m.releaseCC >= 128)
+    return;
 
   const int8_t* cv = channelCtrlVals[channel];
 
