@@ -642,10 +642,10 @@ bool SoundMacro::CmdSetAdsrCtrl::Do(SoundMacroState& st, Voice& vox) const {
   st.m_midiSustain = sustain;
   st.m_midiRelease = release;
 
-  std::cerr << "AttackCC" << (int)attack << "\n"
-            << "DecayCC" << (int)decay << "\n"
-            << "SustainCC" << (int)sustain << "\n"
-            << "ReleaseCC" << (int)release <<"\n";
+  // std::cerr << "AttackCC" << (int)attack << "\n"
+  //           << "DecayCC" << (int)decay << "\n"
+  //           << "SustainCC" << (int)sustain << "\n"
+  //           << "ReleaseCC" << (int)release <<"\n";
 
   /* Bootstrap ADSR defaults here */
   if (!vox.getCtrlValue(st.m_midiSustain)) {
