@@ -16,6 +16,7 @@
 #include "amuse/N64MusyXCodec.hpp"
 #include "amuse/Envelope.hpp"
 #include "amuse/Common.hpp"
+#include "amuse/SongState.hpp"
 
 #include <fluidsynth.h>
 
@@ -125,6 +126,362 @@ static constexpr int kGenNrpnScale_VolEnvAttack  = 2;
 static constexpr int kGenNrpnScale_VolEnvDecay   = 2;
 static constexpr int kGenNrpnScale_VolEnvSustain = 1;
 static constexpr int kGenNrpnScale_VolEnvRelease = 2;
+
+/* ═══════════════════ SNG binary format structures ═══════════════════
+ *
+ * Replicated locally from SongState (whose members are private) so that
+ * we can parse the raw SNG binary and schedule FluidSynth sequencer events
+ * directly, without going through amuse::Sequencer.
+ * ═════════════════════════════════════════════════════════════════════ */
+
+/** SNG file header (immediately at offset 0). */
+struct SngHeader {
+  uint32_t trackIdxOff;
+  uint32_t regionIdxOff;
+  uint32_t chanMapOff;
+  uint32_t tempoTableOff;
+  uint32_t initialTempo; /* top bit = per-channel looping */
+  uint32_t loopStartTicks[16];
+  uint32_t chanMapOff2;
+
+  void swapFromBig() {
+    trackIdxOff  = SBig(trackIdxOff);
+    regionIdxOff = SBig(regionIdxOff);
+    chanMapOff   = SBig(chanMapOff);
+    tempoTableOff = SBig(tempoTableOff);
+    initialTempo  = SBig(initialTempo);
+    if ((initialTempo & 0x80000000) != 0u) {
+      for (auto& t : loopStartTicks)
+        t = SBig(t);
+      chanMapOff2 = SBig(chanMapOff2);
+    } else {
+      loopStartTicks[0] = SBig(loopStartTicks[0]);
+    }
+  }
+};
+
+/** Track region within the SNG track-region list. */
+struct SngTrackRegion {
+  uint32_t startTick;
+  uint8_t  progNum;
+  uint8_t  unk1;
+  uint16_t unk2;
+  int16_t  regionIndex;
+  int16_t  loopToRegion;
+
+  bool indexValid(bool big) const {
+    return (big ? SBig(regionIndex) : regionIndex) >= 0;
+  }
+};
+
+/** Tempo change entry in the SNG tempo table. */
+struct SngTempoChange {
+  uint32_t tick;
+  uint32_t tempo;
+
+  void swapBig() {
+    tick  = SBig(tick);
+    tempo = SBig(tempo);
+  }
+};
+
+/** Per-region track header (12 bytes, precedes command data). */
+struct SngTrackHeader {
+  uint32_t type;
+  uint32_t pitchOff;
+  uint32_t modOff;
+
+  void swapBig() {
+    type     = SBig(type);
+    pitchOff = SBig(pitchOff);
+    modOff   = SBig(modOff);
+  }
+};
+
+/* ── SNG variable-length decode helpers (same logic as SongState.cpp) ── */
+
+static uint16_t sngDecodeUnsignedValue(const unsigned char*& data) {
+  uint16_t ret = 0;
+  if ((data[0] & 0x80) != 0) {
+    ret = data[1] | ((data[0] & 0x7f) << 8);
+    data += 2;
+  } else {
+    ret = data[0];
+    data += 1;
+  }
+  return ret;
+}
+
+static int16_t sngDecodeSignedValue(const unsigned char*& data) {
+  int16_t ret = 0;
+  if ((data[0] & 0x80) != 0) {
+    ret = static_cast<int16_t>(data[1] | ((data[0] & 0x7f) << 8));
+    ret |= ((ret << 1) & 0x8000);
+    data += 2;
+  } else {
+    ret = static_cast<int16_t>(data[0] | ((data[0] << 1) & 0x80));
+    data += 1;
+  }
+  return ret;
+}
+
+static std::pair<uint32_t, int32_t> sngDecodeDelta(const unsigned char*& data) {
+  std::pair<uint32_t, int32_t> ret = {};
+  do {
+    if (data[0] == 0x80 && data[1] == 0x00)
+      break;
+    ret.first += sngDecodeUnsignedValue(data);
+    ret.second = sngDecodeSignedValue(data);
+  } while (ret.second == 0);
+  return ret;
+}
+
+/** Decode a delta-time value in SNG revision (v1) format. */
+static uint32_t sngDecodeTime(const unsigned char*& data) {
+  uint32_t ret = 0;
+  while (true) {
+    uint16_t thisPart = SBig(*reinterpret_cast<const uint16_t*>(data));
+    uint16_t nextPart = *reinterpret_cast<const uint16_t*>(data + 2);
+    if (nextPart == 0) {
+      ret += thisPart;
+      data += 4;
+      continue;
+    }
+    ret += thisPart;
+    data += 2;
+    break;
+  }
+  return ret;
+}
+
+/* ── Collected SNG event for scheduling ── */
+
+struct SngEvent {
+  enum Type { NoteOn, NoteOff, CC, Program, PitchBend, Tempo };
+  Type     type;
+  uint32_t absTick;
+  uint8_t  channel;
+  uint8_t  data1;   /* note / ctrl / program */
+  uint8_t  data2;   /* velocity / value */
+  int      pitchBend14; /* 14-bit pitch bend (only for PitchBend type) */
+  double   tempoScale;  /* ticks/sec (only for Tempo type) */
+};
+
+/** SNG uses 384 ticks per quarter-note. */
+static constexpr double kSngTicksPerQuarter = 384.0;
+
+/** Convert BPM to FluidSynth sequencer time-scale (ticks per second). */
+static double bpmToScale(uint32_t bpm) {
+  if (bpm == 0)
+    bpm = 120;
+  return static_cast<double>(bpm) * kSngTicksPerQuarter / 60.0;
+}
+
+/* ── Parse the raw SNG binary and collect events ── */
+
+static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
+                           int sngVersion,
+                           std::vector<SngEvent>& outEvents,
+                           double& outInitialScale) {
+  SngHeader hdr = *reinterpret_cast<const SngHeader*>(sngData);
+  if (bigEndian)
+    hdr.swapFromBig();
+
+  uint32_t initBpm = hdr.initialTempo & 0x7fffffffu;
+  outInitialScale = bpmToScale(initBpm);
+
+  /* Collect tempo change events */
+  if (hdr.tempoTableOff != 0) {
+    auto* tp = reinterpret_cast<const SngTempoChange*>(sngData + hdr.tempoTableOff);
+    while (true) {
+      SngTempoChange tc = *tp;
+      if (bigEndian)
+        tc.swapBig();
+      if (tc.tick == 0xffffffffu)
+        break;
+      uint32_t bpm = tc.tempo & 0x7fffffffu;
+      SngEvent ev{};
+      ev.type = SngEvent::Tempo;
+      ev.absTick = tc.tick;
+      ev.tempoScale = bpmToScale(bpm);
+      outEvents.push_back(ev);
+      ++tp;
+    }
+  }
+
+  const auto* trackIdx = reinterpret_cast<const uint32_t*>(sngData + hdr.trackIdxOff);
+  const auto* regionIdx = reinterpret_cast<const uint32_t*>(sngData + hdr.regionIdxOff);
+  const auto* chanMap = reinterpret_cast<const uint8_t*>(sngData + hdr.chanMapOff);
+
+  for (int i = 0; i < 64; ++i) {
+    uint32_t trkOff = (bigEndian ? SBig(trackIdx[i]) : trackIdx[i]);
+    if (trkOff == 0)
+      continue;
+
+    uint8_t midiChan = chanMap[i];
+    const auto* nextRegion =
+        reinterpret_cast<const SngTrackRegion*>(sngData + trkOff);
+
+    /* Iterate all regions of this track */
+    while (nextRegion->indexValid(bigEndian)) {
+      const SngTrackRegion* region = nextRegion;
+      uint32_t regStart = bigEndian ? SBig(region->startTick) : region->startTick;
+      uint32_t regIdx = static_cast<uint32_t>(
+          bigEndian ? SBig(region->regionIndex) : region->regionIndex);
+      nextRegion = &region[1];
+
+      /* Program change at region start */
+      if (region->progNum != 0xff) {
+        outEvents.push_back({SngEvent::Program, regStart, midiChan,
+                             region->progNum, 0, 0});
+      }
+
+      /* Locate region data via regionIdx table */
+      uint32_t dataOff = bigEndian ? SBig(regionIdx[regIdx]) : regionIdx[regIdx];
+      const unsigned char* data = sngData + dataOff;
+
+      SngTrackHeader thdr = *reinterpret_cast<const SngTrackHeader*>(data);
+      if (bigEndian)
+        thdr.swapBig();
+      data += 12;
+
+      /* --- Continuous pitch wheel data --- */
+      if (thdr.pitchOff != 0) {
+        const unsigned char* pdata = sngData + thdr.pitchOff;
+        int32_t pitchVal = 0;
+        uint32_t pitchTick = 0;
+        while (pdata[0] != 0x80 || pdata[1] != 0x00) {
+          auto delta = sngDecodeDelta(pdata);
+          pitchTick += delta.first;
+          pitchVal  += delta.second;
+          int bend14 = std::clamp(pitchVal + 0x2000, 0, 0x3FFF);
+          outEvents.push_back({SngEvent::PitchBend, regStart + pitchTick,
+                               midiChan, 0, 0, bend14});
+        }
+      }
+
+      /* --- Continuous modulation data --- */
+      if (thdr.modOff != 0) {
+        const unsigned char* mdata = sngData + thdr.modOff;
+        int32_t modVal = 0;
+        uint32_t modTick = 0;
+        while (mdata[0] != 0x80 || mdata[1] != 0x00) {
+          auto delta = sngDecodeDelta(mdata);
+          modTick += delta.first;
+          modVal  += delta.second;
+          uint8_t ccVal = static_cast<uint8_t>(
+              std::clamp(modVal / 128, 0, 127));
+          outEvents.push_back({SngEvent::CC, regStart + modTick,
+                               midiChan, 1 /*mod wheel*/, ccVal, 0});
+        }
+      }
+
+      /* --- Note / CC / Program commands --- */
+      if (sngVersion == 1) {
+        /* Revision format */
+        int32_t waitCountdown = static_cast<int32_t>(sngDecodeTime(data));
+        while (true) {
+          if (*reinterpret_cast<const uint16_t*>(data) == 0xffff)
+            break;
+
+          uint32_t evTick = regStart + static_cast<uint32_t>(waitCountdown);
+
+          if ((data[0] & 0x80) != 0 && (data[1] & 0x80) != 0) {
+            /* Control change */
+            uint8_t val  = data[0] & 0x7f;
+            uint8_t ctrl = data[1] & 0x7f;
+            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0});
+            data += 2;
+          } else if ((data[0] & 0x80) != 0) {
+            /* Program change */
+            uint8_t prog = data[0] & 0x7f;
+            outEvents.push_back({SngEvent::Program, evTick, midiChan,
+                                 prog, 0, 0});
+            data += 2;
+          } else {
+            /* Note */
+            uint8_t note = data[0] & 0x7f;
+            uint8_t vel  = data[1] & 0x7f;
+            uint16_t length = bigEndian
+                ? SBig(*reinterpret_cast<const uint16_t*>(data + 2))
+                : *reinterpret_cast<const uint16_t*>(data + 2);
+            outEvents.push_back({SngEvent::NoteOn, evTick, midiChan,
+                                 note, vel, 0});
+            if (length == 0) {
+              outEvents.push_back({SngEvent::NoteOff, evTick, midiChan,
+                                   note, 0, 0});
+            } else {
+              outEvents.push_back({SngEvent::NoteOff,
+                                   evTick + length, midiChan,
+                                   note, 0, 0});
+            }
+            data += 4;
+          }
+          waitCountdown += static_cast<int32_t>(sngDecodeTime(data));
+        }
+      } else {
+        /* Legacy (N64) format */
+        int32_t absTick = bigEndian
+            ? SBig(*reinterpret_cast<const int32_t*>(data))
+            : *reinterpret_cast<const int32_t*>(data);
+        int32_t waitCountdown = absTick;
+        int32_t lastN64Tick = absTick;
+        data += 4;
+
+        while (true) {
+          if (*reinterpret_cast<const uint16_t*>(&data[2]) == 0xffff)
+            break;
+
+          uint32_t evTick = regStart + static_cast<uint32_t>(waitCountdown);
+
+          if ((data[2] & 0x80) != 0x80) {
+            /* Note */
+            uint16_t length = bigEndian
+                ? SBig(*reinterpret_cast<const uint16_t*>(data))
+                : *reinterpret_cast<const uint16_t*>(data);
+            uint8_t note = data[2] & 0x7f;
+            uint8_t vel  = data[3] & 0x7f;
+            outEvents.push_back({SngEvent::NoteOn, evTick, midiChan,
+                                 note, vel, 0});
+            if (length == 0) {
+              outEvents.push_back({SngEvent::NoteOff, evTick, midiChan,
+                                   note, 0, 0});
+            } else {
+              outEvents.push_back({SngEvent::NoteOff,
+                                   evTick + length, midiChan,
+                                   note, 0, 0});
+            }
+          } else if ((data[2] & 0x80) != 0 && (data[3] & 0x80) != 0) {
+            /* Control change */
+            uint8_t val  = data[2] & 0x7f;
+            uint8_t ctrl = data[3] & 0x7f;
+            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0});
+          } else if ((data[2] & 0x80) != 0) {
+            /* Program change */
+            uint8_t prog = data[2] & 0x7f;
+            outEvents.push_back({SngEvent::Program, evTick, midiChan,
+                                 prog, 0, 0});
+          }
+          data += 4;
+
+          int32_t nextAbsTick = bigEndian
+              ? SBig(*reinterpret_cast<const int32_t*>(data))
+              : *reinterpret_cast<const int32_t*>(data);
+          waitCountdown += nextAbsTick - lastN64Tick;
+          lastN64Tick = nextAbsTick;
+          data += 4;
+        }
+      }
+    }
+  }
+
+  /* Sort events by tick (stable, so same-tick ordering is preserved) */
+  std::stable_sort(outEvents.begin(), outEvents.end(),
+                   [](const SngEvent& a, const SngEvent& b) {
+                     return a.absTick < b.absTick;
+                   });
+  return true;
+}
 
 /* ────────────── Runtime state for a single SoundMacro VM ────────────── */
 
@@ -455,6 +812,9 @@ struct FluidsyXApp {
   /* RNG */
   std::mt19937 rng{std::random_device{}()};
 
+  /* Selected song data (set from main() when a song is chosen) */
+  const ContainerRegistry::SongData* selectedSong = nullptr;
+
   /* ── lifecycle helpers ── */
 
   bool initFluidSynth();
@@ -466,6 +826,10 @@ struct FluidsyXApp {
 
   void songLoop(const SongGroupIndex& index);
   void sfxLoop(const SFXGroupIndex& index);
+
+  /** Parse SNG song data and schedule all events on the FluidSynth sequencer.
+   *  Returns the total duration in milliseconds, or 0 on failure. */
+  double scheduleSongEvents(const uint8_t* sngData, size_t sngSize);
 
   /** Build a custom MusyX SoundFont from the parsed sample directory
    *  and pool, register it with FluidSynth. */
@@ -1768,222 +2132,174 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
     app->activeMacros.erase(it);
 }
 
+/* ═══════════════════ SNG → FluidSynth sequencer scheduling ═══════════════════ */
+
+double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*/) {
+  bool bigEndian = false;
+  int sngVersion = SongState::DetectVersion(sngData, bigEndian);
+  if (sngVersion < 0) {
+    fprintf(stderr, "fluidsyX: failed to detect SNG version\n");
+    return 0.0;
+  }
+  printf("fluidsyX: SNG version %d (%s-endian)\n", sngVersion,
+         bigEndian ? "big" : "little");
+
+  std::vector<SngEvent> events;
+  double initialScale = 1000.0;
+  if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale)) {
+    fprintf(stderr, "fluidsyX: failed to parse SNG events\n");
+    return 0.0;
+  }
+
+  printf("fluidsyX: parsed %zu song events, initial tempo scale %.1f ticks/s\n",
+         events.size(), initialScale);
+  if (events.empty())
+    return 0.0;
+
+  /* Set the sequencer time-scale to match the SNG tick rate.
+   * SNG ticks are 384 per quarter-note; at T BPM the tick rate is
+   * T * 384 / 60  ticks per second.  Events are then scheduled at
+   * their native SNG tick positions.  Tempo changes are handled by
+   * scheduling FLUID_SEQ_SCALE events that adjust the time-scale. */
+  fluid_sequencer_set_time_scale(sequencer, initialScale);
+
+  unsigned int baseTick = fluid_sequencer_get_tick(sequencer);
+
+  fluid_event_t* evt = new_fluid_event();
+  fluid_event_set_source(evt, -1);
+  fluid_event_set_dest(evt, synthSeqId);
+
+  uint32_t lastTick = 0;
+
+  for (const auto& e : events) {
+    unsigned int schedTick = baseTick + e.absTick;
+
+    switch (e.type) {
+    case SngEvent::NoteOn:
+      fluid_event_noteon(evt, e.channel, e.data1, e.data2);
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+
+    case SngEvent::NoteOff:
+      fluid_event_noteoff(evt, e.channel, e.data1);
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+
+    case SngEvent::CC:
+      fluid_event_control_change(evt, e.channel, e.data1, e.data2);
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+
+    case SngEvent::Program:
+      fluid_event_program_change(evt, e.channel, e.data1);
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+
+    case SngEvent::PitchBend:
+      fluid_event_pitch_bend(evt, e.channel, e.pitchBend14);
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+
+    case SngEvent::Tempo:
+      /* Change sequencer time-scale at this tick */
+      fluid_event_scale(evt, e.tempoScale);
+      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      break;
+    }
+
+    if (e.absTick > lastTick)
+      lastTick = e.absTick;
+  }
+
+  delete_fluid_event(evt);
+
+  printf("fluidsyX: scheduled %u SNG ticks of song data\n", lastTick);
+  return static_cast<double>(lastTick);
+}
+
 /* ═══════════════════ Song playback loop ═══════════════════ */
 
 void FluidsyXApp::songLoop(const SongGroupIndex& index) {
-  printf(
-      "═══════════════════════════════════════════════════════════\n"
-      "  ████ ████  ┃  ████ ████ ████   ┃   ████ ████\n"
-      "  ████ ████  ┃  ████ ████ ████   ┃   ████ ████\n"
-      "  ▌W▐█ ▌E▐█  ┃  ▌T▐█ ▌Y▐█ ▌U▐█   ┃   ▌O▐█ ▌P▐█\n"
-      "   │    │    ┃    │    │    │    ┃    │    │\n"
-      "A  │ S  │ D  ┃ F  │ G  │ H  │ J  ┃ K  │ L  │ ;\n"
-      "═══════════════════════════════════════════════════════════\n"
-      "<left/right>: cycle MIDI setup\n"
-      "<up/down>: volume\n"
-      "<Z/X>: octave, <C/V>: velocity, <B/N>: channel\n"
-      "<space>: PANIC (all notes off), <Q>: quit\n\n");
-
+  /* Apply the MIDI setup for the selected song to FluidSynth channels */
   std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
       index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
 
-  auto setupIt = sortEntries.cbegin();
-  if (setupIt != sortEntries.cend()) {
-    setupId = setupIt->first.id;
-
-    /* Apply the MIDI setup to FluidSynth channels */
+  auto setupIt = sortEntries.find(setupId);
+  if (setupIt != sortEntries.end()) {
     const auto& midiSetup = setupIt->second;
     for (int ch = 0; ch < 16; ++ch) {
       fluid_synth_program_change(synth, ch, midiSetup[ch].programNo);
-      fluid_synth_cc(synth, ch, 7, midiSetup[ch].volume);  /* volume */
-      fluid_synth_cc(synth, ch, 10, midiSetup[ch].panning); /* pan */
-      fluid_synth_cc(synth, ch, 91, midiSetup[ch].reverb);  /* reverb */
-      fluid_synth_cc(synth, ch, 93, midiSetup[ch].chorus);  /* chorus */
+      fluid_synth_cc(synth, ch, 7, midiSetup[ch].volume);
+      fluid_synth_cc(synth, ch, 10, midiSetup[ch].panning);
+      fluid_synth_cc(synth, ch, 91, midiSetup[ch].reverb);
+      fluid_synth_cc(synth, ch, 93, midiSetup[ch].chorus);
 
-      /* Mirror into channel CC state so newly spawned macros see these */
       channelCtrlVals[ch][7]  = static_cast<int8_t>(midiSetup[ch].volume);
       channelCtrlVals[ch][10] = static_cast<int8_t>(midiSetup[ch].panning);
       channelCtrlVals[ch][91] = static_cast<int8_t>(midiSetup[ch].reverb);
       channelCtrlVals[ch][93] = static_cast<int8_t>(midiSetup[ch].chorus);
-     printf("  Setup %d, Chan %d, VOL %d PAN %d REV %d CHO %d\n", setupId,
-         ch, midiSetup[ch].volume, midiSetup[ch].panning, midiSetup[ch].reverb, midiSetup[ch].chorus);
     }
   }
 
-  printf("  Setup %d, Chan %d, Octave %d, Vel %d, VOL %d%%\n", setupId,
-         chanId, octave, velocity, static_cast<int>(std::round(volume * 100)));
+  /* Schedule all song events on the FluidSynth sequencer */
+  if (!selectedSong) {
+    fprintf(stderr, "fluidsyX: no song data to play\n");
+    return;
+  }
+
+  double totalTicks = scheduleSongEvents(selectedSong->m_data.get(),
+                                         selectedSong->m_size);
+  if (totalTicks <= 0.0) {
+    fprintf(stderr, "fluidsyX: no events to play\n");
+    return;
+  }
+
+  /* Wait for playback to finish.
+   * The sequencer is already dispatching events in real-time via the
+   * audio driver thread.  We just monitor progress until the last
+   * scheduled tick has been reached, plus a short tail for release
+   * envelopes to ring out. */
+  printf("fluidsyX: playing song (setup %d, %u ticks) — press Q or Ctrl-C to stop\n",
+         setupId, static_cast<unsigned int>(totalTicks));
 
   enableRawMode();
 
+  unsigned int startTick = fluid_sequencer_get_tick(sequencer);
+  unsigned int endTick = startTick + static_cast<unsigned int>(totalTicks);
+  /* Add a tail in sequencer ticks (at current time-scale rate).
+   * Use the current scale to compute ~2 seconds worth of ticks. */
+  double curScale = fluid_sequencer_get_time_scale(sequencer);
+  unsigned int tailTicks = static_cast<unsigned int>(curScale * 2.0);
+  unsigned int tailEnd = endTick + tailTicks;
+
   while (g_running.load()) {
+    unsigned int now = fluid_sequencer_get_tick(sequencer);
+
+    /* Check for user input (Q to quit, space for panic) */
     int key = readKey();
-    if (key < 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      continue;
-    }
-
-    int ch = tolower(key);
-    bool updateDisp = false;
-
-    if (ch == 'q') {
-      break;
-    }
-
-    /* Keyboard → MIDI note mapping (same layout as amuseplay) */
-    int noteOff = -1;
-    switch (ch) {
-    case 'a': noteOff = 0; break;
-    case 'w': noteOff = 1; break;
-    case 's': noteOff = 2; break;
-    case 'e': noteOff = 3; break;
-    case 'd': noteOff = 4; break;
-    case 'f': noteOff = 5; break;
-    case 't': noteOff = 6; break;
-    case 'g': noteOff = 7; break;
-    case 'y': noteOff = 8; break;
-    case 'h': noteOff = 9; break;
-    case 'u': noteOff = 10; break;
-    case 'j': noteOff = 11; break;
-    case 'k': noteOff = 12; break;
-    case 'o': noteOff = 13; break;
-    case 'l': noteOff = 14; break;
-    case 'p': noteOff = 15; break;
-    case ';':
-    case ':': noteOff = 16; break;
-    default: break;
-    }
-
-    if (noteOff >= 0) {
-      int midiNote = (octave + 1) * 12 + noteOff;
-      midiNote = std::clamp(midiNote, 0, 127);
-
-      /* Look up the SoundMacro for this program/note via the PageEntry */
-      uint8_t prog = 0;
-      auto setupSearch = sortEntries.find(setupId);
-      if (setupSearch != sortEntries.end())
-        prog = setupSearch->second[chanId].programNo;
-
-      /* Find page entry for this program number */
-      const SoundMacro* macro = nullptr;
-      auto pageIt = index.m_normPages.find(prog);
-      if (pageIt != index.m_normPages.end() && activePool) {
-        macro = activePool->soundMacro(pageIt->second.objId);
+    if (key >= 0) {
+      int ch = tolower(key);
+      if (ch == 'q')
+        break;
+      if (ch == ' ') {
+        for (int c = 0; c < 16; ++c)
+          fluid_synth_all_notes_off(synth, c);
       }
-
-      if (macro) {
-        /* Enqueue macro through our translator */
-        unsigned int now = fluid_sequencer_get_tick(sequencer);
-        enqueueSoundMacro(macro, 0, chanId, static_cast<uint8_t>(midiNote),
-                          static_cast<uint8_t>(velocity), now);
-      } else {
-        /* Fall back to direct FluidSynth note-on */
-        fluid_synth_noteon(synth, chanId, midiNote, velocity);
-      }
-      continue;
     }
 
-    /* Control keys */
-    switch (ch) {
-    case ' ':
-      /* PANIC: all notes off on all channels */
-      for (int c = 0; c < 16; ++c)
-        fluid_synth_all_notes_off(synth, c);
-      activeMacros.clear();
-      break;
-    case 'z':
-      octave = static_cast<int8_t>(std::clamp(static_cast<int>(octave) - 1, -1, 8));
-      updateDisp = true;
-      break;
-    case 'x':
-      octave = static_cast<int8_t>(std::clamp(static_cast<int>(octave) + 1, -1, 8));
-      updateDisp = true;
-      break;
-    case 'c':
-      velocity = static_cast<int8_t>(std::clamp(static_cast<int>(velocity) - 1, 0, 127));
-      updateDisp = true;
-      break;
-    case 'v':
-      velocity = static_cast<int8_t>(std::clamp(static_cast<int>(velocity) + 1, 0, 127));
-      updateDisp = true;
-      break;
-    case 'b':
-      chanId = std::clamp(chanId - 1, 0, 15);
-      updateDisp = true;
-      break;
-    case 'n':
-      chanId = std::clamp(chanId + 1, 0, 15);
-      updateDisp = true;
-      break;
-    case 27: {
-      /* Escape sequence for arrow keys */
-      int next1 = readKey();
-      if (next1 == '[') {
-        int next2 = readKey();
-        switch (next2) {
-        case 'D': /* Left arrow – previous setup */
-          if (setupIt != sortEntries.cbegin()) {
-            --setupIt;
-            setupId = setupIt->first.id;
-            const auto& ms = setupIt->second;
-            for (int c = 0; c < 16; ++c) {
-              fluid_synth_program_change(synth, c, ms[c].programNo);
-              fluid_synth_cc(synth, c, 7, ms[c].volume);
-              fluid_synth_cc(synth, c, 10, ms[c].panning);
-              fluid_synth_cc(synth, c, 91, ms[c].reverb);
-              fluid_synth_cc(synth, c, 93, ms[c].chorus);
-            }
-            updateDisp = true;
-          }
-          break;
-        case 'C': { /* Right arrow – next setup */
-          auto nextIt = setupIt;
-          ++nextIt;
-          if (nextIt != sortEntries.cend()) {
-            setupIt = nextIt;
-            setupId = setupIt->first.id;
-            const auto& ms = setupIt->second;
-            for (int c = 0; c < 16; ++c) {
-              fluid_synth_program_change(synth, c, ms[c].programNo);
-              fluid_synth_cc(synth, c, 7, ms[c].volume);
-              fluid_synth_cc(synth, c, 10, ms[c].panning);
-              fluid_synth_cc(synth, c, 91, ms[c].reverb);
-              fluid_synth_cc(synth, c, 93, ms[c].chorus);
-            }
-            updateDisp = true;
-          }
-          break;
-        }
-        case 'A': /* Up arrow – volume up */
-          volume = std::clamp(volume + 0.05f, 0.f, 1.f);
-          fluid_synth_set_gain(synth, volume);
-          updateDisp = true;
-          break;
-        case 'B': /* Down arrow – volume down */
-          volume = std::clamp(volume - 0.05f, 0.f, 1.f);
-          fluid_synth_set_gain(synth, volume);
-          updateDisp = true;
-          break;
-        default:
-          break;
-        }
-      }
-      break;
-    }
-    default:
-      break;
-    }
+    /* Print progress (tick-based) */
+    unsigned int elapsed = (now > startTick) ? (now - startTick) : 0;
+    printf("\r  tick %u / %u  ", elapsed,
+           static_cast<unsigned int>(totalTicks));
+    fflush(stdout);
 
-    if (updateDisp) {
-      printf("\r                                                                "
-             "                \r  Setup %d, Chan %d, Octave %d, Vel %d, VOL "
-             "%d%%",
-             setupId, chanId, octave, velocity,
-             static_cast<int>(std::round(volume * 100)));
-      fflush(stdout);
-    }
+    if (now >= tailEnd)
+      break;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
-  /* Clean up active macros */
+  /* All notes off */
   for (int c = 0; c < 16; ++c)
     fluid_synth_all_notes_off(synth, c);
   activeMacros.clear();
@@ -2199,6 +2515,7 @@ int main(int argc, char** argv) {
         ;
       app.groupId = songs[userSel].second.m_groupId;
       app.setupId = songs[userSel].second.m_setupId;
+      app.selectedSong = &songs[userSel].second;
     } else {
       /* Ask Y/N for single song */
       printf("Play Song '%s'? (Y/N): ", songs[0].first.c_str());
@@ -2206,6 +2523,7 @@ int main(int argc, char** argv) {
       if (scanf(" %c", &yn) > 0 && tolower(yn) == 'y') {
         app.groupId = songs[0].second.m_groupId;
         app.setupId = songs[0].second.m_setupId;
+        app.selectedSong = &songs[0].second;
       } else {
         play = false;
       }
