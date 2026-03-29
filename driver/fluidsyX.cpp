@@ -19,6 +19,14 @@
 #include "amuse/SongState.hpp"
 
 #include <fluidsynth.h>
+#include <fluidsynth/version.h>
+
+/* FluidSynth ≥ 2.4 provides custom modulator mapping (FLUID_MOD_CUSTOM,
+ * fluid_mod_set_custom_mapping).  Older versions fall back to direct voice
+ * generator manipulation (GEN_VOLENVxxx via fluid_voice_gen_set). */
+#define FLUIDSYX_HAS_CUSTOM_MOD \
+    (FLUIDSYNTH_VERSION_MAJOR > 2 || \
+     (FLUIDSYNTH_VERSION_MAJOR == 2 && FLUIDSYNTH_VERSION_MINOR >= 4))
 
 #include <algorithm>
 #include <atomic>
@@ -289,10 +297,18 @@ static double bpmToScale(uint32_t bpm) {
 
 /* ── Parse the raw SNG binary and collect events ── */
 
+/** Information about the SNG loop structure, filled by parseSngEvents(). */
+struct SngLoopInfo {
+  bool hasLoop = false;
+  uint32_t loopStartTick = 0;   /**< First tick of the loop body */
+  uint32_t loopEndTick   = 0;   /**< Tick where the loop marker occurs (exclusive) */
+};
+
 static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
                            int sngVersion,
                            std::vector<SngEvent>& outEvents,
-                           double& outInitialScale) {
+                           double& outInitialScale,
+                           SngLoopInfo& outLoop) {
   SngHeader hdr = *reinterpret_cast<const SngHeader*>(sngData);
   if (bigEndian)
     hdr.swapFromBig();
@@ -483,6 +499,25 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
         }
       }
     }
+
+    /* Check if this track ends with a loop marker (regionIndex == -2) */
+    {
+      int16_t termIdx = bigEndian ? SBig(nextRegion->regionIndex)
+                                   : nextRegion->regionIndex;
+      if (termIdx == -2) {
+        uint32_t loopEndTick = bigEndian ? SBig(nextRegion->startTick)
+                                          : nextRegion->startTick;
+        if (!outLoop.hasLoop || loopEndTick > outLoop.loopEndTick) {
+          outLoop.hasLoop = true;
+          outLoop.loopEndTick = loopEndTick;
+        }
+      }
+    }
+  }
+
+  /* Determine loop start tick from the SNG header */
+  if (outLoop.hasLoop) {
+    outLoop.loopStartTick = hdr.loopStartTicks[0];
   }
 
   /* Sort events by tick (stable, so same-tick ordering is preserved) */
@@ -802,8 +837,10 @@ struct FluidsyXApp {
   fluid_seq_id_t synthSeqId = -1;
   fluid_seq_id_t callbackSeqId = -1;
 
+#if FLUIDSYX_HAS_CUSTOM_MOD
   fluid_mod_t *modBlueprintADR = nullptr;
   fluid_mod_t *modBlueprintSustain = nullptr;
+#endif
 
   /* Amuse parsed data */
   std::vector<std::pair<std::string, IntrusiveAudioGroupData>> data;
@@ -915,8 +952,12 @@ struct FluidsyXApp {
   void songLoop(const SongGroupIndex& index);
   void sfxLoop(const SFXGroupIndex& index);
 
+  /** Maximum playback duration in SNG ticks (0 = play once without looping).
+   *  Set via --duration CLI flag. */
+  uint32_t maxDurationTicks = 0;
+
   /** Parse SNG song data and schedule all events on the FluidSynth sequencer.
-   *  Returns the total duration in milliseconds, or 0 on failure. */
+   *  Returns the total scheduled duration in ticks, or 0 on failure. */
   double scheduleSongEvents(const uint8_t* sngData, size_t sngSize);
 
   /** Build a custom MusyX SoundFont from the parsed sample directory
@@ -995,6 +1036,7 @@ static void dummy_preset_free(fluid_preset_t* preset) {
 
 bool FluidsyXApp::initFluidSynth() {
 
+#if FLUIDSYX_HAS_CUSTOM_MOD
     fluid_mod_t *blueprint = new_fluid_mod();
 
     fluid_mod_set_source1(blueprint, FLUID_MOD_NONE,
@@ -1021,6 +1063,7 @@ bool FluidsyXApp::initFluidSynth() {
     fluid_mod_clone(modBlueprintSustain, blueprint);
 
     delete_fluid_mod(blueprint);
+#endif
 
   settings = new_fluid_settings();
   if (!settings) {
@@ -1029,11 +1072,13 @@ bool FluidsyXApp::initFluidSynth() {
   }
 
   fluid_settings_setnum(settings, "synth.gain", 0.5);
+#if FLUIDSYX_HAS_CUSTOM_MOD
   /* Use FluidSynth's linear portamento mode via the portamento-time
    * setting.  NOTE: synth.portamento-time is a global setting, not
    * per-channel.  If multiple channels set different portamento times
    * concurrently, only the last value will take effect. */
   fluid_settings_setstr(settings, "synth.portamento-time", "linear");
+#endif
 
   synth = new_fluid_synth(settings);
   if (!synth) {
@@ -1081,10 +1126,12 @@ void FluidsyXApp::shutdownFluidSynth() {
     delete_fluid_settings(settings);
     settings = nullptr;
 
+#if FLUIDSYX_HAS_CUSTOM_MOD
     delete_fluid_mod(modBlueprintADR);
     modBlueprintADR = nullptr;
     delete_fluid_mod(modBlueprintSustain);
     modBlueprintSustain = nullptr;
+#endif
 }
 
 /* ═══════════════════ MusyX data loading ═══════════════════ */
@@ -1481,6 +1528,7 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
   if (!ctx.useAdsrControllers || !v)
     return;
 
+#if FLUIDSYX_HAS_CUSTOM_MOD
   /* Attack */
   fluid_mod_set_source1(modBlueprintADR, ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR));
   fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVATTACK);
@@ -1499,6 +1547,26 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
   fluid_mod_set_source1(modBlueprintSustain, ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain));
   fluid_mod_set_dest(modBlueprintSustain, GEN_VOLENVSUSTAIN);
   fluid_voice_add_mod(v, modBlueprintSustain, FLUID_VOICE_OVERWRITE);
+#else
+  /* Fallback: manipulate voice generators directly (pre-2.4 FluidSynth) */
+  auto getAdsrVal = [&](uint8_t ccNum) -> int {
+    return channelCtrlVals[ctx.channel][ccNum & 0x7f];
+  };
+  auto attackVal = std::clamp(static_cast<int>(getAdsrVal(ctx.midiAttack)), 0, 103);
+  auto decayVal  = std::clamp(static_cast<int>(getAdsrVal(ctx.midiDecay)),  0, 103);
+  auto releaseVal= std::clamp(static_cast<int>(getAdsrVal(ctx.midiRelease)),0, 103);
+  auto sustainVal= std::clamp(static_cast<int>(getAdsrVal(ctx.midiSustain)),0, 127);
+
+  double atkTc = secondsToTimecents(MIDItoTIME[attackVal] / 1000.0);
+  double decTc = secondsToTimecents(MIDItoTIME[decayVal] / 1000.0);
+  double relTc = secondsToTimecents(MIDItoTIME[releaseVal] / 1000.0);
+  double susCb = (1.0 - sustainVal / 127.0) * 1440.0;
+
+  fluid_voice_gen_set(v, GEN_VOLENVATTACK,  static_cast<float>(atkTc));
+  fluid_voice_gen_set(v, GEN_VOLENVDECAY,   static_cast<float>(decTc));
+  fluid_voice_gen_set(v, GEN_VOLENVRELEASE, static_cast<float>(relTc));
+  fluid_voice_gen_set(v, GEN_VOLENVSUSTAIN, static_cast<float>(susCb));
+#endif
 
   if (started) {
     fluid_voice_update_param(v, GEN_VOLENVATTACK);
@@ -2653,13 +2721,19 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
   std::vector<SngEvent> events;
   double initialScale = 1000.0;
-  if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale)) {
+  SngLoopInfo loopInfo;
+  if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale,
+                      loopInfo)) {
     fprintf(stderr, "fluidsyX: failed to parse SNG events\n");
     return 0.0;
   }
 
   printf("fluidsyX: parsed %zu song events, initial tempo scale %.1f ticks/s\n",
          events.size(), initialScale);
+  if (loopInfo.hasLoop) {
+    printf("fluidsyX: song has loop: ticks %u → %u\n",
+           loopInfo.loopStartTick, loopInfo.loopEndTick);
+  }
   if (events.empty())
     return 0.0;
 
@@ -2675,106 +2749,120 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
   /* Clear any pending SNG events from a previous playback */
   pendingSngEvents.clear();
 
-  /* Pre-allocate: count note-on, note-off, and program events */
-  size_t noteEventCount = 0;
-  for (const auto& e : events) {
-    if (e.type == SngEvent::NoteOn || e.type == SngEvent::NoteOff ||
-        e.type == SngEvent::Program)
-      noteEventCount++;
-  }
-  pendingSngEvents.reserve(noteEventCount);
-
   fluid_event_t* evt = new_fluid_event();
   fluid_event_set_source(evt, -1);
 
-  uint32_t lastTick = 0;
+  uint32_t lastSchedTick = 0;
 
-  for (const auto& e : events) {
-    unsigned int schedTick = baseTick + e.absTick;
+  /* Helper: schedule a single SngEvent at a given absolute output tick */
+  auto scheduleEvent = [&](const SngEvent& e, uint32_t outTick) {
+    unsigned int schedTick = baseTick + outTick;
 
     switch (e.type) {
     case SngEvent::NoteOn: {
-      /* Route through timer callback → resolveAndEnqueueNote() so that
-       * the SoundMacro system processes the note with proper ADSR, pitch,
-       * panning, etc. */
       size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::NoteOn, e.channel, e.data1, e.data2});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
       fluid_event_set_dest(evt, callbackSeqId);
       fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
     }
-
     case SngEvent::NoteOff: {
-      /* Route through timer callback for synchronized note-off */
       size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::NoteOff, e.channel, e.data1, 0});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
       fluid_event_set_dest(evt, callbackSeqId);
       fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
     }
-
     case SngEvent::CC: {
-      /* Route CC events through timer callback so that:
-       *  1. channelCtrlVals is updated atomically with the sequencer timeline
-       *  2. CC values mapped to ADSR controllers trigger NRPN gen changes
-       *  The raw CC is also sent to FluidSynth for non-ADSR controllers. */
       size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::CC, e.channel, e.data1, e.data2});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
       fluid_event_set_dest(evt, callbackSeqId);
       fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
     }
-
     case SngEvent::Program: {
-      /* Route through timer callback to update channelPrograms atomically
-       * with the sequencer timeline */
       size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::ProgramChange, e.channel, e.data1, 0});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
       fluid_event_set_dest(evt, callbackSeqId);
       fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
     }
-
     case SngEvent::PitchBend:
       fluid_event_set_dest(evt, synthSeqId);
       fluid_event_pitch_bend(evt, e.channel, e.pitchBend14);
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
-
     case SngEvent::Tempo:
-      /* Change sequencer time-scale at this tick */
       fluid_event_set_dest(evt, synthSeqId);
       fluid_event_scale(evt, e.tempoScale);
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
     }
 
-    if (e.absTick > lastTick)
-      lastTick = e.absTick;
+    if (outTick > lastSchedTick)
+      lastSchedTick = outTick;
+  };
+
+  /* Schedule all events from the initial (one-shot) pass */
+  for (const auto& e : events) {
+    scheduleEvent(e, e.absTick);
+  }
+
+  /* If the SNG has a loop and a duration limit was requested, repeat the
+   * loop body events (those with absTick >= loopStartTick and
+   * < loopEndTick) at successive offsets until we exceed the duration. */
+  if (loopInfo.hasLoop && maxDurationTicks > 0 &&
+      loopInfo.loopEndTick > loopInfo.loopStartTick) {
+    uint32_t loopLen = loopInfo.loopEndTick - loopInfo.loopStartTick;
+
+    /* Identify the range of loop body events in the sorted list */
+    auto loopBegin = std::lower_bound(
+        events.begin(), events.end(), loopInfo.loopStartTick,
+        [](const SngEvent& e, uint32_t t) { return e.absTick < t; });
+    auto loopEnd = std::lower_bound(
+        events.begin(), events.end(), loopInfo.loopEndTick,
+        [](const SngEvent& e, uint32_t t) { return e.absTick < t; });
+
+    /* Also collect tempo events within the loop body, since they need
+     * to be re-issued on each iteration. */
+    uint32_t iteration = 1;
+    while (true) {
+      uint32_t offset = iteration * loopLen;
+      /* Check if the start of this iteration exceeds the duration limit */
+      if (loopInfo.loopStartTick + offset >= maxDurationTicks)
+        break;
+
+      for (auto it = loopBegin; it != loopEnd; ++it) {
+        uint32_t newTick = it->absTick + offset;
+        if (newTick >= maxDurationTicks)
+          break;
+        scheduleEvent(*it, newTick);
+      }
+      ++iteration;
+    }
+
+    printf("fluidsyX: loop body repeated %u times (duration limit %u ticks)\n",
+           iteration - 1, maxDurationTicks);
   }
 
   delete_fluid_event(evt);
 
   printf("fluidsyX: scheduled %u SNG ticks of song data (%zu events, "
          "%zu routed through SoundMacro)\n",
-         lastTick, events.size(), pendingSngEvents.size());
-  return static_cast<double>(lastTick);
+         lastSchedTick, events.size(), pendingSngEvents.size());
+  return static_cast<double>(lastSchedTick);
 }
 
 /* ═══════════════════ Song playback loop ═══════════════════ */
@@ -3002,31 +3090,52 @@ int main(int argc, char** argv) {
 
   if (argc < 2) {
     fprintf(stderr,
-            "Usage: fluidsyX <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
+            "Usage: fluidsyX [--duration <ticks>] <musyx-group-path> "
+            "[<songs-file>] [soundfont.sf2]\n"
             "\n"
             "  Plays MusyX SoundMacro data using FluidSynth.\n"
             "  MusyX samples are decoded and loaded as a virtual SoundFont.\n"
             "  An optional songs file (.son/.sng/.song) can be specified to\n"
             "  play a specific MusyX song sequence.\n"
             "  An optional external .sf2 SoundFont can be specified as a\n"
-            "  fallback for programs not covered by the MusyX data.\n");
+            "  fallback for programs not covered by the MusyX data.\n"
+            "\n"
+            "Options:\n"
+            "  --duration <ticks>   Total playback duration in SNG ticks.\n"
+            "                       Enables song looping for the specified length.\n"
+            "                       SNG uses 384 ticks per quarter-note.\n");
     return 1;
   }
 
-  /* Parse positional arguments.
-   * argv[1] is always the group path.  Remaining positional args are
-   * classified by extension: .sf2 → external SoundFont, anything else
-   * → songs file (consistent with amuserender / amuseplay). */
-  const char* groupPath = argv[1];
+  /* Parse arguments.
+   * Options (--duration) are consumed first, then positional args.
+   * argv[1] or first non-option arg is the group path.  Remaining positional
+   * args are classified by extension: .sf2 → external SoundFont, anything
+   * else → songs file (consistent with amuserender / amuseplay). */
+  const char* groupPath = nullptr;
   const char* songsPath = nullptr;
   const char* sf2Path   = nullptr;
 
-  for (int i = 2; i < argc; ++i) {
-    if (fluid_is_soundfont(argv[i])) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--duration") == 0) {
+      if (i + 1 < argc) {
+        app.maxDurationTicks = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+      } else {
+        fprintf(stderr, "fluidsyX: --duration requires a value\n");
+        return 1;
+      }
+    } else if (!groupPath) {
+      groupPath = argv[i];
+    } else if (fluid_is_soundfont(argv[i])) {
       sf2Path = argv[i];
     } else {
       songsPath = argv[i];
     }
+  }
+
+  if (!groupPath) {
+    fprintf(stderr, "fluidsyX: no group path specified\n");
+    return 1;
   }
 
   /* 1. Initialise FluidSynth */
