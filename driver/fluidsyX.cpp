@@ -2114,13 +2114,36 @@ int main(int argc, char** argv) {
 
   if (argc < 2) {
     fprintf(stderr,
-            "Usage: fluidsyX <musyx-group-path> [soundfont.sf2]\n"
+            "Usage: fluidsyX <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
             "\n"
             "  Plays MusyX SoundMacro data using FluidSynth.\n"
             "  MusyX samples are decoded and loaded as a virtual SoundFont.\n"
+            "  An optional songs file (.son/.sng/.song) can be specified to\n"
+            "  play a specific MusyX song sequence.\n"
             "  An optional external .sf2 SoundFont can be specified as a\n"
             "  fallback for programs not covered by the MusyX data.\n");
     return 1;
+  }
+
+  /* Parse positional arguments.
+   * argv[1] is always the group path.  Remaining positional args are
+   * classified by extension: .sf2 → external SoundFont, anything else
+   * → songs file (consistent with amuserender / amuseplay). */
+  const char* groupPath = argv[1];
+  const char* songsPath = nullptr;
+  const char* sf2Path   = nullptr;
+
+  auto hasSf2Extension = [](const char* path) -> bool {
+    const char* dot = strrchr(path, '.');
+    return dot && (!CompareCaseInsensitive(dot, ".sf2") || !CompareCaseInsensitive(dot, ".sf3"));
+  };
+
+  for (int i = 2; i < argc; ++i) {
+    if (hasSf2Extension(argv[i])) {
+      sf2Path = argv[i];
+    } else {
+      songsPath = argv[i];
+    }
   }
 
   /* 1. Initialise FluidSynth */
@@ -2128,15 +2151,15 @@ int main(int argc, char** argv) {
     return 1;
 
   /* 2. Optionally load a SoundFont for audible output */
-  if (argc >= 3) {
-    int sfId = fluid_synth_sfload(app.synth, argv[2], /*reset_presets=*/1);
+  if (sf2Path) {
+    int sfId = fluid_synth_sfload(app.synth, sf2Path, /*reset_presets=*/1);
     if (sfId < 0) {
       fprintf(stderr,
               "fluidsyX: warning: failed to load SoundFont '%s' – "
               "sequencer events will still be processed but may be inaudible\n",
-              argv[2]);
+              sf2Path);
     } else {
-      printf("fluidsyX: loaded SoundFont '%s' (id=%d)\n", argv[2], sfId);
+      printf("fluidsyX: loaded SoundFont '%s' (id=%d)\n", sf2Path, sfId);
     }
   } else {
     printf("fluidsyX: no external SoundFont specified; MusyX samples will "
@@ -2144,12 +2167,18 @@ int main(int argc, char** argv) {
   }
 
   /* 3. Load MusyX data */
-  if (!app.loadMusyXData(argv[1]))
+  if (!app.loadMusyXData(groupPath))
     return 1;
 
-  /* 4. Attempt loading song data */
-  std::vector<std::pair<std::string, ContainerRegistry::SongData>> songs =
-      ContainerRegistry::LoadSongs(argv[1]);
+  /* 4. Attempt loading song data.
+   *    If a separate songs file was provided use that; otherwise try
+   *    loading songs embedded in the group path (same behaviour as
+   *    amuserender / amuseplay). */
+  std::vector<std::pair<std::string, ContainerRegistry::SongData>> songs;
+  if (songsPath)
+    songs = ContainerRegistry::LoadSongs(songsPath);
+  else
+    songs = ContainerRegistry::LoadSongs(groupPath);
 
   if (!songs.empty()) {
     bool play = true;
