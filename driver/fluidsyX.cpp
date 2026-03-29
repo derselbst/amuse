@@ -107,6 +107,13 @@ static constexpr unsigned kDSPFrameBytes   = 8;    /**< DSP ADPCM: 8 bytes per f
 static constexpr unsigned kN64FrameSamples = 64;   /**< N64 VADPCM: 64 samples per frame */
 static constexpr unsigned kN64FrameBytes   = 40;   /**< N64 VADPCM: 40 bytes per frame */
 
+/* ── MIDI pitch bend constants (14-bit) ── */
+static constexpr int kPitchBendCenter = 0x2000;    /**< MIDI pitch bend center (8192) */
+static constexpr int kPitchBendMax    = 0x3FFF;    /**< MIDI 14-bit pitch bend maximum (16383) */
+
+/* ── SNG modulation → MIDI CC conversion ── */
+static constexpr int kSngModToCCDivisor = 128;     /**< SNG internal mod range → 7-bit MIDI CC */
+
 /* ────────────── Seconds ↔ timecents conversion ────────────── */
 
 /** Convert seconds to SF2 timecents (duplicated from FluidSynth's fluid_conv.c).
@@ -354,7 +361,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
           auto delta = sngDecodeDelta(pdata);
           pitchTick += delta.first;
           pitchVal  += delta.second;
-          int bend14 = std::clamp(pitchVal + 0x2000, 0, 0x3FFF);
+          int bend14 = std::clamp(pitchVal + kPitchBendCenter, 0, kPitchBendMax);
           outEvents.push_back({SngEvent::PitchBend, regStart + pitchTick,
                                midiChan, 0, 0, bend14});
         }
@@ -370,7 +377,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
           modTick += delta.first;
           modVal  += delta.second;
           uint8_t ccVal = static_cast<uint8_t>(
-              std::clamp(modVal / 128, 0, 127));
+              std::clamp(modVal / kSngModToCCDivisor, 0, 127));
           outEvents.push_back({SngEvent::CC, regStart + modTick,
                                midiChan, 1 /*mod wheel*/, ccVal, 0});
         }
