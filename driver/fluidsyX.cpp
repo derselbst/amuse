@@ -518,7 +518,8 @@ struct MacroExecContext {
    * (voices are pooled and recycled by FluidSynth). */
   fluid_voice_t* voice = nullptr;
   unsigned int voiceId = 0;
-  uint8_t allocKey = 60;  /**< MIDI key at voice allocation time */
+  uint8_t allocKey = 60;      /**< MIDI key at voice allocation time */
+  uint8_t triggerNote = 60;   /**< Original SNG note (before keymap/layer transpose), used for NoteOff matching */
 
   /* Pending voice state – set by commands that run BEFORE CmdStartSample
    * creates the voice.  Applied between alloc and start. */
@@ -907,7 +908,8 @@ struct FluidsyXApp {
 
   /** Enqueue all commands of a SoundMacro, starting at \p step. */
   void enqueueSoundMacro(const SoundMacro* sm, int step, int channel,
-                         uint8_t key, uint8_t vel, unsigned int startTick);
+                         uint8_t key, uint8_t vel, unsigned int startTick,
+                         uint8_t triggerNote = 0xff);
 
   /** Process one command of a MacroExecContext, scheduling FluidSynth events.
    *  Returns the additional tick delay introduced by the command. */
@@ -1467,6 +1469,19 @@ static fluid_voice_t* getActiveVoice(MacroExecContext& ctx) {
   return nullptr;
 }
 
+/** Stop a voice that was started with fluid_synth_start_voice().
+ *  fluid_synth_stop() is the proper counterpart: it takes the synth and the
+ *  unique voice ID returned by fluid_voice_get_id() at allocation time. */
+static void stopVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
+  if (ctx.voiceId != 0) {
+    fluid_synth_stop(synth, ctx.voiceId);
+  }
+  /* Always clear tracking state so getActiveVoice() returns null
+   * on any subsequent call, even if no voice was playing. */
+  ctx.voice = nullptr;
+  ctx.voiceId = 0;
+}
+
 void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
                                     bool started) {
   if (!ctx.useAdsrControllers || !v)
@@ -1535,10 +1550,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Termination ── */
   case SoundMacro::CmdOp::End:
   case SoundMacro::CmdOp::Stop: {
-    /* Send note-off using the allocation key (midiKey may have been
-     * changed by SetNote/AddNote since the voice was created). */
-    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
-    fluid_sequencer_send_at(sequencer, evt, curTick, /*absolute=*/1);
+    /* Stop the voice that was started via fluid_synth_start_voice(). */
+    stopVoice(synth, ctx);
     ctx.ended = true;
     break;
   }
@@ -1954,21 +1967,21 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
   case SoundMacro::CmdOp::StopSample: {
-    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    /* Voice was started with fluid_synth_start_voice(); stop via synth. */
+    stopVoice(synth, ctx);
     ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::KeyOff: {
-    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    /* Trigger the release phase.  FluidSynth has no per-voice key-off for
+     * voices started with fluid_synth_start_voice(), so we stop them. */
+    stopVoice(synth, ctx);
     ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::SendKeyOff: {
-    /* Send key-off to another voice – simplified to same channel */
-    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    /* Send key-off to another voice – simplified to same voice. */
+    stopVoice(synth, ctx);
     ctx.pc++;
     break;
   }
@@ -2382,7 +2395,9 @@ void FluidsyXApp::resolveAndEnqueueNote(uint8_t channel, uint8_t note,
           if (sm) {
             uint8_t mappedKey = static_cast<uint8_t>(
                 std::clamp(static_cast<int>(note) + mapping.transpose, 0, 127));
-            enqueueSoundMacro(sm, 0, channel, mappedKey, vel, tick);
+            /* Pass 'note' as triggerNote so NoteOff can match on the
+             * original SNG note (before transpose). */
+            enqueueSoundMacro(sm, 0, channel, mappedKey, vel, tick, note);
           }
         }
       }
@@ -2396,7 +2411,7 @@ void FluidsyXApp::resolveAndEnqueueNote(uint8_t channel, uint8_t note,
       if (sm) {
         uint8_t mappedKey = static_cast<uint8_t>(
             std::clamp(static_cast<int>(note) + km.transpose, 0, 127));
-        enqueueSoundMacro(sm, 0, channel, mappedKey, vel, tick);
+        enqueueSoundMacro(sm, 0, channel, mappedKey, vel, tick, note);
       }
     }
   } else {
@@ -2409,7 +2424,8 @@ void FluidsyXApp::resolveAndEnqueueNote(uint8_t channel, uint8_t note,
 
 void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
                                     int channel, uint8_t key, uint8_t vel,
-                                    unsigned int startTick) {
+                                    unsigned int startTick,
+                                    uint8_t triggerNote) {
   MacroExecContext ctx;
   ctx.macro = sm;
   ctx.pc = step;
@@ -2417,6 +2433,9 @@ void FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   ctx.midiKey = key;
   ctx.initKey = key;
   ctx.midiVel = vel;
+  /* triggerNote = the original SNG note (before keymap/layer transpose).
+   * Used to match note-off events.  If not supplied, defaults to key. */
+  ctx.triggerNote = (triggerNote == 0xff) ? key : triggerNote;
 
   /* Initialize controller values from channel state so that selectors
    * and ADSR controllers see the current MIDI setup. */
@@ -2472,10 +2491,20 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
                                  sngEvt.velocity, time);
       break;
 
-    case PendingSngNoteEvent::NoteOff:
-      fluid_synth_noteoff(app->synth, sngEvt.channel, sngEvt.note);
+    case PendingSngNoteEvent::NoteOff: {
+      /* Stop all active macro voices triggered by this (channel, note).
+       * We match on triggerNote (the original SNG note before keymap/layer
+       * transpose) rather than allocKey. */
+      uint8_t ch = sngEvt.channel;
+      uint8_t note = sngEvt.note;
+      for (auto& [id, mctx] : app->activeMacros) {
+        if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
+          stopVoice(app->synth, mctx);
+          mctx.ended = true;
+        }
+      }
       break;
-
+    }
     case PendingSngNoteEvent::ProgramChange:
       app->channelPrograms[sngEvt.channel] = sngEvt.note; /* note field = program */
       fluid_synth_program_change(app->synth, sngEvt.channel, sngEvt.note);
@@ -2499,6 +2528,37 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
 
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth, ch, cc, val);
+
+      /* For volume (CC 7) and pan (CC 10), also update voice-level
+       * generators on all active voices on this channel.  Voices started
+       * with fluid_synth_start_voice() may not respond to channel CC. */
+      if (cc == 7) {
+        /* CC 7 = channel volume → GEN_ATTENUATION */
+        float attn = (val > 0)
+            ? static_cast<float>(-200.0f * std::log10(val / 127.0f))
+            : 1440.0f;
+        attn = std::clamp(attn, 0.0f, 1440.0f);
+        for (auto& [id, mctx] : app->activeMacros) {
+          if (mctx.channel == ch && !mctx.ended) {
+            if (auto* v = getActiveVoice(mctx)) {
+              fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
+              fluid_voice_update_param(v, GEN_ATTENUATION);
+            }
+          }
+        }
+      } else if (cc == 10) {
+        /* CC 10 = pan → GEN_PAN (-500..+500, 0=center).
+         * Pre-compute the generator value once; it is the same for all voices. */
+        float panGen = ((static_cast<int>(val) - 64) / 64.0f) * 500.0f;
+        for (auto& [id, mctx] : app->activeMacros) {
+          if (mctx.channel == ch && !mctx.ended) {
+            if (auto* v = getActiveVoice(mctx)) {
+              fluid_voice_gen_set(v, GEN_PAN, panGen);
+              fluid_voice_update_param(v, GEN_PAN);
+            }
+          }
+        }
+      }
 
       /* If this CC matches an ADSR controller on this channel, update
        * ADSR on all active voices on the channel (voice-level) and also
