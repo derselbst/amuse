@@ -508,10 +508,28 @@ struct MacroExecContext {
   /* variable bank (32 × 32-bit) */
   int32_t vars[32] = {};
 
+  /* ── FluidSynth voice tracking ──
+   * Each SoundMacro owns a single voice.  After CmdStartSample allocates
+   * a voice via fluid_synth_alloc_voice(), we store its pointer and ID so
+   * that subsequent commands (pitch, pan, volume, ADSR, etc.) can
+   * manipulate the voice's SF2 generators directly instead of using
+   * channel-level events (which would affect *all* voices on the channel).
+   * Before each access, validate with fluid_voice_is_playing() + ID check
+   * (voices are pooled and recycled by FluidSynth). */
+  fluid_voice_t* voice = nullptr;
+  unsigned int voiceId = 0;
+  uint8_t allocKey = 60;  /**< MIDI key at voice allocation time */
+
+  /* Pending voice state – set by commands that run BEFORE CmdStartSample
+   * creates the voice.  Applied between alloc and start. */
+  float pendingPanGen = 0.0f;   /**< GEN_PAN (-500..500, 0=center) */
+  bool  hasPendingPan = false;
+  float pendingAttnGen = 0.0f;  /**< GEN_ATTENUATION (centibels, 0..1440) */
+  bool  hasPendingAttn = false;
+
   /* ADSR controller mapping (CmdSetAdsrCtrl).
-   * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).  In
-   * FluidSynth, we manipulate the SF2 volume-envelope generators via
-   * NRPN, which is per-channel.  This is a known limitation. */
+   * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).
+   * With voice-level generators this is now per-voice in FluidSynth too. */
   bool useAdsrControllers = false;
   bool adsrBootstrapped = false;
   uint8_t midiAttack  = 0;
@@ -913,6 +931,15 @@ struct FluidsyXApp {
   /** Apply ADSR NRPN for a channel using channelAdsrMap + channelCtrlVals.
    *  Called when a SNG CC event matches a mapped ADSR controller. */
   void applyChannelAdsr(int channel, unsigned int tick);
+
+  /** Apply ADSR generator values directly to a FluidSynth voice.
+   *  If \p started is true, also calls fluid_voice_update_param() for
+   *  each generator so the change takes effect on an already-playing voice. */
+  void applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx, bool started);
+
+  /** Apply pitch offset (GEN_COARSETUNE + GEN_FINETUNE) to the macro's voice.
+   *  Computes the offset from allocKey and curDetune. */
+  void applyVoicePitch(MacroExecContext& ctx);
 
   /** Kick off the next pending timer step for all active macros */
   void scheduleNextTimerStep();
@@ -1426,6 +1453,65 @@ void FluidsyXApp::applyChannelAdsr(int channel, unsigned int tick) {
                     releaseTc, tick);
 }
 
+/* ═══════════════════ Voice-level helpers ═══════════════════ */
+
+/** Check if the macro's FluidSynth voice is still alive.
+ *  FluidSynth recycles voices from a pool; before touching a stored pointer
+ *  we must verify it is still playing AND that the unique ID has not changed.
+ *  If the voice is gone, clear the pointer so callers fall through. */
+static fluid_voice_t* getActiveVoice(MacroExecContext& ctx) {
+  if (ctx.voice && fluid_voice_is_playing(ctx.voice) &&
+      fluid_voice_get_id(ctx.voice) == ctx.voiceId)
+    return ctx.voice;
+  ctx.voice = nullptr;
+  return nullptr;
+}
+
+void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
+                                    bool started) {
+  if (!ctx.useAdsrControllers || !v)
+    return;
+
+  /* Attack */
+  double attackSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiAttack]), 0, 103)] / 1000.0;
+  fluid_voice_gen_set(v, GEN_VOLENVATTACK,
+                      static_cast<float>(secondsToTimecents(attackSec)));
+
+  /* Decay */
+  double decaySec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiDecay]), 0, 103)] / 1000.0;
+  fluid_voice_gen_set(v, GEN_VOLENVDECAY,
+                      static_cast<float>(secondsToTimecents(decaySec)));
+
+  /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
+  double sustainFactor = std::clamp(int(ctx.ctrlVals[ctx.midiSustain]), 0, 127) / 127.0;
+  fluid_voice_gen_set(v, GEN_VOLENVSUSTAIN,
+                      static_cast<float>((1.0 - sustainFactor) * 1440.0));
+
+  /* Release */
+  double releaseSec = MIDItoTIME[std::clamp(int(ctx.ctrlVals[ctx.midiRelease]), 0, 103)] / 1000.0;
+  fluid_voice_gen_set(v, GEN_VOLENVRELEASE,
+                      static_cast<float>(secondsToTimecents(releaseSec)));
+
+  if (started) {
+    fluid_voice_update_param(v, GEN_VOLENVATTACK);
+    fluid_voice_update_param(v, GEN_VOLENVDECAY);
+    fluid_voice_update_param(v, GEN_VOLENVSUSTAIN);
+    fluid_voice_update_param(v, GEN_VOLENVRELEASE);
+  }
+}
+
+void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
+  fluid_voice_t* v = getActiveVoice(ctx);
+  if (!v) return;
+  int offsetCents = (ctx.midiKey - ctx.allocKey) * 100 + ctx.curDetune;
+  int coarse = offsetCents / 100;
+  int fine   = offsetCents % 100;
+  fluid_voice_gen_set(v, GEN_COARSETUNE, static_cast<float>(coarse));
+  fluid_voice_gen_set(v, GEN_FINETUNE,   static_cast<float>(fine));
+  fluid_voice_update_param(v, GEN_COARSETUNE);
+  fluid_voice_update_param(v, GEN_FINETUNE);
+}
+
 /* ═══════════════════ SoundMacro → FluidSynth translation ═══════════════════ */
 
 unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
@@ -1449,8 +1535,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Termination ── */
   case SoundMacro::CmdOp::End:
   case SoundMacro::CmdOp::Stop: {
-    /* Send note-off for the voice */
-    fluid_event_noteoff(evt, ctx.channel, ctx.midiKey);
+    /* Send note-off using the allocation key (midiKey may have been
+     * changed by SetNote/AddNote since the voice was created). */
+    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
     fluid_sequencer_send_at(sequencer, evt, curTick, /*absolute=*/1);
     ctx.ended = true;
     break;
@@ -1549,17 +1636,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdSetNote&>(cmd);
     ctx.midiKey = static_cast<uint8_t>(std::clamp(static_cast<int>(c.key), 0, 127));
     ctx.curDetune = c.detune; /* ±99 cents */
-    /* Apply detune as pitch bend.  MusyX stores detune per-voice (in the
-     * SoundMacro command), but FluidSynth pitch bend is per-channel.
-     * The default bend range is ±2 semitones = ±200 cents.
-     * 8192 = center (no bend), ±8191 = ±200 cents.
-     * So 1 cent ≈ 8192/200 ≈ 40.96 LSBs. */
-    {
-      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
-      bend = std::clamp(bend, 0, 16383);
-      fluid_event_pitch_bend(evt, ctx.channel, bend);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
-    }
+    /* Apply pitch via voice-level generators (per-voice, not per-channel). */
+    applyVoicePitch(ctx);
     if (c.msSwitch)
       delay = c.ticksOrMs;
     else
@@ -1572,12 +1650,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     int newKey = ctx.midiKey + c.add;
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
     ctx.curDetune = c.detune;
-    {
-      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
-      bend = std::clamp(bend, 0, 16383);
-      fluid_event_pitch_bend(evt, ctx.channel, bend);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
-    }
+    applyVoicePitch(ctx);
     if (c.msSwitch)
       delay = c.ticksOrMs;
     else
@@ -1593,12 +1666,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     int newKey = static_cast<int>(ctx.initKey) + c.add;
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
     ctx.curDetune = c.detune;
-    {
-      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
-      bend = std::clamp(bend, 0, 16383);
-      fluid_event_pitch_bend(evt, ctx.channel, bend);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
-    }
+    applyVoicePitch(ctx);
     if (c.msSwitch)
       delay = c.ticksOrMs;
     else
@@ -1629,12 +1697,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     }
     /* Apply RndNote detune (same +/-99 cent field as SetNote et al.) */
     ctx.curDetune = c.detune;
-    {
-      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
-      bend = std::clamp(bend, 0, 16383);
-      fluid_event_pitch_bend(evt, ctx.channel, bend);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
-    }
+    applyVoicePitch(ctx);
     ctx.pc++;
     break;
   }
@@ -1642,8 +1705,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Pitch control ── */
   case SoundMacro::CmdOp::SetPitch: {
     /* SetPitch sets an absolute frequency (hz + fine/65536 Hz).
-     * Convert to MIDI note + cent offset for FluidSynth.
-     * freq = 440 * 2^((note-69)/12)  =>  note = 69 + 12*log2(freq/440) */
+     * Convert to MIDI note + cent offset, then apply via voice generators. */
     auto& c = static_cast<const SoundMacro::CmdSetPitch&>(cmd);
     double freq = static_cast<double>(c.hz) + c.fine / 65536.0;
     if (freq > 0.0) {
@@ -1653,11 +1715,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       double centFrac = (midiNote - noteInt) * 100.0;
       ctx.midiKey = static_cast<uint8_t>(noteInt);
       ctx.curDetune = static_cast<int>(std::round(centFrac));
-      /* Send pitch bend for the sub-semitone fraction */
-      int bend = 8192 + static_cast<int>(ctx.curDetune * 8192 / 200);
-      bend = std::clamp(bend, 0, 16383);
-      fluid_event_pitch_bend(evt, ctx.channel, bend);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      applyVoicePitch(ctx);
     }
     ctx.pc++;
     break;
@@ -1694,8 +1752,19 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdScaleVolume&>(cmd);
     int vol = (ctx.midiVel * (c.scale + 128)) / 256 + c.add;
     vol = std::clamp(vol, 0, 127);
-    fluid_event_volume(evt, ctx.channel, vol);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    /* GEN_ATTENUATION in centibels: 0=full volume, 1440=silence.
+     * Convert MIDI velocity-scaled volume to centibel attenuation. */
+    float attn = (vol > 0)
+        ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
+        : 1440.0f;
+    attn = std::clamp(attn, 0.0f, 1440.0f);
+    if (auto* v = getActiveVoice(ctx)) {
+      fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
+      fluid_voice_update_param(v, GEN_ATTENUATION);
+    } else {
+      ctx.pendingAttnGen = attn;
+      ctx.hasPendingAttn = true;
+    }
     ctx.pc++;
     break;
   }
@@ -1703,8 +1772,17 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdScaleVolumeDLS&>(cmd);
     int vol = (ctx.midiVel * (c.scale + 32768)) / 65536;
     vol = std::clamp(vol, 0, 127);
-    fluid_event_volume(evt, ctx.channel, vol);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    float attn = (vol > 0)
+        ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
+        : 1440.0f;
+    attn = std::clamp(attn, 0.0f, 1440.0f);
+    if (auto* v = getActiveVoice(ctx)) {
+      fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
+      fluid_voice_update_param(v, GEN_ATTENUATION);
+    } else {
+      ctx.pendingAttnGen = attn;
+      ctx.hasPendingAttn = true;
+    }
     ctx.pc++;
     break;
   }
@@ -1753,8 +1831,12 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       m.releaseCC = c.release;
     }
 
-    /* Apply immediately via NRPN to the FluidSynth channel.
-     * NOTE: in MusyX, ADSR is per-voice; here it is per-channel. */
+    /* Apply ADSR immediately.  If the voice is already playing, use
+     * voice-level generators; otherwise defer to StartSample. */
+    if (auto* v = getActiveVoice(ctx)) {
+      applyAdsrToVoice(v, ctx, /*started=*/true);
+    }
+    /* Also apply via channel NRPN as fallback for voices not yet started */
     applyAdsrCtrl(ctx, curTick);
     ctx.pc++;
     break;
@@ -1766,11 +1848,15 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     if (c.panPosition == -128) {
       /* -128 = surround-channel only; no-op in FluidSynth */
     } else {
-      /* panPosition is -127..127; map to MIDI 0..127 */
-      int pan = (static_cast<int>(c.panPosition) + 127) / 2;
-      pan = std::clamp(pan, 0, 127);
-      fluid_event_pan(evt, ctx.channel, pan);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      /* GEN_PAN: -500..+500 (0.1% units).  panPosition is -127..+127 */
+      float panGen = (c.panPosition / 127.0f) * 500.0f;
+      if (auto* v = getActiveVoice(ctx)) {
+        fluid_voice_gen_set(v, GEN_PAN, panGen);
+        fluid_voice_update_param(v, GEN_PAN);
+      } else {
+        ctx.pendingPanGen = panGen;
+        ctx.hasPendingPan = true;
+      }
     }
     ctx.pc++;
     break;
@@ -1780,10 +1866,16 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     /* Original amuse uses m_initKey (the original trigger key), not the
      * current midiKey which may have been changed by SetNote/AddNote. */
     int diff = ctx.initKey - c.centerKey;
-    int pan = c.centerPan + diff * c.scale / 127;
-    pan = std::clamp((pan + 127) / 2, 0, 127);
-    fluid_event_pan(evt, ctx.channel, pan);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    int panPos = c.centerPan + diff * c.scale / 127;
+    panPos = std::clamp(panPos, -127, 127);
+    float panGen = (panPos / 127.0f) * 500.0f;
+    if (auto* v = getActiveVoice(ctx)) {
+      fluid_voice_gen_set(v, GEN_PAN, panGen);
+      fluid_voice_update_param(v, GEN_PAN);
+    } else {
+      ctx.pendingPanGen = panGen;
+      ctx.hasPendingPan = true;
+    }
     ctx.pc++;
     break;
   }
@@ -1800,8 +1892,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     /* Look up the specific sample referenced by this command.
      * In the original amuse, CmdStartSample loads the exact sample by ID
      * and sets the voice pitch from m_curPitch.  Here we allocate a
-     * FluidSynth voice directly with the correct sample, bypassing
-     * the preset system (which only knows one "default" sample). */
+     * FluidSynth voice directly with the correct sample, then set all
+     * pending generator values (pan, volume, ADSR, pitch) before starting
+     * the voice.  Subsequent SoundMacro commands manipulate the voice's
+     * generators directly via fluid_voice_gen_set() + update_param(). */
     fluid_sample_t* flSamp = nullptr;
     bool looped = false;
     if (musyxSfData) {
@@ -1813,15 +1907,39 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       }
     }
     if (flSamp) {
-      fluid_voice_t* voice = fluid_synth_alloc_voice(synth, flSamp,
-                                                     ctx.channel,
-                                                     ctx.midiKey,
-                                                     ctx.midiVel);
-      if (voice) {
-        /* Sample mode: 0=no loop, 1=loop continuously, 3=loop until noteoff */
+      fluid_voice_t* newVoice = fluid_synth_alloc_voice(synth, flSamp,
+                                                        ctx.channel,
+                                                        ctx.midiKey,
+                                                        ctx.midiVel);
+      if (newVoice) {
+        /* Sample mode: 0=no loop, 1=loop continuously */
         if (looped)
-          fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
-        fluid_synth_start_voice(synth, voice);
+          fluid_voice_gen_set(newVoice, GEN_SAMPLEMODE, 1);
+
+        /* Apply any pending state accumulated before StartSample */
+        if (ctx.hasPendingPan) {
+          fluid_voice_gen_set(newVoice, GEN_PAN, ctx.pendingPanGen);
+          ctx.hasPendingPan = false;
+        }
+        if (ctx.hasPendingAttn) {
+          fluid_voice_gen_set(newVoice, GEN_ATTENUATION, ctx.pendingAttnGen);
+          ctx.hasPendingAttn = false;
+        }
+
+        /* Apply ADSR if controllers are configured */
+        applyAdsrToVoice(newVoice, ctx, /*started=*/false);
+
+        /* Apply pre-StartSample detune via GEN_FINETUNE */
+        if (ctx.curDetune != 0)
+          fluid_voice_gen_set(newVoice, GEN_FINETUNE,
+                              static_cast<float>(ctx.curDetune));
+
+        fluid_synth_start_voice(synth, newVoice);
+
+        /* Store voice for future manipulation by this SoundMacro */
+        ctx.voice   = newVoice;
+        ctx.voiceId = fluid_voice_get_id(newVoice);
+        ctx.allocKey = ctx.midiKey;
       } else {
         fprintf(stderr, "fluidsyX: warning: voice allocation failed for "
                         "sample %u on ch %d key %d\n",
@@ -1836,20 +1954,20 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
   case SoundMacro::CmdOp::StopSample: {
-    fluid_event_noteoff(evt, ctx.channel, ctx.midiKey);
+    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
     fluid_sequencer_send_at(sequencer, evt, curTick, 1);
     ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::KeyOff: {
-    fluid_event_noteoff(evt, ctx.channel, ctx.midiKey);
+    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
     fluid_sequencer_send_at(sequencer, evt, curTick, 1);
     ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::SendKeyOff: {
     /* Send key-off to another voice – simplified to same channel */
-    fluid_event_noteoff(evt, ctx.channel, ctx.midiKey);
+    fluid_event_noteoff(evt, ctx.channel, ctx.allocKey);
     fluid_sequencer_send_at(sequencer, evt, curTick, 1);
     ctx.pc++;
     break;
@@ -1934,11 +2052,30 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
   /* ── Vibrato / Tremolo / Portamento ── */
   case SoundMacro::CmdOp::Vibrato: {
-    /* Translate to modulation CC */
     auto& c = static_cast<const SoundMacro::CmdVibrato&>(cmd);
-    int modVal = std::clamp(static_cast<int>(c.levelNote) * 8, 0, 127);
-    fluid_event_modulation(evt, ctx.channel, modVal);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    if (auto* v = getActiveVoice(ctx)) {
+      /* GEN_VIBLFOTOPITCH: vibrato depth in cents */
+      float depthCents = static_cast<float>(c.levelNote * 100 + c.levelFine);
+      fluid_voice_gen_set(v, GEN_VIBLFOTOPITCH, depthCents);
+      fluid_voice_update_param(v, GEN_VIBLFOTOPITCH);
+
+      /* GEN_VIBLFOFREQ: vibrato frequency in absolute cents from 8.176 Hz */
+      if (c.ticksOrMs > 0) {
+        float q = c.msSwitch ? 1000.0f : static_cast<float>(ctx.ticksPerSec);
+        float periodSec = c.ticksOrMs / q;
+        if (periodSec > 0.0f) {
+          float freqHz = 1.0f / periodSec;
+          float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
+          fluid_voice_gen_set(v, GEN_VIBLFOFREQ, freqCents);
+          fluid_voice_update_param(v, GEN_VIBLFOFREQ);
+        }
+      }
+    } else {
+      /* Fallback to channel-level modulation if no voice yet */
+      int modVal = std::clamp(static_cast<int>(c.levelNote) * 8, 0, 127);
+      fluid_event_modulation(evt, ctx.channel, modVal);
+      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    }
     ctx.pc++;
     break;
   }
@@ -2363,12 +2500,21 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth, ch, cc, val);
 
-      /* If this CC matches an ADSR controller on this channel, re-apply
-       * the full ADSR via NRPN so FluidSynth's volume envelope updates. */
+      /* If this CC matches an ADSR controller on this channel, update
+       * ADSR on all active voices on the channel (voice-level) and also
+       * via channel-level NRPN as fallback. */
       if (ch < 16) {
         const auto& m = app->channelAdsrMap[ch];
         if (m.active && (cc == m.attackCC || cc == m.decayCC ||
                          cc == m.sustainCC || cc == m.releaseCC)) {
+          /* Voice-level: apply ADSR generators to each active voice */
+          for (auto& [id, mctx] : app->activeMacros) {
+            if (mctx.channel == ch && !mctx.ended) {
+              if (auto* v = getActiveVoice(mctx))
+                app->applyAdsrToVoice(v, mctx, /*started=*/true);
+            }
+          }
+          /* Channel-level NRPN fallback */
           app->applyChannelAdsr(ch, time);
         }
       }
