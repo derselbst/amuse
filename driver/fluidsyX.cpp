@@ -1000,11 +1000,11 @@ bool FluidsyXApp::initFluidSynth() {
     fluid_mod_set_source1(blueprint, FLUID_MOD_NONE,
                           FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
     fluid_mod_set_source2(blueprint, FLUID_MOD_NONE, 0);
-    fluid_mod_set_dest(blueprint, GEN_CUSTOM_FILTERQ);
     fluid_mod_set_amount(blueprint, 1);
     fluid_mod_set_custom_mapping(blueprint, [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
     {
-        return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0);
+        // The volenv* generators all use -12000 timecents as default, which we need to get rid of.
+        return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0) + 12000;
     }, nullptr);
 
     modBlueprintADR = new_fluid_mod();
@@ -1483,17 +1483,21 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 
   /* Attack */
   fluid_mod_set_source1(modBlueprintADR, ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR));
+  fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVATTACK);
   fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
 
   /* Decay */
   fluid_mod_set_source1(modBlueprintADR, ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADR));
+  fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVDECAY);
   fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
 
   /* Release */
   fluid_mod_set_source1(modBlueprintADR, ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR));
+  fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVRELEASE);
   fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
   /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
   fluid_mod_set_source1(modBlueprintSustain, ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain));
+  fluid_mod_set_dest(modBlueprintSustain, GEN_VOLENVSUSTAIN);
   fluid_voice_add_mod(v, modBlueprintSustain, FLUID_VOICE_OVERWRITE);
 
   if (started) {
