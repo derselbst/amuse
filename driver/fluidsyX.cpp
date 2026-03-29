@@ -2197,11 +2197,11 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
 
   if (rawData < 0) {
     /* ── SNG event dispatch ── */
-    int idx = static_cast<int>(-(rawData + 1));
-    if (idx < 0 || idx >= static_cast<int>(app->pendingSngEvents.size()))
+    size_t idx = static_cast<size_t>(-(rawData + 1));
+    if (idx >= app->pendingSngEvents.size())
       return;
 
-    const auto& sngEvt = app->pendingSngEvents[static_cast<size_t>(idx)];
+    const auto& sngEvt = app->pendingSngEvents[idx];
     switch (sngEvt.type) {
     case PendingSngNoteEvent::NoteOn:
       app->resolveAndEnqueueNote(sngEvt.channel, sngEvt.note,
@@ -2313,7 +2313,7 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       /* Route through timer callback → resolveAndEnqueueNote() so that
        * the SoundMacro system processes the note with proper ADSR, pitch,
        * panning, etc. */
-      int idx = static_cast<int>(pendingSngEvents.size());
+      size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::NoteOn, e.channel, e.data1, e.data2});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
@@ -2326,7 +2326,7 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
     case SngEvent::NoteOff: {
       /* Route through timer callback for synchronized note-off */
-      int idx = static_cast<int>(pendingSngEvents.size());
+      size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::NoteOff, e.channel, e.data1, 0});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
@@ -2349,7 +2349,7 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
     case SngEvent::Program: {
       /* Route through timer callback to update channelPrograms atomically
        * with the sequencer timeline */
-      int idx = static_cast<int>(pendingSngEvents.size());
+      size_t idx = pendingSngEvents.size();
       pendingSngEvents.push_back(
           {PendingSngNoteEvent::ProgramChange, e.channel, e.data1, 0});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
