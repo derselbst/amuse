@@ -943,13 +943,6 @@ struct FluidsyXApp {
   static void timerCallback(unsigned int time, fluid_event_t* event,
                             fluid_sequencer_t* seq, void* data);
 
-  /** Send an SF2 generator change via NRPN CCs.
-   *  \p genId is a GEN_* constant, \p value is in the generator's native
-   *  unit (timecents for envelope times, centibels for sustain, etc.).
-   *  The NRPN scale for the given generator must be supplied. */
-  void sendNrpnGenChange(int channel, int genId, int nrpnScale,
-                         double value, unsigned int tick);
-
   /** Apply ADSR generator values directly to a FluidSynth voice.
    *  If \p started is true, also calls fluid_voice_update_param() for
    *  each generator so the change takes effect on an already-playing voice. */
@@ -1417,48 +1410,6 @@ bool FluidsyXApp::buildMusyXSoundFont() {
     fluid_preset_set_data(dummyPreset, this);
 
   return true;
-}
-
-/* ═══════════════════ NRPN / ADSR helpers ═══════════════════ */
-
-void FluidsyXApp::sendNrpnGenChange(int channel, int genId, int nrpnScale,
-                                    double value, unsigned int tick)
-{
-  /* Send NRPN select (MSB=120 requests SF2 generator NRPN) */
-  fluid_event_t* e1 = new_fluid_event();
-  fluid_event_set_source(e1, callbackSeqId);
-  fluid_event_set_dest(e1, synthSeqId);
-
-  // CCs must be received in order
-  auto safe_send = [this, e1, tick](unsigned int at) -> int
-  {
-      if (tick <= 3) {
-          fluid_sequencer_send_now(sequencer, e1);
-          return 0;
-      }
-
-      return fluid_sequencer_send_at(sequencer, e1, at, 1);
-  };
-
-  fluid_event_control_change(e1, channel, 0x63 /*NRPN_MSB*/, 120);
-  safe_send(tick-3);
-
-  fluid_event_control_change(e1, channel, 0x62 /*NRPN_LSB*/, genId);
-  safe_send(tick-2);
-
-  /* Scale and encode the value.  0x2000 is the NRPN zero offset.
-   * Clamp to valid 14-bit NRPN range (0-16383). */
-  int scaledVal = std::clamp(0x2000 + static_cast<int>(value / nrpnScale), 0, 16383);
-  int valLsb = scaledVal % 128;
-  int valMsb = scaledVal / 128;
-
-  fluid_event_control_change(e1, channel, 0x26 /*DATA_ENTRY_LSB*/, valLsb);
-  safe_send(tick-1);
-
-  fluid_event_control_change(e1, channel, 0x06 /*DATA_ENTRY_MSB*/, valMsb);
-  safe_send(tick);
-
-  delete_fluid_event(e1);
 }
 
 /* ═══════════════════ Voice-level helpers ═══════════════════ */
