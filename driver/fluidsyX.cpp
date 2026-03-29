@@ -1805,6 +1805,8 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
       channelCtrlVals[ch][10] = static_cast<int8_t>(midiSetup[ch].panning);
       channelCtrlVals[ch][91] = static_cast<int8_t>(midiSetup[ch].reverb);
       channelCtrlVals[ch][93] = static_cast<int8_t>(midiSetup[ch].chorus);
+     printf("  Setup %d, Chan %d, VOL %d PAN %d REV %d CHO %d\n", setupId,
+         ch, midiSetup[ch].volume, midiSetup[ch].panning, midiSetup[ch].reverb, midiSetup[ch].chorus);
     }
   }
 
@@ -2132,13 +2134,8 @@ int main(int argc, char** argv) {
   const char* songsPath = nullptr;
   const char* sf2Path   = nullptr;
 
-  auto hasSf2Extension = [](const char* path) -> bool {
-    const char* dot = strrchr(path, '.');
-    return dot && (!CompareCaseInsensitive(dot, ".sf2") || !CompareCaseInsensitive(dot, ".sf3"));
-  };
-
   for (int i = 2; i < argc; ++i) {
-    if (hasSf2Extension(argv[i])) {
+    if (fluid_is_soundfont(argv[i])) {
       sf2Path = argv[i];
     } else {
       songsPath = argv[i];
