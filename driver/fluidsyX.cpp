@@ -933,6 +933,9 @@ bool FluidsyXApp::initFluidSynth() {
     fprintf(stderr, "fluidsyX: failed to create FluidSynth synthesizer\n");
     return false;
   }
+  fluid_synth_set_channel_type(synth, 9, CHANNEL_TYPE_MELODIC);
+  fluid_synth_bank_select(synth, 9, 0); // try to force drum channel to bank 0 rather than bank 128
+
 
   /* Create sequencer (use system timer so it advances in real-time) */
   sequencer = new_fluid_sequencer2(0);
