@@ -1091,7 +1091,7 @@ bool FluidsyXApp::initFluidSynth() {
     return false;
   }
 
-  fluid_settings_setnum(settings, "synth.gain", 0.5);
+  fluid_settings_setnum(settings, "synth.gain", 0.9);
   /* Use FluidSynth's linear portamento mode via the portamento-time
    * setting.  NOTE: synth.portamento-time is a global setting, not
    * per-channel.  If multiple channels set different portamento times
