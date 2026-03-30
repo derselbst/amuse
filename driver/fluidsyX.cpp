@@ -945,6 +945,11 @@ struct FluidsyXApp {
    *  duration is reached.  Set from the --duration CLI flag. */
   uint32_t maxDurationTicks = 0;
 
+  /** When true, log every SoundMacro command as it executes (with all
+   *  introspection fields).  Unimplemented commands are always logged
+   *  regardless of this flag.  Set from the --verbose CLI flag. */
+  bool verbose = false;
+
   /* Active SongGroupIndex for note→SoundMacro resolution during playback */
   const SongGroupIndex* activeSongGroup = nullptr;
 
@@ -1592,6 +1597,125 @@ void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
 
 /* ═══════════════════ SoundMacro → FluidSynth translation ═══════════════════ */
 
+/** Format a SoundMacro command using its CmdIntrospection metadata.
+ *  Produces a string like: "SetNote(Key=60, Detune=0, Use Millisec=1, Ticks/Millisec=0)"
+ *  If no introspection is available, falls back to the numeric CmdOp value. */
+static std::string formatMacroCmd(const SoundMacro::ICmd& cmd) {
+  using Field = SoundMacro::CmdIntrospection::Field;
+  const SoundMacro::CmdOp op = cmd.Isa();
+  const auto* intro = SoundMacro::GetCmdIntrospection(op);
+
+  std::string result;
+  if (intro) {
+    result = std::string(intro->m_name);
+  } else {
+    result = fmt::format("CmdOp({})", static_cast<int>(op));
+  }
+
+  if (!intro)
+    return result;
+
+  /* Collect formatted fields */
+  std::string fields;
+  for (const auto& f : intro->m_fields) {
+    if (f.m_name.empty())
+      continue;
+
+    const auto* base = reinterpret_cast<const char*>(&cmd);
+    std::string val;
+
+    switch (f.m_tp) {
+    case Field::Type::Bool: {
+      bool v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = v ? "true" : "false";
+      break;
+    }
+    case Field::Type::Int8: {
+      int8_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", static_cast<int>(v));
+      break;
+    }
+    case Field::Type::UInt8: {
+      uint8_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", static_cast<unsigned>(v));
+      break;
+    }
+    case Field::Type::Int16: {
+      int16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::UInt16: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::Int32: {
+      int32_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::UInt32: {
+      uint32_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::SoundMacroId: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("macro:{}", v);
+      break;
+    }
+    case Field::Type::SoundMacroStep: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("step:{}", v);
+      break;
+    }
+    case Field::Type::TableId: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("table:{}", v);
+      break;
+    }
+    case Field::Type::SampleId: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("sample:{}", v);
+      break;
+    }
+    case Field::Type::Choice: {
+      uint8_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      if (v < f.m_choices.size() && !f.m_choices[v].empty())
+        val = fmt::format("{}({})", std::string_view(f.m_choices[v]),
+                          static_cast<unsigned>(v));
+      else
+        val = fmt::format("{}", static_cast<unsigned>(v));
+      break;
+    }
+    default:
+      val = "?";
+      break;
+    }
+
+    if (!fields.empty())
+      fields += ", ";
+    fields += fmt::format("{}={}", std::string_view(f.m_name), val);
+  }
+
+  if (!fields.empty())
+    result += fmt::format("({})", fields);
+  return result;
+}
+
 unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
                                           unsigned int curTick) {
   if (ctx.ended || !ctx.macro)
@@ -1605,6 +1729,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   SoundMacro::CmdOp op = cmd.Isa();
   unsigned int delay = 0;
   FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
+
+  if (verbose)
+    fmt::print("fluidsyX: [ch{} pc{}] {}\n", ctx.channel, ctx.pc,
+               formatMacroCmd(cmd));
 
   fluid_event_set_source(evt.get(), callbackSeqId);
   fluid_event_set_dest(evt.get(), synthSeqId);
@@ -2434,6 +2562,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::AuxAFXSelect:
   case SoundMacro::CmdOp::AuxBFXSelect: {
     /* Advanced controller routing – skip for now */
+    if (!verbose)
+      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n",
+                 ctx.channel, ctx.pc, formatMacroCmd(cmd));
     ctx.pc++;
     break;
   }
@@ -2450,12 +2581,18 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SRCmodeSelect:
   case SoundMacro::CmdOp::WiiUnknown:
   case SoundMacro::CmdOp::WiiUnknown2: {
+    if (!verbose)
+      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n",
+                 ctx.channel, ctx.pc, formatMacroCmd(cmd));
     ctx.pc++;
     break;
   }
 
   default: {
-    /* Unknown op – skip */
+    /* Unknown op – always log */
+    if (!verbose)
+      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n",
+                 ctx.channel, ctx.pc, formatMacroCmd(cmd));
     ctx.pc++;
     break;
   }
@@ -3070,7 +3207,7 @@ int main(int argc, char** argv) {
 
   if (argc < 2) {
     fmt::print(stderr,
-            "Usage: fluidsyX [--duration <ticks>] <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
+            "Usage: fluidsyX [--verbose] [--duration <ticks>] <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
             "\n"
             "  Plays MusyX SoundMacro data using FluidSynth.\n"
             "  MusyX samples are decoded and loaded as a virtual SoundFont.\n"
@@ -3080,6 +3217,9 @@ int main(int argc, char** argv) {
             "  fallback for programs not covered by the MusyX data.\n"
             "\n"
             "Options:\n"
+            "  --verbose           Log every SoundMacro command as it executes\n"
+            "                      with all introspection fields.  Unimplemented\n"
+            "                      commands are always logged regardless.\n"
             "  --duration <ticks>  Total playback duration in SNG ticks.\n"
             "                      When specified, the song loops until the\n"
             "                      given tick count is reached.\n");
@@ -3087,16 +3227,18 @@ int main(int argc, char** argv) {
   }
 
   /* Parse positional arguments.
-   * argv[1..] may include --duration <ticks>.  Remaining positional args:
-   * first is the group path, then classified by extension: .sf2 → external
-   * SoundFont, anything else → songs file (consistent with amuserender /
-   * amuseplay). */
+   * argv[1..] may include --verbose and --duration <ticks>.  Remaining
+   * positional args: first is the group path, then classified by extension:
+   * .sf2 → external SoundFont, anything else → songs file (consistent with
+   * amuserender / amuseplay). */
   const char* groupPath = nullptr;
   const char* songsPath = nullptr;
   const char* sf2Path   = nullptr;
 
   for (int i = 1; i < argc; ++i) {
-    if (strcmp(argv[i], "--duration") == 0) {
+    if (strcmp(argv[i], "--verbose") == 0) {
+      app.verbose = true;
+    } else if (strcmp(argv[i], "--duration") == 0) {
       if (i + 1 < argc) {
         const char* arg = argv[++i];
         char* end = nullptr;
