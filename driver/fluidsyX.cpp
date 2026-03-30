@@ -685,7 +685,7 @@ static std::vector<int16_t> decodeSampleToPCM(
     int16_t prev2 = ent.m_ADPCMParms.dsp.m_hist2;
     size_t outOff = 0;
     while (remSamples > 0) {
-      int16_t decomp[14] = {};
+      int16_t decomp[kDSPFrameSamples] = {};
       unsigned thisSamples = std::min(remSamples, kDSPFrameSamples);
       DSPDecompressFrame(decomp, cur, ent.m_ADPCMParms.dsp.m_coefs,
                          &prev1, &prev2, thisSamples);
@@ -700,7 +700,7 @@ static std::vector<int16_t> decodeSampleToPCM(
     const unsigned char* cur = samp + sizeof(AudioGroupSampleDirectory::ADPCMParms::VADPCMParms);
     size_t outOff = 0;
     while (remSamples > 0) {
-      int16_t decomp[64] = {};
+      int16_t decomp[kN64FrameSamples] = {};
       unsigned thisSamples = std::min(remSamples, kN64FrameSamples);
       N64MusyXDecompressFrame(decomp, cur, ent.m_ADPCMParms.vadpcm.m_coefs,
                               thisSamples);
