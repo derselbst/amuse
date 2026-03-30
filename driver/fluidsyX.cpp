@@ -20,7 +20,10 @@
 
 #include <fluidsynth.h>
 
+#include <fmt/format.h>
+
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -32,6 +35,7 @@
 #include <cstring>
 #include <list>
 #include <map>
+#include <memory>
 #include <random>
 #include <string>
 #include <thread>
@@ -57,6 +61,14 @@
 #else
 #define FLUID_VERSION_AT_LEAST(major,minor,patch) 0
 #endif
+
+/* ── RAII wrappers for FluidSynth C objects ── */
+using FluidSettingsPtr    = std::unique_ptr<fluid_settings_t, decltype(&delete_fluid_settings)>;
+using FluidSynthPtr       = std::unique_ptr<fluid_synth_t, decltype(&delete_fluid_synth)>;
+using FluidAudioDriverPtr = std::unique_ptr<fluid_audio_driver_t, decltype(&delete_fluid_audio_driver)>;
+using FluidSequencerPtr   = std::unique_ptr<fluid_sequencer_t, decltype(&delete_fluid_sequencer)>;
+using FluidModPtr         = std::unique_ptr<fluid_mod_t, decltype(&delete_fluid_mod)>;
+using FluidEventPtr       = std::unique_ptr<fluid_event_t, decltype(&delete_fluid_event)>;
 
 using namespace amuse;
 
@@ -570,7 +582,7 @@ struct MacroExecContext {
   bool inIndefiniteWait = false;  /**< Macro paused in an indefinite wait (ticks=0, keyOff/sampleEnd) */
   int lastPlayMacroId = -1;      /**< activeMacros key of the last child spawned by PlayMacro */
   /* variable bank (32 × 32-bit) */
-  int32_t vars[32] = {};
+  std::array<int32_t, 32> vars = {};
 
   /* ── FluidSynth voice tracking ──
    * Each SoundMacro owns a single voice.  CmdStartSample routes voice
@@ -600,7 +612,7 @@ struct MacroExecContext {
   uint8_t midiRelease = 0;
 
   /* Controller value storage (0-127 for standard MIDI CCs) */
-  int8_t ctrlVals[128] = {};
+  std::array<int8_t, 128> ctrlVals = {};
 
   /* Accumulated fine-tune in cents, from SoundMacro detune commands.
    * MusyX samples do not carry per-sample sub-semitone fine-tuning;
@@ -837,7 +849,7 @@ static fluid_sfont_t* musyx_sfloader_load(fluid_sfloader_t* loader,
     sfData->flPresets[i] = preset;
   }
 
-  printf("fluidsyX: MusyX SoundFont loaded with %zu samples, %zu presets\n",
+  fmt::print("fluidsyX: MusyX SoundFont loaded with {} samples, {} presets\n",
          sfData->samples.size(), sfData->presets.size());
   return sfont;
 }
@@ -852,15 +864,15 @@ static void musyx_sfloader_free(fluid_sfloader_t* loader) {
 
 struct FluidsyXApp {
   /* FluidSynth objects */
-  fluid_settings_t* settings = nullptr;
-  fluid_synth_t* synth = nullptr;
-  fluid_audio_driver_t* adriver = nullptr;
-  fluid_sequencer_t* sequencer = nullptr;
+  FluidSettingsPtr    settings{nullptr, &delete_fluid_settings};
+  FluidSynthPtr       synth{nullptr, &delete_fluid_synth};
+  FluidAudioDriverPtr adriver{nullptr, &delete_fluid_audio_driver};
+  FluidSequencerPtr   sequencer{nullptr, &delete_fluid_sequencer};
   fluid_seq_id_t synthSeqId = -1;
   fluid_seq_id_t callbackSeqId = -1;
 
-  fluid_mod_t *modBlueprintADR = nullptr;
-  fluid_mod_t *modBlueprintSustain = nullptr;
+  FluidModPtr         modBlueprintADR{nullptr, &delete_fluid_mod};
+  FluidModPtr         modBlueprintSustain{nullptr, &delete_fluid_mod};
 
   /* Amuse parsed data */
   std::vector<std::pair<std::string, IntrusiveAudioGroupData>> data;
@@ -920,7 +932,7 @@ struct FluidsyXApp {
   /* Per-channel CC state tracking (propagated to new MacroExecContexts).
    * Updated when MIDI setup is applied and when CC-manipulating commands
    * modify values. */
-  int8_t channelCtrlVals[16][128] = {};
+  std::array<std::array<int8_t, 128>, 16> channelCtrlVals = {};
 
   /* RNG */
   std::mt19937 rng{std::random_device{}()};
@@ -937,7 +949,7 @@ struct FluidsyXApp {
   const SongGroupIndex* activeSongGroup = nullptr;
 
   /* Per-channel program number (set from MIDI setup and SNG program changes) */
-  uint8_t channelPrograms[16] = {};
+  std::array<uint8_t, 16> channelPrograms = {};
 
   /* Per-channel ADSR controller mapping.  When a SoundMacro executes
    * SetAdsrCtrl, it records which CC numbers control Attack/Decay/Sustain/
@@ -952,7 +964,7 @@ struct FluidsyXApp {
     uint8_t sustainCC = 0;
     uint8_t releaseCC = 0;
   };
-  ChannelAdsrMapping channelAdsrMap[16] = {};
+  std::array<ChannelAdsrMapping, 16> channelAdsrMap = {};
 
   /* Pending SNG events dispatched via timer callbacks.
    * Timer data encodes a negative index into this vector: data = -(1 + idx). */
@@ -967,11 +979,11 @@ struct FluidsyXApp {
 
   /* ── lifecycle helpers ── */
 
-  bool initFluidSynth();
+  [[nodiscard]] bool initFluidSynth();
   void shutdownFluidSynth();
 
-  bool loadMusyXData(const char* path);
-  int selectGroup();
+  [[nodiscard]] bool loadMusyXData(const char* path);
+  [[nodiscard]] int selectGroup();
   const AudioGroupPool* findPoolForGroup();
 
   void songLoop(const SongGroupIndex& index);
@@ -979,11 +991,11 @@ struct FluidsyXApp {
 
   /** Parse SNG song data and schedule all events on the FluidSynth sequencer.
    *  Returns the total duration in SNG ticks, or 0 on failure. */
-  double scheduleSongEvents(const uint8_t* sngData, size_t sngSize);
+  [[nodiscard]] double scheduleSongEvents(const uint8_t* sngData, size_t sngSize);
 
   /** Build a custom MusyX SoundFont from the parsed sample directory
    *  and pool, register it with FluidSynth. */
-  bool buildMusyXSoundFont();
+  [[nodiscard]] bool buildMusyXSoundFont();
 
   /* ── SoundMacro → FluidSynth translation ── */
 
@@ -1069,8 +1081,8 @@ bool FluidsyXApp::initFluidSynth() {
         return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0) + 12000;
     }, nullptr);
 
-    modBlueprintADR = new_fluid_mod();
-    fluid_mod_clone(modBlueprintADR, blueprint);
+    modBlueprintADR.reset(new_fluid_mod());
+    fluid_mod_clone(modBlueprintADR.get(), blueprint);
 
     fluid_mod_set_custom_mapping(blueprint, [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
     {
@@ -1079,77 +1091,67 @@ bool FluidsyXApp::initFluidSynth() {
     }, nullptr);
 
 
-    modBlueprintSustain = new_fluid_mod();
-    fluid_mod_clone(modBlueprintSustain, blueprint);
+    modBlueprintSustain.reset(new_fluid_mod());
+    fluid_mod_clone(modBlueprintSustain.get(), blueprint);
 
     delete_fluid_mod(blueprint);
 #endif
 
-  settings = new_fluid_settings();
+  settings.reset(new_fluid_settings());
   if (!settings) {
-    fprintf(stderr, "fluidsyX: failed to create FluidSynth settings\n");
+    fmt::print(stderr, "fluidsyX: failed to create FluidSynth settings\n");
     return false;
   }
 
-  fluid_settings_setnum(settings, "synth.gain", 0.9);
+  fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
   /* Use FluidSynth's linear portamento mode via the portamento-time
    * setting.  NOTE: synth.portamento-time is a global setting, not
    * per-channel.  If multiple channels set different portamento times
    * concurrently, only the last value will take effect. */
-  fluid_settings_setstr(settings, "synth.portamento-time", "linear");
+  fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
 
-  synth = new_fluid_synth(settings);
+  synth.reset(new_fluid_synth(settings.get()));
   if (!synth) {
-    fprintf(stderr, "fluidsyX: failed to create FluidSynth synthesizer\n");
+    fmt::print(stderr, "fluidsyX: failed to create FluidSynth synthesizer\n");
     return false;
   }
-  fluid_synth_set_channel_type(synth, 9, CHANNEL_TYPE_MELODIC);
-  fluid_synth_bank_select(synth, 9, 0); // try to force drum channel to bank 0 rather than bank 128
+  fluid_synth_set_channel_type(synth.get(), 9, CHANNEL_TYPE_MELODIC);
+  fluid_synth_bank_select(synth.get(), 9, 0); // try to force drum channel to bank 0 rather than bank 128
 
 
   /* Create sequencer (use system timer so it advances in real-time) */
-  sequencer = new_fluid_sequencer2(0);
+  sequencer.reset(new_fluid_sequencer2(0));
   if (!sequencer) {
-    fprintf(stderr, "fluidsyX: failed to create FluidSynth sequencer\n");
+    fmt::print(stderr, "fluidsyX: failed to create FluidSynth sequencer\n");
     return false;
   }
 
   /* Register the synth as a sequencer destination */
-  synthSeqId = fluid_sequencer_register_fluidsynth(sequencer, synth);
+  synthSeqId = fluid_sequencer_register_fluidsynth(sequencer.get(), synth.get());
 
   /* Register our application callback client for timer events */
   callbackSeqId = fluid_sequencer_register_client(
-      sequencer, "fluidsyX", &FluidsyXApp::timerCallback, this);
+      sequencer.get(), "fluidsyX", &FluidsyXApp::timerCallback, this);
 
-  adriver = new_fluid_audio_driver(settings, synth);
+  adriver.reset(new_fluid_audio_driver(settings.get(), synth.get()));
   if (!adriver) {
-    fprintf(stderr, "fluidsyX: failed to create FluidSynth audio driver\n");
+    fmt::print(stderr, "fluidsyX: failed to create FluidSynth audio driver\n");
     return false;
   }
   return true;
 }
 
 void FluidsyXApp::shutdownFluidSynth() {
-    delete_fluid_audio_driver(adriver);
-    adriver = nullptr;
+    adriver.reset();
     if (callbackSeqId >= 0)
-      fluid_sequencer_unregister_client(sequencer, callbackSeqId);
-    /* synthSeqId is cleaned up by delete_fluid_sequencer */
-    delete_fluid_sequencer(sequencer);
-    sequencer = nullptr;
+      fluid_sequencer_unregister_client(sequencer.get(), callbackSeqId);
+    sequencer.reset();
     dummy_preset_free(dummyPreset);
     dummyPreset = nullptr;
-    delete_fluid_synth(synth);
-    synth = nullptr;
-    delete_fluid_settings(settings);
-    settings = nullptr;
-
-#if FLUID_VERSION_AT_LEAST(2,5,0)
-    delete_fluid_mod(modBlueprintADR);
-    modBlueprintADR = nullptr;
-    delete_fluid_mod(modBlueprintSustain);
-    modBlueprintSustain = nullptr;
-#endif
+    synth.reset();
+    settings.reset();
+    modBlueprintADR.reset();
+    modBlueprintSustain.reset();
 }
 
 /* ═══════════════════ MusyX data loading ═══════════════════ */
@@ -1157,15 +1159,15 @@ void FluidsyXApp::shutdownFluidSynth() {
 bool FluidsyXApp::loadMusyXData(const char* path) {
   ContainerRegistry::Type cType = ContainerRegistry::DetectContainerType(path);
   if (cType == ContainerRegistry::Type::Invalid) {
-    fprintf(stderr, "fluidsyX: invalid or missing data at '%s'\n", path);
+    fmt::print(stderr, "fluidsyX: invalid or missing data at '{}'\n", path);
     return false;
   }
-  printf("fluidsyX: found '%s' Audio Group data\n",
+  fmt::print("fluidsyX: found '{}' Audio Group data\n",
          ContainerRegistry::TypeToName(cType));
 
   data = ContainerRegistry::LoadContainer(path);
   if (data.empty()) {
-    fprintf(stderr, "fluidsyX: no groups loaded from '%s'\n", path);
+    fmt::print(stderr, "fluidsyX: no groups loaded from '{}'\n", path);
     return false;
   }
 
@@ -1174,12 +1176,11 @@ bool FluidsyXApp::loadMusyXData(const char* path) {
     AudioGroupProject& proj = projs.back();
     totalGroups += proj.sfxGroups().size() + proj.songGroups().size();
 
-    for (auto it = proj.songGroups().begin(); it != proj.songGroups().end();
-         ++it)
-      allSongGroups[it->first] = std::make_pair(&grp, it->second);
+    for (const auto& [gid, entry] : proj.songGroups())
+      allSongGroups[gid] = std::make_pair(&grp, entry);
 
-    for (auto it = proj.sfxGroups().begin(); it != proj.sfxGroups().end(); ++it)
-      allSFXGroups[it->first] = std::make_pair(&grp, it->second);
+    for (const auto& [gid, entry] : proj.sfxGroups())
+      allSFXGroups[gid] = std::make_pair(&grp, entry);
 
     /* Also parse the pool so we can access SoundMacro commands */
     pools.push_back(AudioGroupPool::CreateAudioGroupPool(grp.second));
@@ -1195,7 +1196,7 @@ bool FluidsyXApp::loadMusyXData(const char* path) {
 
 int FluidsyXApp::selectGroup() {
   if (totalGroups == 0) {
-    fprintf(stderr, "fluidsyX: empty project\n");
+    fmt::print(stderr, "fluidsyX: empty project\n");
     return 1;
   }
 
@@ -1206,28 +1207,28 @@ int FluidsyXApp::selectGroup() {
     else if (allSFXGroups.find(groupId) != allSFXGroups.end())
       sfxGroup = true;
     else {
-      fprintf(stderr, "fluidsyX: unable to find Group %d\n", groupId);
+      fmt::print(stderr, "fluidsyX: unable to find Group {}\n", groupId);
       return 1;
     }
   } else if (totalGroups > 1) {
-    printf("Multiple Audio Groups discovered:\n");
+    fmt::print("Multiple Audio Groups discovered:\n");
     for (const auto& pair : allSFXGroups) {
-      printf("    %d %s (SFXGroup)  %zu sfx-entries\n", pair.first.id,
-             pair.second.first->first.c_str(),
+      fmt::print("    {} {} (SFXGroup)  {} sfx-entries\n", pair.first.id,
+             pair.second.first->first,
              pair.second.second->m_sfxEntries.size());
     }
     for (const auto& pair : allSongGroups) {
-      printf("    %d %s (SongGroup)  %zu normal-pages, %zu drum-pages, "
-             "%zu MIDI-setups\n",
-             pair.first.id, pair.second.first->first.c_str(),
+      fmt::print("    {} {} (SongGroup)  {} normal-pages, {} drum-pages, "
+             "{} MIDI-setups\n",
+             pair.first.id, pair.second.first->first,
              pair.second.second->m_normPages.size(),
              pair.second.second->m_drumPages.size(),
              pair.second.second->m_midiSetups.size());
     }
     int userSel = 0;
-    printf("Enter Group Number: ");
+    fmt::print("Enter Group Number: ");
     if (scanf("%d", &userSel) <= 0) {
-      fprintf(stderr, "fluidsyX: unable to parse prompt\n");
+      fmt::print(stderr, "fluidsyX: unable to parse prompt\n");
       return 1;
     }
     /* consume trailing newline */
@@ -1241,7 +1242,7 @@ int FluidsyXApp::selectGroup() {
       groupId = userSel;
       sfxGroup = true;
     } else {
-      fprintf(stderr, "fluidsyX: unable to find Group %d\n", userSel);
+      fmt::print(stderr, "fluidsyX: unable to find Group {}\n", userSel);
       return 1;
     }
   } else {
@@ -1366,7 +1367,7 @@ bool FluidsyXApp::buildMusyXSoundFont() {
     sfData->samples.push_back(std::move(ds));
   }
 
-  printf("fluidsyX: decoded %zu samples from MusyX data\n",
+  fmt::print("fluidsyX: decoded {} samples from MusyX data\n",
          sfData->samples.size());
 
   /* 2. Build presets from the group's page entries or SFX entries.
@@ -1453,7 +1454,7 @@ bool FluidsyXApp::buildMusyXSoundFont() {
     }
   }
 
-  printf("fluidsyX: created %zu presets from MusyX data\n",
+  fmt::print("fluidsyX: created {} presets from MusyX data\n",
          sfData->presets.size());
 
   /* Keep a pointer so processMacroCmd can look up samples by SampleId */
@@ -1463,20 +1464,20 @@ bool FluidsyXApp::buildMusyXSoundFont() {
   fluid_sfloader_t* loader = new_fluid_sfloader(
       musyx_sfloader_load, musyx_sfloader_free);
   fluid_sfloader_set_data(loader, sfData);
-  fluid_synth_add_sfloader(synth, loader);
+  fluid_synth_add_sfloader(synth.get(), loader);
 
   /* Trigger the load via sfload with our magic filename */
-  int sfId = fluid_synth_sfload(synth, "MusyX_Virtual", /*reset_presets=*/1);
+  int sfId = fluid_synth_sfload(synth.get(), "MusyX_Virtual", /*reset_presets=*/1);
   if (sfId < 0) {
-    fprintf(stderr, "fluidsyX: warning: failed to activate MusyX SoundFont\n");
+    fmt::print(stderr, "fluidsyX: warning: failed to activate MusyX SoundFont\n");
     return false;
   }
 
-  printf("fluidsyX: MusyX SoundFont activated (id=%d)\n", sfId);
+  fmt::print("fluidsyX: MusyX SoundFont activated (id={})\n", sfId);
 
   /* Create the dummy preset used to route CmdStartSample through
    * fluid_synth_start() so that voices receive a user-controlled unique ID. */
-  fluid_sfont_t* musyxSfont = fluid_synth_get_sfont_by_id(synth, sfId);
+  fluid_sfont_t* musyxSfont = fluid_synth_get_sfont_by_id(synth.get(), sfId);
   dummyPreset = new_fluid_preset(
       musyxSfont,
       [](fluid_preset_t*) -> const char* { return "MusyX Voice"; },
@@ -1503,7 +1504,7 @@ static fluid_voice_t* findVoiceById(fluid_synth_t* synth, unsigned int voiceId) 
   
   if(voices[0] != nullptr && voices[1] != nullptr)
   {
-    fprintf(stderr, "Warning: multiple voices with the same ID %u found!\n", voiceId);
+    fmt::print(stderr, "Warning: multiple voices with the same ID {} found!\n", voiceId);
   }
   return voices[0];
 }
@@ -1548,23 +1549,23 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 
 #if FLUID_VERSION_AT_LEAST(2,5,0)
   /* Attack */
-  fluid_mod_set_source1(modBlueprintADR, ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR));
-  fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVATTACK);
-  fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR.get()));
+  fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVATTACK);
+  fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
 
   /* Decay */
-  fluid_mod_set_source1(modBlueprintADR, ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADR));
-  fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVDECAY);
-  fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADR.get()));
+  fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVDECAY);
+  fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
 
   /* Release */
-  fluid_mod_set_source1(modBlueprintADR, ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR));
-  fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVRELEASE);
-  fluid_voice_add_mod(v, modBlueprintADR, FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR.get()));
+  fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVRELEASE);
+  fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
   /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
-  fluid_mod_set_source1(modBlueprintSustain, ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain));
-  fluid_mod_set_dest(modBlueprintSustain, GEN_VOLENVSUSTAIN);
-  fluid_voice_add_mod(v, modBlueprintSustain, FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintSustain.get(), ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain.get()));
+  fluid_mod_set_dest(modBlueprintSustain.get(), GEN_VOLENVSUSTAIN);
+  fluid_voice_add_mod(v, modBlueprintSustain.get(), FLUID_VOICE_OVERWRITE);
 
   if (started) {
     fluid_voice_update_param(v, GEN_VOLENVATTACK);
@@ -1578,7 +1579,7 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 }
 
 void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
-  fluid_voice_t* v = getActiveVoice(synth, ctx);
+  fluid_voice_t* v = getActiveVoice(synth.get(), ctx);
   if (!v) return;
   int offsetCents = (ctx.midiKey - ctx.allocKey) * 100 + ctx.curDetune;
   int coarse = offsetCents / 100;
@@ -1603,10 +1604,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   const SoundMacro::ICmd& cmd = *ctx.macro->m_cmds[ctx.pc];
   SoundMacro::CmdOp op = cmd.Isa();
   unsigned int delay = 0;
-  fluid_event_t* evt = new_fluid_event();
+  FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
 
-  fluid_event_set_source(evt, callbackSeqId);
-  fluid_event_set_dest(evt, synthSeqId);
+  fluid_event_set_source(evt.get(), callbackSeqId);
+  fluid_event_set_dest(evt.get(), synthSeqId);
 
   switch (op) {
   /* ── Termination ── */
@@ -1852,15 +1853,15 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::PitchWheelR: {
     auto& c = static_cast<const SoundMacro::CmdPitchWheelR&>(cmd);
     if (c.rangeUp != c.rangeDown) {
-      fprintf(stderr,
+      fmt::print(stderr,
               "fluidsyX: warning: PitchWheelR has asymmetric range "
-              "(up=%d, down=%d); FluidSynth only supports symmetric "
-              "pitch bend range, using rangeUp=%d\n",
+              "(up={}, down={}); FluidSynth only supports symmetric "
+              "pitch bend range, using rangeUp={}\n",
               static_cast<int>(c.rangeUp), static_cast<int>(c.rangeDown),
               static_cast<int>(c.rangeUp));
     }
-    fluid_event_pitch_wheelsens(evt, ctx.channel, c.rangeUp);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    fluid_event_pitch_wheelsens(evt.get(), ctx.channel, c.rangeUp);
+    fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     ctx.pc++;
     break;
   }
@@ -1881,7 +1882,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
         : 1440.0f;
     attn = std::clamp(attn, 0.0f, 1440.0f);
-    if (auto* v = getActiveVoice(synth, ctx)) {
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
       fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
       fluid_voice_update_param(v, GEN_ATTENUATION);
     } else {
@@ -1899,7 +1900,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
         : 1440.0f;
     attn = std::clamp(attn, 0.0f, 1440.0f);
-    if (auto* v = getActiveVoice(synth, ctx)) {
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
       fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
       fluid_voice_update_param(v, GEN_ATTENUATION);
     } else {
@@ -1956,7 +1957,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
     /* Apply ADSR immediately.  If the voice is already playing, use
      * voice-level generators; otherwise defer to StartSample. */
-    if (auto* v = getActiveVoice(synth, ctx)) {
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
       applyAdsrToVoice(v, ctx, /*started=*/true);
     }
     ctx.pc++;
@@ -1971,7 +1972,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     } else {
       /* GEN_PAN: -500..+500 (0.1% units).  panPosition is -127..+127 */
       float panGen = (c.panPosition / 127.0f) * 500.0f;
-      if (auto* v = getActiveVoice(synth, ctx)) {
+      if (auto* v = getActiveVoice(synth.get(), ctx)) {
         fluid_voice_gen_set(v, GEN_PAN, panGen);
         fluid_voice_update_param(v, GEN_PAN);
       } else {
@@ -1990,7 +1991,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     int panPos = c.centerPan + diff * c.scale / 127;
     panPos = std::clamp(panPos, -127, 127);
     float panGen = (panPos / 127.0f) * 500.0f;
-    if (auto* v = getActiveVoice(synth, ctx)) {
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
       fluid_voice_gen_set(v, GEN_PAN, panGen);
       fluid_voice_update_param(v, GEN_PAN);
     } else {
@@ -2036,22 +2037,22 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
       /* fluid_synth_start() sets synth->noteid = id before calling noteon,
        * so the voice allocated inside dummy_preset_noteon gets our custom ID. */
-      if (fluid_synth_start(synth, id, dummyPreset, 0, ctx.channel,
+      if (fluid_synth_start(synth.get(), id, dummyPreset, 0, ctx.channel,
                              ctx.midiKey, ctx.midiVel) == FLUID_OK) {
         ctx.voiceId  = id;
         ctx.allocKey = ctx.midiKey;
         ctx.hasPendingPan  = false;
         ctx.hasPendingAttn = false;
       } else {
-        fprintf(stderr, "fluidsyX: warning: voice start failed for "
-                        "sample %u on ch %d key %d\n",
+        fmt::print(stderr, "fluidsyX: warning: voice start failed for "
+                        "sample {} on ch {} key {}\n",
                 c.sample.id.id, ctx.channel, ctx.midiKey);
       }
       pendingVoiceStart.flSamp = nullptr; /* prevent accidental reuse */
     } else {
       /* Fallback: send note-on to trigger preset (wrong sample possible) */
-      fluid_event_noteon(evt, ctx.channel, ctx.midiKey, ctx.midiVel);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_event_noteon(evt.get(), ctx.channel, ctx.midiKey, ctx.midiVel);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2059,7 +2060,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::StopSample: {
     /* Original amuse: vox.stopSample() = m_curSample.reset() – immediate stop.
      * In FluidSynth we kill the voice outright (no release phase). */
-    killVoice(synth, ctx);
+    killVoice(synth.get(), ctx);
     ctx.pc++;
     break;
   }
@@ -2067,7 +2068,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     /* Original amuse: vox._macroKeyOff() triggers ADSR release phase.
      * The voice continues fading out; the macro continues executing.
      * fluid_synth_stop() sends a note-off triggering the release envelope. */
-    releaseVoice(synth, ctx);
+    releaseVoice(synth.get(), ctx);
     ctx.keyoffReceived = true;
     ctx.pc++;
     break;
@@ -2085,7 +2086,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     if (targetMacroId >= 0) {
       auto childIt = activeMacros.find(targetMacroId);
       if (childIt != activeMacros.end() && !childIt->second.ended) {
-        releaseVoice(synth, childIt->second);
+        releaseVoice(synth.get(), childIt->second);
         childIt->second.keyoffReceived = true;
       }
     }
@@ -2174,7 +2175,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Vibrato / Tremolo / Portamento ── */
   case SoundMacro::CmdOp::Vibrato: {
     auto& c = static_cast<const SoundMacro::CmdVibrato&>(cmd);
-    if (auto* v = getActiveVoice(synth, ctx)) {
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
       /* GEN_VIBLFOTOPITCH: vibrato depth in cents */
       float depthCents = static_cast<float>(c.levelNote * 100 + c.levelFine);
       fluid_voice_gen_set(v, GEN_VIBLFOTOPITCH, depthCents);
@@ -2194,8 +2195,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     } else {
       /* Fallback to channel-level modulation if no voice yet */
       int modVal = std::clamp(static_cast<int>(c.levelNote) * 8, 0, 127);
-      fluid_event_modulation(evt, ctx.channel, modVal);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_event_modulation(evt.get(), ctx.channel, modVal);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2205,8 +2206,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     bool enable = (c.portState != SoundMacro::CmdPortamento::PortState::Disable);
 
     /* CC 65 = portamento on/off */
-    fluid_event_control_change(evt, ctx.channel, 65, enable ? 127 : 0);
-    fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+    fluid_event_control_change(evt.get(), ctx.channel, 65, enable ? 127 : 0);
+    fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
 
     if (enable) {
       /* Convert time value to milliseconds */
@@ -2218,18 +2219,18 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         timeMs = timeVal * 1000.0 / ctx.ticksPerSec;
       }
       // CC5 * 128 + CC37 = millisec
-      fluid_event_control_change(evt, ctx.channel, 5, static_cast<int>(timeMs) / 128);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
-      fluid_event_control_change(evt, ctx.channel, 37, static_cast<int>(timeMs) % 128);
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_event_control_change(evt.get(), ctx.channel, 5, static_cast<int>(timeMs) / 128);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+      fluid_event_control_change(evt.get(), ctx.channel, 37, static_cast<int>(timeMs) % 128);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
 
       /* Set portamento mode based on MusyX PortType.
        * LastPressed → legato-only mode, Always → each-note mode. */
       if (c.portType == SoundMacro::CmdPortamento::PortType::LastPressed)
-        fluid_synth_set_portamento_mode(synth, ctx.channel,
+        fluid_synth_set_portamento_mode(synth.get(), ctx.channel,
                                         FLUID_CHANNEL_PORTAMENTO_MODE_LEGATO_ONLY);
       else
-        fluid_synth_set_portamento_mode(synth, ctx.channel,
+        fluid_synth_set_portamento_mode(synth.get(), ctx.channel,
                                         FLUID_CHANNEL_PORTAMENTO_MODE_EACH_NOTE);
     }
     ctx.pc++;
@@ -2364,9 +2365,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     /* In MusyX, VolSelect binds a CC to the volume evaluator.
      * We forward the referenced CC value as a volume CC to FluidSynth. */
     if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt, ctx.channel, 7,
+      fluid_event_control_change(evt.get(), ctx.channel, 7,
           std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2374,9 +2375,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::PanSelect: {
     auto& c = static_cast<const SoundMacro::CmdPanSelect&>(cmd);
     if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt, ctx.channel, 10,
+      fluid_event_control_change(evt.get(), ctx.channel, 10,
           std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2389,9 +2390,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::ModWheelSelect: {
     auto& c = static_cast<const SoundMacro::CmdModWheelSelect&>(cmd);
     if (!c.isVar && c.midiControl < 128) {
-      fluid_event_modulation(evt, ctx.channel,
+      fluid_event_modulation(evt.get(), ctx.channel,
           std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2400,9 +2401,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdPedalSelect&>(cmd);
     /* CC 64 = sustain pedal */
     if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt, ctx.channel, 64,
+      fluid_event_control_change(evt.get(), ctx.channel, 64,
           std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2417,9 +2418,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdReverbSelect&>(cmd);
     /* CC 91 = reverb send */
     if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt, ctx.channel, 91,
+      fluid_event_control_change(evt.get(), ctx.channel, 91,
           std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer, evt, curTick, 1);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
     }
     ctx.pc++;
     break;
@@ -2460,7 +2461,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   }
 
-  delete_fluid_event(evt);
   return delay;
 }
 
@@ -2548,7 +2548,7 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   /* Initialize controller values from channel state so that selectors
    * and ADSR controllers see the current MIDI setup. */
   if (channel >= 0 && channel < 16)
-    std::memcpy(ctx.ctrlVals, channelCtrlVals[channel], sizeof(ctx.ctrlVals));
+    ctx.ctrlVals = channelCtrlVals[channel];
 
   /* Walk through commands that execute instantly (no delay).
    * When a command introduces a delay, schedule a timer event and stop. */
@@ -2570,12 +2570,11 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
       int macroId = nextMacroId++;
       activeMacros[macroId] = ctx;
 
-      fluid_event_t* tevt = new_fluid_event();
-      fluid_event_set_source(tevt, callbackSeqId);
-      fluid_event_set_dest(tevt, callbackSeqId);
-      fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
-      fluid_sequencer_send_at(sequencer, tevt, tick, /*absolute=*/1);
-      delete_fluid_event(tevt);
+      FluidEventPtr tevt(new_fluid_event(), &delete_fluid_event);
+      fluid_event_set_source(tevt.get(), callbackSeqId);
+      fluid_event_set_dest(tevt.get(), callbackSeqId);
+      fluid_event_timer(tevt.get(), reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
+      fluid_sequencer_send_at(sequencer.get(), tevt.get(), tick, /*absolute=*/1);
       return macroId;
     }
   }
@@ -2618,7 +2617,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       for (auto& [id, mctx] : app->activeMacros) {
         if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
           /* Trigger ADSR release (voice fades out naturally) */
-          releaseVoice(app->synth, mctx);
+          releaseVoice(app->synth.get(), mctx);
           mctx.keyoffReceived = true;
 
           /* If the macro is waiting for keyoff (either indefinite or timed),
@@ -2627,13 +2626,12 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
           if (mctx.waitingKeyoff) {
             mctx.inIndefiniteWait = false;
             mctx.waitingKeyoff = false;
-            fluid_event_t* resumeEvt = new_fluid_event();
-            fluid_event_set_source(resumeEvt, app->callbackSeqId);
-            fluid_event_set_dest(resumeEvt, app->callbackSeqId);
-            fluid_event_timer(resumeEvt, reinterpret_cast<void*>(
+            FluidEventPtr resumeEvt(new_fluid_event(), &delete_fluid_event);
+            fluid_event_set_source(resumeEvt.get(), app->callbackSeqId);
+            fluid_event_set_dest(resumeEvt.get(), app->callbackSeqId);
+            fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(
                 static_cast<intptr_t>(id)));
-            fluid_sequencer_send_at(app->sequencer, resumeEvt, time, 1);
-            delete_fluid_event(resumeEvt);
+            fluid_sequencer_send_at(app->sequencer.get(), resumeEvt.get(), time, 1);
           }
         }
       }
@@ -2641,7 +2639,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
     }
     case PendingSngNoteEvent::ProgramChange:
       app->channelPrograms[sngEvt.channel] = sngEvt.note; /* note field = program */
-      fluid_synth_program_change(app->synth, sngEvt.channel, sngEvt.note);
+      fluid_synth_program_change(app->synth.get(), sngEvt.channel, sngEvt.note);
       break;
 
     case PendingSngNoteEvent::CC: {
@@ -2661,7 +2659,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       }
 
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
-      fluid_synth_cc(app->synth, ch, cc, val);
+      fluid_synth_cc(app->synth.get(), ch, cc, val);
       break;
     }
     }
@@ -2693,12 +2691,11 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
     safetyCounter++;
     if (d > 0 && !ctx.ended) {
       /* Re-schedule the timer */
-      fluid_event_t* tevt = new_fluid_event();
-      fluid_event_set_source(tevt, app->callbackSeqId);
-      fluid_event_set_dest(tevt, app->callbackSeqId);
-      fluid_event_timer(tevt, reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
-      fluid_sequencer_send_at(app->sequencer, tevt, tick, /*absolute=*/1);
-      delete_fluid_event(tevt);
+      FluidEventPtr tevt(new_fluid_event(), &delete_fluid_event);
+      fluid_event_set_source(tevt.get(), app->callbackSeqId);
+      fluid_event_set_dest(tevt.get(), app->callbackSeqId);
+      fluid_event_timer(tevt.get(), reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
+      fluid_sequencer_send_at(app->sequencer.get(), tevt.get(), tick, /*absolute=*/1);
       return;
     }
   }
@@ -2714,10 +2711,10 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
   bool bigEndian = false;
   int sngVersion = SongState::DetectVersion(sngData, bigEndian);
   if (sngVersion < 0) {
-    fprintf(stderr, "fluidsyX: failed to detect SNG version\n");
+    fmt::print(stderr, "fluidsyX: failed to detect SNG version\n");
     return 0.0;
   }
-  printf("fluidsyX: SNG version %d (%s-endian)\n", sngVersion,
+  fmt::print("fluidsyX: SNG version {} ({}-endian)\n", sngVersion,
          bigEndian ? "big" : "little");
 
   std::vector<SngEvent> events;
@@ -2725,14 +2722,14 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
   SngLoopInfo loopInfo;
   if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale,
                       loopInfo)) {
-    fprintf(stderr, "fluidsyX: failed to parse SNG events\n");
+    fmt::print(stderr, "fluidsyX: failed to parse SNG events\n");
     return 0.0;
   }
 
-  printf("fluidsyX: parsed %zu song events, initial tempo scale %.1f ticks/s\n",
+  fmt::print("fluidsyX: parsed {} song events, initial tempo scale {:.1f} ticks/s\n",
          events.size(), initialScale);
   if (loopInfo.hasLoop)
-    printf("fluidsyX: loop detected: ticks %u → %u (body = %u ticks)\n",
+    fmt::print("fluidsyX: loop detected: ticks {} → {} (body = {} ticks)\n",
            loopInfo.loopStartTick, loopInfo.loopEndTick,
            loopInfo.loopEndTick - loopInfo.loopStartTick);
   if (events.empty())
@@ -2743,15 +2740,15 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
    * T * 384 / 60  ticks per second.  Events are then scheduled at
    * their native SNG tick positions.  Tempo changes are handled by
    * scheduling FLUID_SEQ_SCALE events that adjust the time-scale. */
-  fluid_sequencer_set_time_scale(sequencer, initialScale);
+  fluid_sequencer_set_time_scale(sequencer.get(), initialScale);
 
-  unsigned int baseTick = fluid_sequencer_get_tick(sequencer);
+  unsigned int baseTick = fluid_sequencer_get_tick(sequencer.get());
 
   /* Clear any pending SNG events from a previous playback */
   pendingSngEvents.clear();
 
-  fluid_event_t* evt = new_fluid_event();
-  fluid_event_set_source(evt, -1);
+  FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
+  fluid_event_set_source(evt.get(), -1);
 
   /* Helper: schedule a single SngEvent at (baseTick + tickOffset). */
   auto scheduleOne = [&](const SngEvent& e, uint32_t tickOffset) {
@@ -2775,22 +2772,22 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       pendingSngEvents.push_back({t, e.channel, d1, d2});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
 
-      fluid_event_set_dest(evt, callbackSeqId);
-      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      fluid_event_set_dest(evt.get(), callbackSeqId);
+      fluid_event_timer(evt.get(), reinterpret_cast<void*>(timerData));
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), schedTick, /*absolute=*/1);
       break;
     }
 
     case SngEvent::PitchBend:
-      fluid_event_set_dest(evt, synthSeqId);
-      fluid_event_pitch_bend(evt, e.channel, e.pitchBend14);
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      fluid_event_set_dest(evt.get(), synthSeqId);
+      fluid_event_pitch_bend(evt.get(), e.channel, e.pitchBend14);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), schedTick, /*absolute=*/1);
       break;
 
     case SngEvent::Tempo:
-      fluid_event_set_dest(evt, synthSeqId);
-      fluid_event_scale(evt, e.tempoScale);
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
+      fluid_event_set_dest(evt.get(), synthSeqId);
+      fluid_event_scale(evt.get(), e.tempoScale);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), schedTick, /*absolute=*/1);
       break;
     }
   };
@@ -2837,15 +2834,13 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
         }
         ++loopIter;
       }
-      printf("fluidsyX: looped %u iterations to reach %u ticks\n",
+      fmt::print("fluidsyX: looped {} iterations to reach {} ticks\n",
              loopIter, lastTick);
     }
   }
 
-  delete_fluid_event(evt);
-
-  printf("fluidsyX: scheduled %u SNG ticks of song data (%zu SNG events, "
-         "%zu routed through SoundMacro)\n",
+  fmt::print("fluidsyX: scheduled {} SNG ticks of song data ({} SNG events, "
+         "{} routed through SoundMacro)\n",
          lastTick, events.size(), pendingSngEvents.size());
   return static_cast<double>(lastTick);
 }
@@ -2870,11 +2865,11 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
     const auto& midiSetup = setupIt->second;
     for (int ch = 0; ch < 16; ++ch) {
       channelPrograms[ch] = midiSetup[ch].programNo;
-      fluid_synth_program_change(synth, ch, midiSetup[ch].programNo);
-      fluid_synth_cc(synth, ch, 7, midiSetup[ch].volume);
-      fluid_synth_cc(synth, ch, 10, midiSetup[ch].panning);
-      fluid_synth_cc(synth, ch, 91, midiSetup[ch].reverb);
-      fluid_synth_cc(synth, ch, 93, midiSetup[ch].chorus);
+      fluid_synth_program_change(synth.get(), ch, midiSetup[ch].programNo);
+      fluid_synth_cc(synth.get(), ch, 7, midiSetup[ch].volume);
+      fluid_synth_cc(synth.get(), ch, 10, midiSetup[ch].panning);
+      fluid_synth_cc(synth.get(), ch, 91, midiSetup[ch].reverb);
+      fluid_synth_cc(synth.get(), ch, 93, midiSetup[ch].chorus);
 
       channelCtrlVals[ch][7]  = static_cast<int8_t>(midiSetup[ch].volume);
       channelCtrlVals[ch][10] = static_cast<int8_t>(midiSetup[ch].panning);
@@ -2885,14 +2880,14 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
 
   /* Schedule all song events on the FluidSynth sequencer */
   if (!selectedSong) {
-    fprintf(stderr, "fluidsyX: no song data to play\n");
+    fmt::print(stderr, "fluidsyX: no song data to play\n");
     return;
   }
 
   double totalTicks = scheduleSongEvents(selectedSong->m_data.get(),
                                          selectedSong->m_size);
   if (totalTicks <= 0.0) {
-    fprintf(stderr, "fluidsyX: no events to play\n");
+    fmt::print(stderr, "fluidsyX: no events to play\n");
     return;
   }
 
@@ -2901,21 +2896,21 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
    * audio driver thread.  We just monitor progress until the last
    * scheduled tick has been reached, plus a short tail for release
    * envelopes to ring out. */
-  printf("fluidsyX: playing song (setup %d, %u ticks) — press Q or Ctrl-C to stop\n",
+  fmt::print("fluidsyX: playing song (setup {}, {} ticks) — press Q or Ctrl-C to stop\n",
          setupId, static_cast<unsigned int>(totalTicks));
 
   enableRawMode();
 
-  unsigned int startTick = fluid_sequencer_get_tick(sequencer);
+  unsigned int startTick = fluid_sequencer_get_tick(sequencer.get());
   unsigned int endTick = startTick + static_cast<unsigned int>(totalTicks);
   /* Add a tail in sequencer ticks (at current time-scale rate).
    * Use the current scale to compute ~2 seconds worth of ticks. */
-  double curScale = fluid_sequencer_get_time_scale(sequencer);
+  double curScale = fluid_sequencer_get_time_scale(sequencer.get());
   unsigned int tailTicks = static_cast<unsigned int>(curScale * 2.0);
   unsigned int tailEnd = endTick + tailTicks;
 
   while (g_running.load()) {
-    unsigned int now = fluid_sequencer_get_tick(sequencer);
+    unsigned int now = fluid_sequencer_get_tick(sequencer.get());
 
     /* Check for user input (Q to quit, space for panic) */
     int key = readKey();
@@ -2925,13 +2920,13 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
         break;
       if (ch == ' ') {
         for (int c = 0; c < 16; ++c)
-          fluid_synth_all_notes_off(synth, c);
+          fluid_synth_all_notes_off(synth.get(), c);
       }
     }
 
     /* Print progress (tick-based) */
     unsigned int elapsed = (now > startTick) ? (now - startTick) : 0;
-    printf("\r  tick %u / %u  ", elapsed,
+    fmt::print("\r  tick {} / {}  ", elapsed,
            static_cast<unsigned int>(totalTicks));
     fflush(stdout);
 
@@ -2943,17 +2938,17 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
 
   /* All notes off */
   for (int c = 0; c < 16; ++c)
-    fluid_synth_all_notes_off(synth, c);
+    fluid_synth_all_notes_off(synth.get(), c);
   activeMacros.clear();
   pendingSngEvents.clear();
   activeSongGroup = nullptr;
-  printf("\n");
+  fmt::print("\n");
 }
 
 /* ═══════════════════ SFX playback loop ═══════════════════ */
 
 void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
-  printf("<space>: keyon/keyoff, <left/right>: cycle SFX, "
+  fmt::print("<space>: keyon/keyoff, <left/right>: cycle SFX, "
          "<up/down>: volume, <Q>: quit\n");
 
   std::map<SFXId, SFXGroupIndex::SFXEntry> sortEntries(
@@ -2965,7 +2960,7 @@ void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
 
   if (sfxIt != sortEntries.cend()) {
     sfxId = sfxIt->first.id;
-    printf("  SFX %d, VOL %d%%\n", sfxId,
+    fmt::print("  SFX {}, VOL {}%\n", sfxId,
            static_cast<int>(std::round(volume * 100)));
   }
 
@@ -2988,7 +2983,7 @@ void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
     case ' ': {
       if (isPlaying) {
         /* Key off */
-        fluid_synth_all_notes_off(synth, 0);
+        fluid_synth_all_notes_off(synth.get(), 0);
         activeMacros.clear();
         isPlaying = false;
       } else if (sfxIt != sortEntries.cend()) {
@@ -2997,10 +2992,10 @@ void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
         const SoundMacro* macro =
             activePool ? activePool->soundMacro(entry.objId) : nullptr;
         if (macro) {
-          unsigned int now = fluid_sequencer_get_tick(sequencer);
+          unsigned int now = fluid_sequencer_get_tick(sequencer.get());
           enqueueSoundMacro(macro, 0, 0, entry.defKey, entry.defVel, now);
         } else {
-          fluid_synth_noteon(synth, 0, entry.defKey, entry.defVel);
+          fluid_synth_noteon(synth.get(), 0, entry.defKey, entry.defVel);
         }
         isPlaying = true;
       }
@@ -3031,12 +3026,12 @@ void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
         }
         case 'A': /* Up – volume up */
           volume = std::clamp(volume + 0.05f, 0.f, 1.f);
-          fluid_synth_set_gain(synth, volume);
+          fluid_synth_set_gain(synth.get(), volume);
           updateDisp = true;
           break;
         case 'B': /* Down – volume down */
           volume = std::clamp(volume - 0.05f, 0.f, 1.f);
-          fluid_synth_set_gain(synth, volume);
+          fluid_synth_set_gain(synth.get(), volume);
           updateDisp = true;
           break;
         default:
@@ -3050,17 +3045,17 @@ void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
     }
 
     if (updateDisp) {
-      printf("\r                                                                "
-             "                \r  %c SFX %d, VOL %d%%",
+      fmt::print("\r                                                                "
+             "                \r  {} SFX {}, VOL {}%",
              isPlaying ? '>' : ' ', sfxId,
              static_cast<int>(std::round(volume * 100)));
       fflush(stdout);
     }
   }
 
-  fluid_synth_all_notes_off(synth, 0);
+  fluid_synth_all_notes_off(synth.get(), 0);
   activeMacros.clear();
-  printf("\n");
+  fmt::print("\n");
 }
 
 /* ═══════════════════ main ═══════════════════ */
@@ -3074,7 +3069,7 @@ int main(int argc, char** argv) {
   FluidsyXApp app;
 
   if (argc < 2) {
-    fprintf(stderr,
+    fmt::print(stderr,
             "Usage: fluidsyX [--duration <ticks>] <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
             "\n"
             "  Plays MusyX SoundMacro data using FluidSynth.\n"
@@ -3107,12 +3102,12 @@ int main(int argc, char** argv) {
         char* end = nullptr;
         unsigned long val = strtoul(arg, &end, 10);
         if (end == arg || *end != '\0' || val == 0) {
-          fprintf(stderr, "fluidsyX: --duration requires a positive integer (got '%s')\n", arg);
+          fmt::print(stderr, "fluidsyX: --duration requires a positive integer (got '{}')\n", arg);
           return 1;
         }
         app.maxDurationTicks = static_cast<uint32_t>(val);
       } else {
-        fprintf(stderr, "fluidsyX: --duration requires a value\n");
+        fmt::print(stderr, "fluidsyX: --duration requires a value\n");
         return 1;
       }
     } else if (!groupPath) {
@@ -3125,7 +3120,7 @@ int main(int argc, char** argv) {
   }
 
   if (!groupPath) {
-    fprintf(stderr, "fluidsyX: no group path specified\n");
+    fmt::print(stderr, "fluidsyX: no group path specified\n");
     return 1;
   }
 
@@ -3135,17 +3130,17 @@ int main(int argc, char** argv) {
 
   /* 2. Optionally load a SoundFont for audible output */
   if (sf2Path) {
-    int sfId = fluid_synth_sfload(app.synth, sf2Path, /*reset_presets=*/1);
+    int sfId = fluid_synth_sfload(app.synth.get(), sf2Path, /*reset_presets=*/1);
     if (sfId < 0) {
-      fprintf(stderr,
-              "fluidsyX: warning: failed to load SoundFont '%s' – "
+      fmt::print(stderr,
+              "fluidsyX: warning: failed to load SoundFont '{}' – "
               "sequencer events will still be processed but may be inaudible\n",
               sf2Path);
     } else {
-      printf("fluidsyX: loaded SoundFont '%s' (id=%d)\n", sf2Path, sfId);
+      fmt::print("fluidsyX: loaded SoundFont '{}' (id={})\n", sf2Path, sfId);
     }
   } else {
-    printf("fluidsyX: no external SoundFont specified; MusyX samples will "
+    fmt::print("fluidsyX: no external SoundFont specified; MusyX samples will "
            "be used for playback\n\n");
   }
 
@@ -3166,19 +3161,19 @@ int main(int argc, char** argv) {
   if (!songs.empty()) {
     bool play = true;
     if (songs.size() > 1) {
-      printf("Multiple Songs discovered:\n");
+      fmt::print("Multiple Songs discovered:\n");
       int idx = 0;
       for (const auto& pair : songs) {
-        printf("    %d %s (Group %d, Setup %d)\n", idx++,
-               pair.first.c_str(), pair.second.m_groupId,
+        fmt::print("    {} {} (Group {}, Setup {})\n", idx++,
+               pair.first, pair.second.m_groupId,
                pair.second.m_setupId);
       }
       int userSel = 0;
-      printf("Enter Song Number: ");
+      fmt::print("Enter Song Number: ");
       if (scanf("%d", &userSel) <= 0 ||
           userSel < 0 ||
           userSel >= static_cast<int>(songs.size())) {
-        fprintf(stderr, "fluidsyX: invalid song selection\n");
+        fmt::print(stderr, "fluidsyX: invalid song selection\n");
         app.shutdownFluidSynth();
         return 1;
       }
@@ -3189,7 +3184,7 @@ int main(int argc, char** argv) {
       app.selectedSong = &songs[userSel].second;
     } else {
       /* Ask Y/N for single song */
-      printf("Play Song '%s'? (Y/N): ", songs[0].first.c_str());
+      fmt::print("Play Song '{}'? (Y/N): ", songs[0].first);
       char yn = 0;
       if (scanf(" %c", &yn) > 0 && tolower(yn) == 'y') {
         app.groupId = songs[0].second.m_groupId;
@@ -3227,20 +3222,20 @@ int main(int argc, char** argv) {
   /* 7. Find the pool for the active group */
   app.activePool = app.findPoolForGroup();
   if (!app.activePool) {
-    fprintf(stderr, "fluidsyX: unable to find pool for group %d\n",
+    fmt::print(stderr, "fluidsyX: unable to find pool for group {}\n",
             app.groupId);
     app.shutdownFluidSynth();
     return 1;
   }
 
-  printf("fluidsyX: group %d selected (%s), %zu SoundMacros in pool\n",
+  fmt::print("fluidsyX: group {} selected ({}), {} SoundMacros in pool\n",
          app.groupId, app.sfxGroup ? "SFX" : "Song",
          app.activePool->soundMacros().size());
 
   /* 7b. Build the MusyX virtual SoundFont from decoded samples.
    *     This gives FluidSynth access to the original MusyX sounds. */
   if (!app.buildMusyXSoundFont()) {
-    fprintf(stderr, "fluidsyX: warning: could not build MusyX SoundFont; "
+    fmt::print(stderr, "fluidsyX: warning: could not build MusyX SoundFont; "
             "playback will use external SoundFont if available\n");
   }
 
@@ -3258,6 +3253,6 @@ int main(int argc, char** argv) {
   /* 9. Cleanup */
   disableRawMode();
   app.shutdownFluidSynth();
-  printf("fluidsyX: goodbye\n");
+  fmt::print("fluidsyX: goodbye\n");
   return 0;
 }
