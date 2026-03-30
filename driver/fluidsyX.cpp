@@ -289,6 +289,17 @@ struct SngEvent {
   double   tempoScale;  /* ticks/sec (only for Tempo type) */
 };
 
+/** Information about the SNG song's loop structure.
+ *  If the song has a loop (regionIndex == -2), `hasLoop` is true,
+ *  `loopStartTick` is the tick the loop body begins at, and
+ *  `loopEndTick` is the tick where the loop marker is hit (the point
+ *  at which playback would jump back to `loopStartTick`). */
+struct SngLoopInfo {
+  bool     hasLoop      = false;
+  uint32_t loopStartTick = 0;
+  uint32_t loopEndTick   = 0;
+};
+
 /** SNG uses 384 ticks per quarter-note. */
 static constexpr double kSngTicksPerQuarter = 384.0;
 
@@ -304,13 +315,15 @@ static double bpmToScale(uint32_t bpm) {
 static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
                            int sngVersion,
                            std::vector<SngEvent>& outEvents,
-                           double& outInitialScale) {
+                           double& outInitialScale,
+                           SngLoopInfo& outLoop) {
   SngHeader hdr = *reinterpret_cast<const SngHeader*>(sngData);
   if (bigEndian)
     hdr.swapFromBig();
 
   uint32_t initBpm = hdr.initialTempo & 0x7fffffffu;
   outInitialScale = bpmToScale(initBpm);
+  outLoop = {};
 
   /* Collect tempo change events */
   if (hdr.tempoTableOff != 0) {
@@ -341,8 +354,9 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
       continue;
 
     uint8_t midiChan = chanMap[i];
-    const auto* nextRegion =
+    const auto* firstRegion =
         reinterpret_cast<const SngTrackRegion*>(sngData + trkOff);
+    const auto* nextRegion = firstRegion;
 
     /* Iterate all regions of this track */
     while (nextRegion->indexValid(bigEndian)) {
@@ -492,6 +506,37 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
           waitCountdown += nextAbsTick - lastN64Tick;
           lastN64Tick = nextAbsTick;
           data += 4;
+        }
+      }
+    }
+
+    /* Detect loop marker: regionIndex == -2 means "loop back to loopToRegion".
+     * The loop end tick is the terminating region's startTick, and the loop
+     * start tick is the startTick of the target region. */
+    if (!outLoop.hasLoop) {
+      int16_t termIdx = bigEndian ? SBig(nextRegion->regionIndex) : nextRegion->regionIndex;
+      if (termIdx == -2) {
+        int16_t loopTo = bigEndian ? SBig(nextRegion->loopToRegion) : nextRegion->loopToRegion;
+        uint32_t loopEndTick = bigEndian ? SBig(nextRegion->startTick) : nextRegion->startTick;
+        uint32_t loopStartTick = 0;
+        if (loopTo >= 0) {
+          loopStartTick = bigEndian ? SBig(firstRegion[loopTo].startTick)
+                                    : firstRegion[loopTo].startTick;
+        }
+        /* Also consult the header's loopStartTicks (per-channel or global) */
+        if ((hdr.initialTempo & 0x80000000u) != 0u) {
+          uint32_t hdrLoop = hdr.loopStartTicks[midiChan];
+          if (hdrLoop != 0 && hdrLoop < loopEndTick)
+            loopStartTick = std::max(loopStartTick, hdrLoop);
+        } else {
+          uint32_t hdrLoop = hdr.loopStartTicks[0];
+          if (hdrLoop != 0 && hdrLoop < loopEndTick)
+            loopStartTick = std::max(loopStartTick, hdrLoop);
+        }
+        if (loopEndTick > loopStartTick) {
+          outLoop.hasLoop = true;
+          outLoop.loopStartTick = loopStartTick;
+          outLoop.loopEndTick   = loopEndTick;
         }
       }
     }
@@ -883,6 +928,11 @@ struct FluidsyXApp {
   /* Selected song data (set from main() when a song is chosen) */
   const ContainerRegistry::SongData* selectedSong = nullptr;
 
+  /** Maximum playback duration in SNG ticks.  When > 0 and the song
+   *  has a loop, events from the loop body are re-scheduled until this
+   *  duration is reached.  Set from the --duration CLI flag. */
+  uint32_t maxDurationTicks = 0;
+
   /* Active SongGroupIndex for note→SoundMacro resolution during playback */
   const SongGroupIndex* activeSongGroup = nullptr;
 
@@ -928,7 +978,7 @@ struct FluidsyXApp {
   void sfxLoop(const SFXGroupIndex& index);
 
   /** Parse SNG song data and schedule all events on the FluidSynth sequencer.
-   *  Returns the total duration in milliseconds, or 0 on failure. */
+   *  Returns the total duration in SNG ticks, or 0 on failure. */
   double scheduleSongEvents(const uint8_t* sngData, size_t sngSize);
 
   /** Build a custom MusyX SoundFont from the parsed sample directory
@@ -2672,13 +2722,19 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
   std::vector<SngEvent> events;
   double initialScale = 1000.0;
-  if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale)) {
+  SngLoopInfo loopInfo;
+  if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale,
+                      loopInfo)) {
     fprintf(stderr, "fluidsyX: failed to parse SNG events\n");
     return 0.0;
   }
 
   printf("fluidsyX: parsed %zu song events, initial tempo scale %.1f ticks/s\n",
          events.size(), initialScale);
+  if (loopInfo.hasLoop)
+    printf("fluidsyX: loop detected: ticks %u → %u (body = %u ticks)\n",
+           loopInfo.loopStartTick, loopInfo.loopEndTick,
+           loopInfo.loopEndTick - loopInfo.loopStartTick);
   if (events.empty())
     return 0.0;
 
@@ -2694,74 +2750,29 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
   /* Clear any pending SNG events from a previous playback */
   pendingSngEvents.clear();
 
-  /* Pre-allocate: count note-on, note-off, and program events */
-  size_t noteEventCount = 0;
-  for (const auto& e : events) {
-    if (e.type == SngEvent::NoteOn || e.type == SngEvent::NoteOff ||
-        e.type == SngEvent::Program)
-      noteEventCount++;
-  }
-  pendingSngEvents.reserve(noteEventCount);
-
   fluid_event_t* evt = new_fluid_event();
   fluid_event_set_source(evt, -1);
 
-  uint32_t lastTick = 0;
-
-  for (const auto& e : events) {
-    unsigned int schedTick = baseTick + e.absTick;
+  /* Helper: schedule a single SngEvent at (baseTick + tickOffset). */
+  auto scheduleOne = [&](const SngEvent& e, uint32_t tickOffset) {
+    unsigned int schedTick = baseTick + tickOffset;
 
     switch (e.type) {
-    case SngEvent::NoteOn: {
-      /* Route through timer callback → resolveAndEnqueueNote() so that
-       * the SoundMacro system processes the note with proper ADSR, pitch,
-       * panning, etc. */
-      size_t idx = pendingSngEvents.size();
-      pendingSngEvents.push_back(
-          {PendingSngNoteEvent::NoteOn, e.channel, e.data1, e.data2});
-      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
-      fluid_event_set_dest(evt, callbackSeqId);
-      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
-      break;
-    }
-
-    case SngEvent::NoteOff: {
-      /* Route through timer callback for synchronized note-off */
-      size_t idx = pendingSngEvents.size();
-      pendingSngEvents.push_back(
-          {PendingSngNoteEvent::NoteOff, e.channel, e.data1, 0});
-      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
-      fluid_event_set_dest(evt, callbackSeqId);
-      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
-      break;
-    }
-
-    case SngEvent::CC: {
-      /* Route CC events through timer callback so that:
-       *  1. channelCtrlVals is updated atomically with the sequencer timeline
-       *  2. CC values mapped to ADSR controllers trigger NRPN gen changes
-       *  The raw CC is also sent to FluidSynth for non-ADSR controllers. */
-      size_t idx = pendingSngEvents.size();
-      pendingSngEvents.push_back(
-          {PendingSngNoteEvent::CC, e.channel, e.data1, e.data2});
-      intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
-
-      fluid_event_set_dest(evt, callbackSeqId);
-      fluid_event_timer(evt, reinterpret_cast<void*>(timerData));
-      fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
-      break;
-    }
-
+    case SngEvent::NoteOn:
+    case SngEvent::NoteOff:
+    case SngEvent::CC:
     case SngEvent::Program: {
-      /* Route through timer callback to update channelPrograms atomically
-       * with the sequencer timeline */
+      /* Route through timer callback */
+      PendingSngNoteEvent::Type t;
+      uint8_t d1 = e.data1, d2 = e.data2;
+      switch (e.type) {
+      case SngEvent::NoteOn:  t = PendingSngNoteEvent::NoteOn; break;
+      case SngEvent::NoteOff: t = PendingSngNoteEvent::NoteOff; d2 = 0; break;
+      case SngEvent::CC:      t = PendingSngNoteEvent::CC; break;
+      default:                t = PendingSngNoteEvent::ProgramChange; d2 = 0; break;
+      }
       size_t idx = pendingSngEvents.size();
-      pendingSngEvents.push_back(
-          {PendingSngNoteEvent::ProgramChange, e.channel, e.data1, 0});
+      pendingSngEvents.push_back({t, e.channel, d1, d2});
       intptr_t timerData = -(static_cast<intptr_t>(idx) + 1);
 
       fluid_event_set_dest(evt, callbackSeqId);
@@ -2777,20 +2788,63 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       break;
 
     case SngEvent::Tempo:
-      /* Change sequencer time-scale at this tick */
       fluid_event_set_dest(evt, synthSeqId);
       fluid_event_scale(evt, e.tempoScale);
       fluid_sequencer_send_at(sequencer, evt, schedTick, /*absolute=*/1);
       break;
     }
+  };
 
+  uint32_t lastTick = 0;
+
+  /* Schedule all parsed events at their native tick positions */
+  for (const auto& e : events) {
+    scheduleOne(e, e.absTick);
     if (e.absTick > lastTick)
       lastTick = e.absTick;
   }
 
+  /* ── Loop support ──
+   * If the song has a loop and --duration was specified, re-schedule the
+   * events from the loop body (loopStartTick..loopEndTick) at successive
+   * offsets until maxDurationTicks is reached. */
+  if (loopInfo.hasLoop && maxDurationTicks > 0 && lastTick < maxDurationTicks) {
+    uint32_t loopLen = loopInfo.loopEndTick - loopInfo.loopStartTick;
+    if (loopLen > 0) {
+      /* Collect events within the loop body */
+      std::vector<const SngEvent*> loopEvents;
+      for (const auto& e : events) {
+        if (e.absTick >= loopInfo.loopStartTick &&
+            e.absTick < loopInfo.loopEndTick)
+          loopEvents.push_back(&e);
+      }
+
+      /* Keep re-scheduling the loop body until we've filled maxDurationTicks.
+       * tickOffset shifts each iteration by one loop length. */
+      uint32_t tickOffset = loopInfo.loopEndTick - loopInfo.loopStartTick;
+      unsigned int loopIter = 0;
+      while (lastTick < maxDurationTicks) {
+        for (const auto* ep : loopEvents) {
+          uint32_t newTick = (ep->absTick - loopInfo.loopStartTick) +
+                             loopInfo.loopEndTick + tickOffset * loopIter;
+          if (newTick >= maxDurationTicks)
+            break;
+          scheduleOne(*ep, newTick);
+          if (newTick > lastTick)
+            lastTick = newTick;
+        }
+        ++loopIter;
+        if (loopInfo.loopEndTick + tickOffset * loopIter >= maxDurationTicks)
+          break;
+      }
+      printf("fluidsyX: looped %u iterations to reach %u ticks\n",
+             loopIter, lastTick);
+    }
+  }
+
   delete_fluid_event(evt);
 
-  printf("fluidsyX: scheduled %u SNG ticks of song data (%zu events, "
+  printf("fluidsyX: scheduled %u SNG ticks of song data (%zu SNG events, "
          "%zu routed through SoundMacro)\n",
          lastTick, events.size(), pendingSngEvents.size());
   return static_cast<double>(lastTick);
@@ -3021,31 +3075,57 @@ int main(int argc, char** argv) {
 
   if (argc < 2) {
     fprintf(stderr,
-            "Usage: fluidsyX <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
+            "Usage: fluidsyX [--duration <ticks>] <musyx-group-path> [<songs-file>] [soundfont.sf2]\n"
             "\n"
             "  Plays MusyX SoundMacro data using FluidSynth.\n"
             "  MusyX samples are decoded and loaded as a virtual SoundFont.\n"
             "  An optional songs file (.son/.sng/.song) can be specified to\n"
             "  play a specific MusyX song sequence.\n"
             "  An optional external .sf2 SoundFont can be specified as a\n"
-            "  fallback for programs not covered by the MusyX data.\n");
+            "  fallback for programs not covered by the MusyX data.\n"
+            "\n"
+            "Options:\n"
+            "  --duration <ticks>  Total playback duration in SNG ticks.\n"
+            "                      When specified, the song loops until the\n"
+            "                      given tick count is reached.\n");
     return 1;
   }
 
   /* Parse positional arguments.
-   * argv[1] is always the group path.  Remaining positional args are
-   * classified by extension: .sf2 → external SoundFont, anything else
-   * → songs file (consistent with amuserender / amuseplay). */
-  const char* groupPath = argv[1];
+   * argv[1..] may include --duration <ticks>.  Remaining positional args:
+   * first is the group path, then classified by extension: .sf2 → external
+   * SoundFont, anything else → songs file (consistent with amuserender /
+   * amuseplay). */
+  const char* groupPath = nullptr;
   const char* songsPath = nullptr;
   const char* sf2Path   = nullptr;
 
-  for (int i = 2; i < argc; ++i) {
-    if (fluid_is_soundfont(argv[i])) {
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--duration") == 0) {
+      if (i + 1 < argc) {
+        char* end = nullptr;
+        unsigned long val = strtoul(argv[++i], &end, 10);
+        if (end == argv[i] || val == 0) {
+          fprintf(stderr, "fluidsyX: invalid --duration value '%s'\n", argv[i]);
+          return 1;
+        }
+        app.maxDurationTicks = static_cast<uint32_t>(val);
+      } else {
+        fprintf(stderr, "fluidsyX: --duration requires a value\n");
+        return 1;
+      }
+    } else if (!groupPath) {
+      groupPath = argv[i];
+    } else if (fluid_is_soundfont(argv[i])) {
       sf2Path = argv[i];
     } else {
       songsPath = argv[i];
     }
+  }
+
+  if (!groupPath) {
+    fprintf(stderr, "fluidsyX: no group path specified\n");
+    return 1;
   }
 
   /* 1. Initialise FluidSynth */
