@@ -2820,13 +2820,15 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       }
 
       /* Keep re-scheduling the loop body until we've filled maxDurationTicks.
-       * tickOffset shifts each iteration by one loop length. */
-      uint32_t tickOffset = loopInfo.loopEndTick - loopInfo.loopStartTick;
+       * Each iteration shifts events by one additional loopLen. */
       unsigned int loopIter = 0;
       while (lastTick < maxDurationTicks) {
+        uint32_t iterBase = loopInfo.loopEndTick + loopLen * loopIter;
+        if (iterBase >= maxDurationTicks)
+          break;
         for (const auto* ep : loopEvents) {
-          uint32_t newTick = (ep->absTick - loopInfo.loopStartTick) +
-                             loopInfo.loopEndTick + tickOffset * loopIter;
+          uint32_t relTick = ep->absTick - loopInfo.loopStartTick;
+          uint32_t newTick = iterBase + relTick;
           if (newTick >= maxDurationTicks)
             break;
           scheduleOne(*ep, newTick);
@@ -2834,8 +2836,6 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
             lastTick = newTick;
         }
         ++loopIter;
-        if (loopInfo.loopEndTick + tickOffset * loopIter >= maxDurationTicks)
-          break;
       }
       printf("fluidsyX: looped %u iterations to reach %u ticks\n",
              loopIter, lastTick);
@@ -3103,10 +3103,11 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--duration") == 0) {
       if (i + 1 < argc) {
+        const char* arg = argv[++i];
         char* end = nullptr;
-        unsigned long val = strtoul(argv[++i], &end, 10);
-        if (end == argv[i] || val == 0) {
-          fprintf(stderr, "fluidsyX: invalid --duration value '%s'\n", argv[i]);
+        unsigned long val = strtoul(arg, &end, 10);
+        if (end == arg || *end != '\0' || val == 0) {
+          fprintf(stderr, "fluidsyX: --duration requires a positive integer (got '%s')\n", arg);
           return 1;
         }
         app.maxDurationTicks = static_cast<uint32_t>(val);
