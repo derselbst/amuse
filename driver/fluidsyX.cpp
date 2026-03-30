@@ -46,6 +46,18 @@
 #include <sys/select.h>
 #endif
 
+#define VERSION(major,minor,patch) \
+  (((major) << 16) | \
+   ((minor) << 8) | \
+   (patch))
+
+#if defined(FLUIDSYNTH_VERSION_MAJOR) && defined(FLUIDSYNTH_VERSION_MINOR) && defined(FLUIDSYNTH_VERSION_MICRO)
+#define FLUID_VERSION_AT_LEAST(major,minor,patch) \
+  (VERSION(FLUIDSYNTH_VERSION_MAJOR, FLUIDSYNTH_VERSION_MINOR, FLUIDSYNTH_VERSION_MICRO) >= VERSION(major,minor,patch))
+#else
+#define FLUID_VERSION_AT_LEAST(major,minor,patch) 0
+#endif
+
 using namespace amuse;
 
 /* ──────────────────── Terminal helpers ──────────────────── */
@@ -994,7 +1006,7 @@ static void dummy_preset_free(fluid_preset_t* preset) {
 /* ═══════════════════ FluidSynth init / shutdown ═══════════════════ */
 
 bool FluidsyXApp::initFluidSynth() {
-
+#if FLUID_VERSION_AT_LEAST(2,5,0)
     fluid_mod_t *blueprint = new_fluid_mod();
 
     fluid_mod_set_source1(blueprint, FLUID_MOD_NONE,
@@ -1021,6 +1033,7 @@ bool FluidsyXApp::initFluidSynth() {
     fluid_mod_clone(modBlueprintSustain, blueprint);
 
     delete_fluid_mod(blueprint);
+#endif
 
   settings = new_fluid_settings();
   if (!settings) {
@@ -1081,10 +1094,12 @@ void FluidsyXApp::shutdownFluidSynth() {
     delete_fluid_settings(settings);
     settings = nullptr;
 
+#if FLUID_VERSION_AT_LEAST(2,5,0)
     delete_fluid_mod(modBlueprintADR);
     modBlueprintADR = nullptr;
     delete_fluid_mod(modBlueprintSustain);
     modBlueprintSustain = nullptr;
+#endif
 }
 
 /* ═══════════════════ MusyX data loading ═══════════════════ */
@@ -1481,6 +1496,7 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
   if (!ctx.useAdsrControllers || !v)
     return;
 
+#if FLUID_VERSION_AT_LEAST(2,5,0)
   /* Attack */
   fluid_mod_set_source1(modBlueprintADR, ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR));
   fluid_mod_set_dest(modBlueprintADR, GEN_VOLENVATTACK);
@@ -1506,6 +1522,9 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
     fluid_voice_update_param(v, GEN_VOLENVSUSTAIN);
     fluid_voice_update_param(v, GEN_VOLENVRELEASE);
   }
+#else
+#warning "FluidSynth 2.5 or later is required for per-voice ADSR control. ADSR commands will be ignored."
+#endif
 }
 
 void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
