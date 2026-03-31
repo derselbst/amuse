@@ -2510,11 +2510,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::PitchWheelSelect: {
-    /* Pitchbend is handled through PitchWheelR and pitch bend events */
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::PedalSelect: {
     auto& c = static_cast<const SoundMacro::CmdPedalSelect&>(cmd);
     /* CC 64 = sustain pedal */
@@ -2537,6 +2532,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::TremoloSelect:
   case SoundMacro::CmdOp::ReverbSelect: // this should set up a modulator from CC "c.midiControl" to GEN_REVERBSEND - but it doesn't seem to be widely used, the default reverb CC91 is preferred by most tunes
   case SoundMacro::CmdOp::ModWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_VIBLFOTOPITCH
+  case SoundMacro::CmdOp::PitchWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_FINETUNE, similar to default_pitch_bend_mod in FluidSynth
   /* Advanced controller routing – skip for now */
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
