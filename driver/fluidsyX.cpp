@@ -1982,12 +1982,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::PitchSweep1:
-  case SoundMacro::CmdOp::PitchSweep2: {
-    /* Timer-driven pitch sweep; for now just advance */
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::PitchWheelR: {
     auto& c = static_cast<const SoundMacro::CmdPitchWheelR&>(cmd);
     if (c.rangeUp != c.rangeDown) {
@@ -2000,11 +1994,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     }
     fluid_event_pitch_wheelsens(evt.get(), ctx.channel, c.rangeUp);
     fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::SetPitchAdsr: {
-    /* Timer-driven pitch ADSR; advance for now */
     ctx.pc++;
     break;
   }
@@ -2471,15 +2460,18 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Event trapping ── */
   case SoundMacro::CmdOp::TrapEvent:
   case SoundMacro::CmdOp::UntrapEvent:
-  /* ── Miscellaneous ── */
-  case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
-  case SoundMacro::CmdOp::Envelope:
   case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
   /* Timer-driven modulation effects */
   case SoundMacro::CmdOp::SetupTremolo:
   case SoundMacro::CmdOp::Mod2Vibrange:
   case SoundMacro::CmdOp::SetupLFO:
   case SoundMacro::CmdOp::ModeSelect:
+  case SoundMacro::CmdOp::PitchSweep1: // Timer-driven pitch sweep
+  case SoundMacro::CmdOp::PitchSweep2:
+  case SoundMacro::CmdOp::SetPitchAdsr:  // Timer-driven pitch ADSR
+  /* ── Miscellaneous ── */
+  case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
+  case SoundMacro::CmdOp::Envelope:
   case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
   case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
   case SoundMacro::CmdOp::SendFlag:
