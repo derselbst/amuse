@@ -1033,6 +1033,7 @@ struct FluidsyXApp {
    *  Computes the offset from allocKey and curDetune. */
   void applyVoicePitch(MacroExecContext& ctx);
 
+  void killVoice(fluid_synth_t* synth, MacroExecContext& ctx);
   /** Kick off the next pending timer step for all active macros */
   void scheduleNextTimerStep();
 };
@@ -1532,12 +1533,21 @@ static void releaseVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
 
 /** Immediately silence a voice (near-instant release).
  *  Sets the volume envelope release to the minimum timecent value before
- *  calling fluid_synth_stop(), making the release effectively instant.
- *  fluid_voice_off() is only available in FluidSynth 2.4+. */
-static void killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
+ *  calling fluid_synth_stop(), making the release effectively instant. */
+void FluidsyXApp::killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
   if (ctx.voiceId != 0) {
     fluid_voice_t* v = findVoiceById(synth, ctx.voiceId);
     if (v) {
+      // unset any release-related mods so they don't interfere with the instant release time
+      if(ctx.useAdsrControllers)
+      {
+        fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR.get()));
+        fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVRELEASE);
+        fluid_mod_set_amount(modBlueprintADR.get(), 0);
+        fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
+        // restore the amount for the blueprint mod so it can be reused for upcoming release mods
+        fluid_mod_set_amount(modBlueprintADR.get(), 1);
+      }
       /* Set release to near-instant */
       fluid_voice_gen_set(v, GEN_VOLENVRELEASE, kInstantReleaseTimecents);
       fluid_voice_update_param(v, GEN_VOLENVRELEASE);
