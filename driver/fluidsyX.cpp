@@ -2556,19 +2556,12 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SpanSelect:      /* surround panning – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::TremoloSelect:
+  /* Advanced controller routing – skip for now */
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
   case SoundMacro::CmdOp::PostBSelect:
   case SoundMacro::CmdOp::AuxAFXSelect:
-  case SoundMacro::CmdOp::AuxBFXSelect: {
-    /* Advanced controller routing – skip for now */
-    if (!verbose)
-      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n",
-                 ctx.channel, ctx.pc, formatMacroCmd(cmd));
-    ctx.pc++;
-    break;
-  }
-
+  case SoundMacro::CmdOp::AuxBFXSelect:
   /* ── Miscellaneous ── */
   case SoundMacro::CmdOp::SendFlag:
   case SoundMacro::CmdOp::AgeCntSpeed:
@@ -2577,34 +2570,21 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SetAgeCount:
   case SoundMacro::CmdOp::SetKeygroup:
   case SoundMacro::CmdOp::WiiUnknown:
-  case SoundMacro::CmdOp::WiiUnknown2: {
+  case SoundMacro::CmdOp::WiiUnknown2:
+  default: /* Unknown op – always log */
     if (!verbose)
-      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n",
-                 ctx.channel, ctx.pc, formatMacroCmd(cmd));
-    ctx.pc++;
-    break;
-  }
-
+    {
+      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n", ctx.channel, ctx.pc, formatMacroCmd(cmd));
+    }
+    [[fallthrough]];
   /* ── deliberately unimplemented ── */
   case SoundMacro::CmdOp::SRCmodeSelect:
     // ignore – this is for sample rate conversion mode, which Fluidsynth only supports as global setting
-    ctx.pc++;
-    break;
-
   case SoundMacro::CmdOp::AddPriority:
   case SoundMacro::CmdOp::SetPriority:
     // ignore - this is only relevant if we would run out of polyphony, which we won't because fluidsynth has enough
     ctx.pc++;
     break;
-
-  default: {
-    /* Unknown op – always log */
-    if (!verbose)
-      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n",
-                 ctx.channel, ctx.pc, formatMacroCmd(cmd));
-    ctx.pc++;
-    break;
-  }
   }
 
   return delay;
