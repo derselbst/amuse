@@ -2515,16 +2515,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::ModWheelSelect: {
-    auto& c = static_cast<const SoundMacro::CmdModWheelSelect&>(cmd);
-    if (!c.isVar && c.midiControl < 128) {
-      fluid_event_modulation(evt.get(), ctx.channel,
-          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
-    }
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::PedalSelect: {
     auto& c = static_cast<const SoundMacro::CmdPedalSelect&>(cmd);
     /* CC 64 = sustain pedal */
@@ -2546,6 +2536,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::TremoloSelect:
   case SoundMacro::CmdOp::ReverbSelect: // this should set up a modulator from CC "c.midiControl" to GEN_REVERBSEND - but it doesn't seem to be widely used, the default reverb CC91 is preferred by most tunes
+  case SoundMacro::CmdOp::ModWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_VIBLFOTOPITCH
   /* Advanced controller routing – skip for now */
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
