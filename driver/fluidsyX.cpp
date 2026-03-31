@@ -2276,11 +2276,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     }
     break;
   }
-  case SoundMacro::CmdOp::SplitMod: {
-    /* Skip for now (no modulation tracking in this simple version) */
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::SplitRnd: {
     auto& c = static_cast<const SoundMacro::CmdSplitRnd&>(cmd);
     std::uniform_int_distribution<int> dist(0, 255);
@@ -2369,26 +2364,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SetupLFO:
   case SoundMacro::CmdOp::ModeSelect: {
     /* Timer-driven modulation effects; advance */
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Event trapping ── */
-  case SoundMacro::CmdOp::TrapEvent: {
-    /* In a full implementation this would register event handlers;
-     * for now, just advance */
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::UntrapEvent: {
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Messages ── */
-  case SoundMacro::CmdOp::SendMessage:
-  case SoundMacro::CmdOp::GetMessage:
-  case SoundMacro::CmdOp::GetVid: {
     ctx.pc++;
     break;
   }
@@ -2504,7 +2479,15 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::PostBSelect:
   case SoundMacro::CmdOp::AuxAFXSelect:
   case SoundMacro::CmdOp::AuxBFXSelect:
+  /* ── Messages ── */
+  case SoundMacro::CmdOp::SendMessage:
+  case SoundMacro::CmdOp::GetMessage:
+  case SoundMacro::CmdOp::GetVid:
+  /* ── Event trapping ── */
+  case SoundMacro::CmdOp::TrapEvent:
+  case SoundMacro::CmdOp::UntrapEvent:
   /* ── Miscellaneous ── */
+  case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
   case SoundMacro::CmdOp::SendFlag:
   case SoundMacro::CmdOp::AgeCntSpeed:
   case SoundMacro::CmdOp::AgeCntVel:
