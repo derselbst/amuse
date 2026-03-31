@@ -2571,14 +2571,11 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
   /* ── Miscellaneous ── */
   case SoundMacro::CmdOp::SendFlag:
-  case SoundMacro::CmdOp::SetPriority:
-  case SoundMacro::CmdOp::AddPriority:
   case SoundMacro::CmdOp::AgeCntSpeed:
   case SoundMacro::CmdOp::AgeCntVel:
   case SoundMacro::CmdOp::AddAgeCount:
   case SoundMacro::CmdOp::SetAgeCount:
   case SoundMacro::CmdOp::SetKeygroup:
-  case SoundMacro::CmdOp::SRCmodeSelect:
   case SoundMacro::CmdOp::WiiUnknown:
   case SoundMacro::CmdOp::WiiUnknown2: {
     if (!verbose)
@@ -2587,6 +2584,18 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
+
+  /* ── deliberately unimplemented ── */
+  case SoundMacro::CmdOp::SRCmodeSelect:
+    // ignore – this is for sample rate conversion mode, which Fluidsynth only supports as global setting
+    ctx.pc++;
+    break;
+
+  case SoundMacro::CmdOp::AddPriority:
+  case SoundMacro::CmdOp::SetPriority:
+    // ignore - this is only relevant if we would run out of polyphony, which we won't because fluidsynth has enough
+    ctx.pc++;
+    break;
 
   default: {
     /* Unknown op – always log */
