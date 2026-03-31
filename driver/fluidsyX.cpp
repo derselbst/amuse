@@ -2048,17 +2048,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::Envelope:
-  case SoundMacro::CmdOp::FadeIn: {
-    /* Timer-driven envelope; advance for now */
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::SetAdsr: {
-    /* ADSR table lookup for envelope shape – timer callback territory */
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::SetAdsrCtrl: {
     auto& c = static_cast<const SoundMacro::CmdSetAdsrCtrl&>(cmd);
     ctx.useAdsrControllers = true;
@@ -2136,12 +2125,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       ctx.pendingPanGen = panGen;
       ctx.hasPendingPan = true;
     }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::Spanning: {
-    /* Spanning controls surround panning, which FluidSynth does not
-     * currently support.  Logged as a no-op. */
     ctx.pc++;
     break;
   }
@@ -2497,6 +2480,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::TrapEvent:
   case SoundMacro::CmdOp::UntrapEvent:
   /* ── Miscellaneous ── */
+  case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
+  case SoundMacro::CmdOp::Envelope:
+  case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
+  case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
   case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
   case SoundMacro::CmdOp::SendFlag:
   case SoundMacro::CmdOp::AgeCntSpeed:
