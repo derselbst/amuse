@@ -2488,34 +2488,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
 
   /* ── Selector evaluators (controller → parameter mapping) ── */
-  case SoundMacro::CmdOp::VolSelect: {
-    auto& c = static_cast<const SoundMacro::CmdVolSelect&>(cmd);
-    /* In MusyX, VolSelect binds a CC to the volume evaluator.
-     * We forward the referenced CC value as a volume CC to FluidSynth. */
-    if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt.get(), ctx.channel, 7,
-          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::PanSelect: {
-    auto& c = static_cast<const SoundMacro::CmdPanSelect&>(cmd);
-    if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt.get(), ctx.channel, 10,
-          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::PortamentoSelect: {
-    /* Portamento is configured via the Portamento command;
-     * the select just sets up the evaluator. */
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::SpanSelect:      /* surround panning – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::TremoloSelect:
@@ -2523,7 +2495,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::ModWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_VIBLFOTOPITCH
   case SoundMacro::CmdOp::PitchWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_FINETUNE, similar to default_pitch_bend_mod in FluidSynth
   case SoundMacro::CmdOp::PedalSelect: // this is a hard one - fluidsynth relies on CC64 for sustain pedal, but MusyX tunes use this selector to bind sustain to an arbitrary CC; one would need to track the bound CC and translate incoming CC events back to 64, which would affect the entire MIDI channel, rather than just the single voice...
+  case SoundMacro::CmdOp::PortamentoSelect: // this is another tricky one - it defines a custom CC for portamento usage, but fluidsynth only supports the standard CC65 for portamento on/off and CC5/37 for portamento time, so supporting this would require tracking the bound CC and translating incoming CC events back to the standard ones, which would affect the entire MIDI channel rather than just the single voice...
+  case SoundMacro::CmdOp::PanSelect: // this should set up a modulator from CC "c.midiControl" to GEN_PAN
   /* Advanced controller routing – skip for now */
+  case SoundMacro::CmdOp::VolSelect: // this should set up a modulator from CC "c.midiControl" to GEN_ATTENUATION
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
   case SoundMacro::CmdOp::PostBSelect:
