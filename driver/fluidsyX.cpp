@@ -40,6 +40,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <optional>
 
 #ifdef _WIN32
 #include <conio.h>
@@ -611,6 +612,7 @@ struct MacroExecContext {
   uint8_t midiSustain = 0;
   uint8_t midiRelease = 0;
 
+  std::optional<std::tuple<uint16_t, bool>> adsrTableId; // Id of the ADSR table to use for this voice, if any (from CmdSetAdsr)
   /* Controller value storage (0-127 for standard MIDI CCs) */
   std::array<int8_t, 128> ctrlVals = {};
 
@@ -1060,6 +1062,54 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
     fluid_voice_gen_set(voice, GEN_ATTENUATION, ctx.pendingAttnGen);
   if (ctx.curDetune != 0.0f)
     fluid_voice_gen_set(voice, GEN_FINETUNE, ctx.curDetune);
+
+  if (ctx.adsrTableId.has_value()) {
+    if(ctx.adsrTableId.has_value() && std::get<1>(*ctx.adsrTableId)) {
+      const ADSRDLS* adsr = app->activePool->tableAsAdsrDLS(std::get<0>(*ctx.adsrTableId));
+      if (adsr) {
+        if (adsr->attack != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVATTACK, adsr->attack);
+          fluid_voice_update_param(voice, GEN_VOLENVATTACK);
+        }
+        if(adsr->decay != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVDECAY, adsr->decay);
+          fluid_voice_update_param(voice, GEN_VOLENVDECAY);
+        }
+        if(adsr->sustain != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN, adsr->sustain);
+          fluid_voice_update_param(voice, GEN_VOLENVSUSTAIN);
+        }
+        if(adsr->release != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVRELEASE , adsr->release);
+          fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
+        }
+        if(adsr->keyToDecay != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_KEYTOVOLENVDECAY, adsr->keyToDecay);
+          fluid_voice_update_param(voice, GEN_KEYTOVOLENVDECAY);
+        }
+      }
+    } else {
+      const ADSR* adsr = app->activePool->tableAsAdsr(std::get<0>(*ctx.adsrTableId));
+      if (adsr) {
+        if(adsr->attack != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVATTACK, adsr->attack);
+          fluid_voice_update_param(voice, GEN_VOLENVATTACK);
+        }
+        if(adsr->decay != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVDECAY, adsr->decay);
+          fluid_voice_update_param(voice, GEN_VOLENVDECAY);
+        }
+        if(adsr->sustain != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN, adsr->sustain);
+          fluid_voice_update_param(voice, GEN_VOLENVSUSTAIN);
+        }
+        if(adsr->release != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVRELEASE , adsr->release);
+          fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
+        }
+      }
+    }
+  }
 
   app->applyAdsrToVoice(voice, ctx, false);
 
@@ -2469,6 +2519,13 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::PitchSweep2:
   case SoundMacro::CmdOp::SetPitchAdsr:  // Timer-driven pitch ADSR
   /* ── Miscellaneous ── */
+  case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
+  {
+      auto& c = static_cast<const SoundMacro::CmdSetAdsr&>(cmd);
+      ctx.adsrTableId = std::make_optional(std::make_tuple(uint16_t(c.table.id.id), c.dlsMode));
+      ctx.pc++;
+      break;
+  }
   case SoundMacro::CmdOp::ModeSelect:
   if(op == SoundMacro::CmdOp::ModeSelect)
   {
@@ -2483,7 +2540,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     [[fallthrough]];
   case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
   case SoundMacro::CmdOp::Envelope:
-  case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
   case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
   case SoundMacro::CmdOp::SendFlag:
   case SoundMacro::CmdOp::AgeCntSpeed:
