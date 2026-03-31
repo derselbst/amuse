@@ -2510,17 +2510,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::PedalSelect: {
-    auto& c = static_cast<const SoundMacro::CmdPedalSelect&>(cmd);
-    /* CC 64 = sustain pedal */
-    if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt.get(), ctx.channel, 64,
-          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
-    }
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::PortamentoSelect: {
     /* Portamento is configured via the Portamento command;
      * the select just sets up the evaluator. */
@@ -2533,6 +2522,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::ReverbSelect: // this should set up a modulator from CC "c.midiControl" to GEN_REVERBSEND - but it doesn't seem to be widely used, the default reverb CC91 is preferred by most tunes
   case SoundMacro::CmdOp::ModWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_VIBLFOTOPITCH
   case SoundMacro::CmdOp::PitchWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_FINETUNE, similar to default_pitch_bend_mod in FluidSynth
+  case SoundMacro::CmdOp::PedalSelect: // this is a hard one - fluidsynth relies on CC64 for sustain pedal, but MusyX tunes use this selector to bind sustain to an arbitrary CC; one would need to track the bound CC and translate incoming CC events back to 64, which would affect the entire MIDI channel, rather than just the single voice...
   /* Advanced controller routing – skip for now */
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
