@@ -2465,11 +2465,22 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SetupTremolo:
   case SoundMacro::CmdOp::Mod2Vibrange:
   case SoundMacro::CmdOp::SetupLFO:
-  case SoundMacro::CmdOp::ModeSelect:
   case SoundMacro::CmdOp::PitchSweep1: // Timer-driven pitch sweep
   case SoundMacro::CmdOp::PitchSweep2:
   case SoundMacro::CmdOp::SetPitchAdsr:  // Timer-driven pitch ADSR
   /* ── Miscellaneous ── */
+  case SoundMacro::CmdOp::ModeSelect:
+  if(op == SoundMacro::CmdOp::ModeSelect)
+  {
+    auto& c = static_cast<const SoundMacro::CmdModeSelect&>(cmd);
+    if(c.dlsVol == true && c.itd == false)
+    {
+      // This pretty much matches fluidsynth's default curve, so we can just ignore it
+      ctx.pc++;
+      break;
+    }
+  }
+    [[fallthrough]];
   case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
   case SoundMacro::CmdOp::Envelope:
   case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
