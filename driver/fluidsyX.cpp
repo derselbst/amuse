@@ -2542,20 +2542,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::ReverbSelect: {
-    auto& c = static_cast<const SoundMacro::CmdReverbSelect&>(cmd);
-    /* CC 91 = reverb send */
-    if (!c.isVar && c.midiControl < 128) {
-      fluid_event_control_change(evt.get(), ctx.channel, 91,
-          std::clamp(static_cast<int>(ctx.ctrlVals[c.midiControl]), 0, 127));
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
-    }
-    ctx.pc++;
-    break;
-  }
   case SoundMacro::CmdOp::SpanSelect:      /* surround panning – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::TremoloSelect:
+  case SoundMacro::CmdOp::ReverbSelect: // this should set up a modulator from CC "c.midiControl" to GEN_REVERBSEND - but it doesn't seem to be widely used, the default reverb CC91 is preferred by most tunes
   /* Advanced controller routing – skip for now */
   case SoundMacro::CmdOp::PreASelect:
   case SoundMacro::CmdOp::PreBSelect:
