@@ -2352,14 +2352,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.pc++;
     break;
   }
-  case SoundMacro::CmdOp::SetupTremolo:
-  case SoundMacro::CmdOp::Mod2Vibrange:
-  case SoundMacro::CmdOp::SetupLFO:
-  case SoundMacro::CmdOp::ModeSelect: {
-    /* Timer-driven modulation effects; advance */
-    ctx.pc++;
-    break;
-  }
 
   /* ── Variable operations ── */
   case SoundMacro::CmdOp::SetVar: {
@@ -2483,6 +2475,11 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
   case SoundMacro::CmdOp::Envelope:
   case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
+  /* Timer-driven modulation effects */
+  case SoundMacro::CmdOp::SetupTremolo:
+  case SoundMacro::CmdOp::Mod2Vibrange:
+  case SoundMacro::CmdOp::SetupLFO:
+  case SoundMacro::CmdOp::ModeSelect:
   case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
   case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
   case SoundMacro::CmdOp::SendFlag:
