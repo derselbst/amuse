@@ -161,6 +161,7 @@ static constexpr int kGenNrpnScale_VolEnvRelease = 2;
 
 static constexpr float kInstantReleaseTimecents = -12000.0f; /**< Near-instant release (~1 ms) */
 static constexpr uint16_t kInfiniteLoopSentinel = 65535;     /**< CmdLoop::times value for endless loop */
+static constexpr float kFixedPoint16_16Divisor = 1.0f / 65536.0f;
 
 /* ═══════════════════ SNG binary format structures ═══════════════════
  *
@@ -1078,7 +1079,7 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
     // | Attack/Decay (ADSRDLS)      | uint32_t 16.16 fixed-point timecents | timecents                    | `int32_t(val) / 65536.0`            |
     // | Release (ADSRDLS)           | uint16_t milliseconds            | timecents                        | `secondsToTimecents(ms / 1000.0)`   |
     // | Sustain (both)              | uint16_t linear (0x1000=100%)    | centibels (0=full, 1440=silence) | `(1 - factor) * 1440`               |
-    // | keyToDecay                  | uint32_t 16.16 fixed-point       | plain timecents/key              | `int32_t(val) / 65536.0`            |
+    // | keyToDecay                  | uint32_t 16.16 fixed-point timecents | plain timecents/key          | `int32_t(val) / 65536.0`            |
     if (std::get<1>(*ctx.adsrTableId)) {
       /* ── DLS mode ── */
       const ADSRDLS* adsr = app->activePool->tableAsAdsrDLS(std::get<0>(*ctx.adsrTableId));
@@ -1087,12 +1088,12 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
          * FluidSynth expects plain timecents.  0x80000000 = default/disabled. */
         if (adsr->attack != 0x80000000) {
           fluid_voice_gen_set(voice, GEN_VOLENVATTACK,
-                              static_cast<float>(static_cast<int32_t>(adsr->attack) / 65536.0));
+                              static_cast<float>(static_cast<int32_t>(adsr->attack) * kFixedPoint16_16Divisor));
           fluid_voice_update_param(voice, GEN_VOLENVATTACK);
         }
         if (adsr->decay != 0x80000000) {
           fluid_voice_gen_set(voice, GEN_VOLENVDECAY,
-                              static_cast<float>(static_cast<int32_t>(adsr->decay) / 65536.0));
+                              static_cast<float>(static_cast<int32_t>(adsr->decay) * kFixedPoint16_16Divisor));
           fluid_voice_update_param(voice, GEN_VOLENVDECAY);
         }
         /* Sustain: 0x1000 == 100% linear → centibels */
@@ -1106,7 +1107,7 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
         /* Key-to-decay: 16.16 fixed-point timecents-per-key */
         if (adsr->keyToDecay != 0x80000000) {
           fluid_voice_gen_set(voice, GEN_KEYTOVOLENVDECAY,
-                              static_cast<float>(static_cast<int32_t>(adsr->keyToDecay) / 65536.0));
+                              static_cast<float>(static_cast<int32_t>(adsr->keyToDecay) * kFixedPoint16_16Divisor));
           fluid_voice_update_param(voice, GEN_KEYTOVOLENVDECAY);
         }
         /* Velocity-to-attack: add a modulator so that velocity scales
@@ -1115,7 +1116,7 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
 #if FLUID_VERSION_AT_LEAST(2,5,0)
         if (adsr->velToAttack != 0x80000000 && app->modBlueprintVelToAttack) {
           fluid_mod_set_amount(app->modBlueprintVelToAttack.get(),
-                               static_cast<int32_t>(adsr->velToAttack) / 65536.0);
+                               static_cast<int32_t>(adsr->velToAttack) * kFixedPoint16_16Divisor);
           fluid_voice_add_mod(voice, app->modBlueprintVelToAttack.get(), FLUID_VOICE_OVERWRITE);
         }
 #endif
