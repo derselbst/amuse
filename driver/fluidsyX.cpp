@@ -1072,6 +1072,13 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
       return static_cast<float>(std::clamp((1.0 - factor) * 1440.0, 0.0, 1440.0));
     };
 
+    // | Field                       | MusyX Format                   | SF2 Expected                       | Conversion                          |
+    // |-----------------------------|--------------------------------|------------------------------------|--------------------------------------|
+    // | Attack/Decay/Release (ADSR) | uint16_t milliseconds            | timecents                        | `secondsToTimecents(ms / 1000.0)`   |
+    // | Attack/Decay (ADSRDLS)      | uint32_t 16.16 fixed-point timecents | timecents                    | `int32_t(val) / 65536.0`            |
+    // | Release (ADSRDLS)           | uint16_t milliseconds            | timecents                        | `secondsToTimecents(ms / 1000.0)`   |
+    // | Sustain (both)              | uint16_t linear (0x1000=100%)    | centibels (0=full, 1440=silence) | `(1 - factor) * 1440`               |
+    // | keyToDecay                  | uint32_t 16.16 fixed-point       | plain timecents/key              | `int32_t(val) / 65536.0`            |
     if (std::get<1>(*ctx.adsrTableId)) {
       /* ── DLS mode ── */
       const ADSRDLS* adsr = app->activePool->tableAsAdsrDLS(std::get<0>(*ctx.adsrTableId));
@@ -1149,32 +1156,29 @@ static void dummy_preset_free(fluid_preset_t* preset) {
 
 bool FluidsyXApp::initFluidSynth() {
 #if FLUID_VERSION_AT_LEAST(2,5,0)
-    fluid_mod_t *blueprint = new_fluid_mod();
+    FluidModPtr blueprint{new_fluid_mod(), &delete_fluid_mod};
 
-    fluid_mod_set_source1(blueprint, FLUID_MOD_NONE,
+    fluid_mod_set_source1(blueprint.get(), FLUID_MOD_NONE,
                           FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
-    fluid_mod_set_source2(blueprint, FLUID_MOD_NONE, 0);
-    fluid_mod_set_amount(blueprint, 1);
-    fluid_mod_set_custom_mapping(blueprint, [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
+    fluid_mod_set_source2(blueprint.get(), FLUID_MOD_NONE, 0);
+    fluid_mod_set_amount(blueprint.get(), 1);
+    fluid_mod_set_custom_mapping(blueprint.get(), [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
     {
         // The volenv* generators all use -12000 timecents as default, which we need to get rid of.
         return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0) + 12000;
     }, nullptr);
 
     modBlueprintADR.reset(new_fluid_mod());
-    fluid_mod_clone(modBlueprintADR.get(), blueprint);
+    fluid_mod_clone(modBlueprintADR.get(), blueprint.get());
 
-    fluid_mod_set_custom_mapping(blueprint, [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
+    fluid_mod_set_custom_mapping(blueprint.get(), [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
     {
         double sustainFactor = value * 1.0 / range;
         return (1.0 - sustainFactor) * 1440.0;
     }, nullptr);
 
-
     modBlueprintSustain.reset(new_fluid_mod());
-    fluid_mod_clone(modBlueprintSustain.get(), blueprint);
-
-    delete_fluid_mod(blueprint);
+    fluid_mod_clone(modBlueprintSustain.get(), blueprint.get());
 
     /* VelToAttack modulator: velocity (GC) → GEN_VOLENVATTACK.
      * Amount is set per-voice to velToAttack / 65536.0 (plain timecents). */
