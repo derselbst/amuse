@@ -1197,11 +1197,10 @@ bool FluidsyXApp::initFluidSynth() {
     return false;
   }
 
+  // Processing soundMacros via callback can be too expensive for the default period-size of 64 samples
+  fluid_settings_setint(settings.get(), "audio.period-size", 256);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
-  /* Use FluidSynth's linear portamento mode via the portamento-time
-   * setting.  NOTE: synth.portamento-time is a global setting, not
-   * per-channel.  If multiple channels set different portamento times
-   * concurrently, only the last value will take effect. */
+  // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
 
   synth.reset(new_fluid_synth(settings.get()));
