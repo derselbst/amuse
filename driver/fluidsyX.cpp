@@ -1212,7 +1212,7 @@ bool FluidsyXApp::initFluidSynth() {
   fluid_synth_bank_select(synth.get(), 9, 0); // try to force drum channel to bank 0 rather than bank 128
 
 
-  /* Create sequencer (use system timer so it advances in real-time) */
+  /* Create sequencer and use the sample-timer */
   sequencer.reset(new_fluid_sequencer2(0));
   if (!sequencer) {
     fmt::print(stderr, "fluidsyX: failed to create FluidSynth sequencer\n");
