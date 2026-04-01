@@ -1064,49 +1064,62 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
     fluid_voice_gen_set(voice, GEN_FINETUNE, ctx.curDetune);
 
   if (ctx.adsrTableId.has_value()) {
-    if(ctx.adsrTableId.has_value() && std::get<1>(*ctx.adsrTableId)) {
+    /* Convert MusyX linear sustain factor (0x1000 == 100%) to SF2 centibels
+     * of attenuation (0 cB = full level, 1440 cB = silence).
+     * Uses the same linear mapping as the ADSR CC modulator. */
+    auto sustainToCentibels = [](double factor) -> float {
+      return static_cast<float>(std::clamp((1.0 - factor) * 1440.0, 0.0, 1440.0));
+    };
+
+    if (std::get<1>(*ctx.adsrTableId)) {
+      /* ── DLS mode ── */
       const ADSRDLS* adsr = app->activePool->tableAsAdsrDLS(std::get<0>(*ctx.adsrTableId));
       if (adsr) {
+        /* Attack/Decay: stored as 16.16 fixed-point time-cents;
+         * FluidSynth expects plain timecents.  0x80000000 = default/disabled. */
         if (adsr->attack != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVATTACK, adsr->attack);
+          fluid_voice_gen_set(voice, GEN_VOLENVATTACK,
+                              static_cast<float>(static_cast<int32_t>(adsr->attack) / 65536.0));
           fluid_voice_update_param(voice, GEN_VOLENVATTACK);
         }
-        if(adsr->decay != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVDECAY, adsr->decay);
+        if (adsr->decay != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_VOLENVDECAY,
+                              static_cast<float>(static_cast<int32_t>(adsr->decay) / 65536.0));
           fluid_voice_update_param(voice, GEN_VOLENVDECAY);
         }
-        if(adsr->sustain != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN, adsr->sustain);
-          fluid_voice_update_param(voice, GEN_VOLENVSUSTAIN);
-        }
-        if(adsr->release != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVRELEASE , adsr->release);
-          fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
-        }
-        if(adsr->keyToDecay != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_KEYTOVOLENVDECAY, adsr->keyToDecay);
+        /* Sustain: 0x1000 == 100% linear → centibels */
+        fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN,
+                            sustainToCentibels(adsr->getSustain()));
+        fluid_voice_update_param(voice, GEN_VOLENVSUSTAIN);
+        /* Release: stored in milliseconds → convert to timecents */
+        fluid_voice_gen_set(voice, GEN_VOLENVRELEASE,
+                            static_cast<float>(secondsToTimecents(adsr->getRelease())));
+        fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
+        /* Key-to-decay: 16.16 fixed-point timecents-per-key */
+        if (adsr->keyToDecay != 0x80000000) {
+          fluid_voice_gen_set(voice, GEN_KEYTOVOLENVDECAY,
+                              static_cast<float>(static_cast<int32_t>(adsr->keyToDecay) / 65536.0));
           fluid_voice_update_param(voice, GEN_KEYTOVOLENVDECAY);
         }
       }
     } else {
+      /* ── Standard ADSR mode ── */
       const ADSR* adsr = app->activePool->tableAsAdsr(std::get<0>(*ctx.adsrTableId));
       if (adsr) {
-        if(adsr->attack != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVATTACK, adsr->attack);
-          fluid_voice_update_param(voice, GEN_VOLENVATTACK);
-        }
-        if(adsr->decay != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVDECAY, adsr->decay);
-          fluid_voice_update_param(voice, GEN_VOLENVDECAY);
-        }
-        if(adsr->sustain != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN, adsr->sustain);
-          fluid_voice_update_param(voice, GEN_VOLENVSUSTAIN);
-        }
-        if(adsr->release != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_VOLENVRELEASE , adsr->release);
-          fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
-        }
+        /* Attack/Decay/Release: stored in milliseconds → convert to SF2 timecents */
+        fluid_voice_gen_set(voice, GEN_VOLENVATTACK,
+                            static_cast<float>(secondsToTimecents(adsr->getAttack())));
+        fluid_voice_update_param(voice, GEN_VOLENVATTACK);
+        fluid_voice_gen_set(voice, GEN_VOLENVDECAY,
+                            static_cast<float>(secondsToTimecents(adsr->getDecay())));
+        fluid_voice_update_param(voice, GEN_VOLENVDECAY);
+        /* Sustain: 0x1000 == 100% linear → centibels */
+        fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN,
+                            sustainToCentibels(adsr->getSustain()));
+        fluid_voice_update_param(voice, GEN_VOLENVSUSTAIN);
+        fluid_voice_gen_set(voice, GEN_VOLENVRELEASE,
+                            static_cast<float>(secondsToTimecents(adsr->getRelease())));
+        fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
       }
     }
   }
