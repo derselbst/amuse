@@ -875,6 +875,7 @@ struct FluidsyXApp {
 
   FluidModPtr         modBlueprintADR{nullptr, &delete_fluid_mod};
   FluidModPtr         modBlueprintSustain{nullptr, &delete_fluid_mod};
+  FluidModPtr         modBlueprintVelToAttack{nullptr, &delete_fluid_mod};
 
   /* Amuse parsed data */
   std::vector<std::pair<std::string, IntrusiveAudioGroupData>> data;
@@ -1101,6 +1102,16 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
                               static_cast<float>(static_cast<int32_t>(adsr->keyToDecay) / 65536.0));
           fluid_voice_update_param(voice, GEN_KEYTOVOLENVDECAY);
         }
+        /* Velocity-to-attack: add a modulator so that velocity scales
+         * the attack time in timecent space, mirroring the MusyX
+         * formula: attack_tc += (vel/128) * velToAttack_tc */
+#if FLUID_VERSION_AT_LEAST(2,5,0)
+        if (adsr->velToAttack != 0x80000000 && app->modBlueprintVelToAttack) {
+          fluid_mod_set_amount(app->modBlueprintVelToAttack.get(),
+                               static_cast<int32_t>(adsr->velToAttack) / 65536.0);
+          fluid_voice_add_mod(voice, app->modBlueprintVelToAttack.get(), FLUID_VOICE_OVERWRITE);
+        }
+#endif
       }
     } else {
       /* ── Standard ADSR mode ── */
@@ -1164,6 +1175,15 @@ bool FluidsyXApp::initFluidSynth() {
     fluid_mod_clone(modBlueprintSustain.get(), blueprint);
 
     delete_fluid_mod(blueprint);
+
+    /* VelToAttack modulator: velocity (GC) → GEN_VOLENVATTACK.
+     * Amount is set per-voice to velToAttack / 65536.0 (plain timecents). */
+    modBlueprintVelToAttack.reset(new_fluid_mod());
+    fluid_mod_set_source1(modBlueprintVelToAttack.get(), FLUID_MOD_VELOCITY,
+                          FLUID_MOD_GC | FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+    fluid_mod_set_source2(modBlueprintVelToAttack.get(), FLUID_MOD_NONE, 0);
+    fluid_mod_set_dest(modBlueprintVelToAttack.get(), GEN_VOLENVATTACK);
+    fluid_mod_set_amount(modBlueprintVelToAttack.get(), 1); /* overridden per voice */
 #endif
 
   settings.reset(new_fluid_settings());
@@ -1221,6 +1241,7 @@ void FluidsyXApp::shutdownFluidSynth() {
     settings.reset();
     modBlueprintADR.reset();
     modBlueprintSustain.reset();
+    modBlueprintVelToAttack.reset();
 }
 
 /* ═══════════════════ MusyX data loading ═══════════════════ */
