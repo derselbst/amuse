@@ -1156,7 +1156,7 @@ static void dummy_preset_free(fluid_preset_t* preset) {
 /* ═══════════════════ FluidSynth init / shutdown ═══════════════════ */
 
 bool FluidsyXApp::initFluidSynth() {
-#if FLUID_VERSION_AT_LEAST(2,5,0)
+#if FLUID_VERSION_AT_LEAST(2,5,0) // due to fluid_mod_set_custom_mapping()
     FluidModPtr blueprint{new_fluid_mod(), &delete_fluid_mod};
 
     fluid_mod_set_source1(blueprint.get(), FLUID_MOD_NONE,
@@ -1180,6 +1180,7 @@ bool FluidsyXApp::initFluidSynth() {
 
     modBlueprintSustain.reset(new_fluid_mod());
     fluid_mod_clone(modBlueprintSustain.get(), blueprint.get());
+#endif
 
     /* VelToAttack modulator: velocity (GC) → GEN_VOLENVATTACK.
      * Amount is set per-voice to velToAttack / 65536.0 (plain timecents). */
@@ -1189,7 +1190,6 @@ bool FluidsyXApp::initFluidSynth() {
     fluid_mod_set_source2(modBlueprintVelToAttack.get(), FLUID_MOD_NONE, 0);
     fluid_mod_set_dest(modBlueprintVelToAttack.get(), GEN_VOLENVATTACK);
     fluid_mod_set_amount(modBlueprintVelToAttack.get(), 1); /* overridden per voice */
-#endif
 
   settings.reset(new_fluid_settings());
   if (!settings) {
