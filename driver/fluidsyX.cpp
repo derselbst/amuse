@@ -613,7 +613,7 @@ struct MacroExecContext {
   uint8_t midiSustain = 0;
   uint8_t midiRelease = 0;
 
-  std::optional<std::tuple<uint16_t, bool>> adsrTableId; // Id of the ADSR table to use for this voice, if any (from CmdSetAdsr)
+  std::optional<std::tuple<uint16_t, bool>> adsrTableId{}; // Id of the ADSR table to use for this voice, if any (from CmdSetAdsr)
   /* Controller value storage (0-127 for standard MIDI CCs) */
   std::array<int8_t, 128> ctrlVals = {};
 
@@ -877,6 +877,26 @@ struct FluidsyXApp {
   FluidModPtr         modBlueprintADR{nullptr, &delete_fluid_mod};
   FluidModPtr         modBlueprintSustain{nullptr, &delete_fluid_mod};
   FluidModPtr         modBlueprintVelToAttack{nullptr, &delete_fluid_mod};
+
+  static constexpr auto attackDecayReleaseModCallback = [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
+  {
+      fluid_voice_t* voice = static_cast<fluid_voice_t*>(data);
+
+      // SetAdsrCtrl overrides the attack/decay/release times, but fluidsynth's modulator adds them to the destination generator.
+      // Work this around by subtracting the current value of the destination generator from the modulator output, effectively treating the current value as a baseline.
+      double offsetToCompensate = fluid_voice_gen_get(voice, fluid_mod_get_dest(mod));
+      return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0) - offsetToCompensate;
+  };
+
+  static constexpr auto sustainModCallback = [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
+  {
+      fluid_voice_t* voice = static_cast<fluid_voice_t*>(data);
+      // SetAdsrCtrl overrides the sustain level, but fluidsynth's modulator adds to the destination generator.
+      // Hence, subtract the current value to treat it as a baseline.
+      double offset = fluid_voice_gen_get(voice, fluid_mod_get_dest(mod));
+      double sustainFactor = value * 1.0 / range;
+      return (1.0 - sustainFactor) * 1440.0 - offset;
+  };
 
   /* Amuse parsed data */
   std::vector<std::pair<std::string, IntrusiveAudioGroupData>> data;
@@ -1163,20 +1183,10 @@ bool FluidsyXApp::initFluidSynth() {
                           FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
     fluid_mod_set_source2(blueprint.get(), FLUID_MOD_NONE, 0);
     fluid_mod_set_amount(blueprint.get(), 1);
-    fluid_mod_set_custom_mapping(blueprint.get(), [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
-    {
-        // The volenv* generators all use -12000 timecents as default, which we need to get rid of.
-        return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0) + 12000;
-    }, nullptr);
 
     modBlueprintADR.reset(new_fluid_mod());
     fluid_mod_clone(modBlueprintADR.get(), blueprint.get());
 
-    fluid_mod_set_custom_mapping(blueprint.get(), [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
-    {
-        double sustainFactor = value * 1.0 / range;
-        return (1.0 - sustainFactor) * 1440.0;
-    }, nullptr);
 
     modBlueprintSustain.reset(new_fluid_mod());
     fluid_mod_clone(modBlueprintSustain.get(), blueprint.get());
@@ -1199,6 +1209,7 @@ bool FluidsyXApp::initFluidSynth() {
 
   // Processing soundMacros via callback can be too expensive for the default period-size of 64 samples
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
+  fluid_settings_setint(settings.get(), "synth.verbose", 1);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
   // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
@@ -1651,6 +1662,7 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
     return;
 
 #if FLUID_VERSION_AT_LEAST(2,5,0)
+  fluid_mod_set_custom_mapping(modBlueprintADR.get(), attackDecayReleaseModCallback, v);
   /* Attack */
   fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR.get()));
   fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVATTACK);
@@ -1668,6 +1680,7 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
   /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
   fluid_mod_set_source1(modBlueprintSustain.get(), ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain.get()));
   fluid_mod_set_dest(modBlueprintSustain.get(), GEN_VOLENVSUSTAIN);
+  fluid_mod_set_custom_mapping(modBlueprintSustain.get(), sustainModCallback, v);
   fluid_voice_add_mod(v, modBlueprintSustain.get(), FLUID_VOICE_OVERWRITE);
 
   if (started) {
@@ -3068,8 +3081,11 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
 
     /* Print progress (tick-based) */
     unsigned int elapsed = (now > startTick) ? (now - startTick) : 0;
-    fmt::print("\r  tick {} / {}  ", elapsed,
-           static_cast<unsigned int>(totalTicks));
+    if(!verbose)
+    {
+      fmt::print("\r  tick {} / {}  ", elapsed,
+            static_cast<unsigned int>(totalTicks));
+    }
     fflush(stdout);
 
     if (now >= tailEnd)
