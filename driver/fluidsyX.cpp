@@ -874,8 +874,7 @@ struct FluidsyXApp {
   fluid_seq_id_t synthSeqId = -1;
   fluid_seq_id_t callbackSeqId = -1;
 
-  FluidModPtr         modBlueprintADR{nullptr, &delete_fluid_mod};
-  FluidModPtr         modBlueprintSustain{nullptr, &delete_fluid_mod};
+  FluidModPtr         modBlueprintADSR{nullptr, &delete_fluid_mod};
   FluidModPtr         modBlueprintVelToAttack{nullptr, &delete_fluid_mod};
 
   static constexpr auto attackDecayReleaseModCallback = [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
@@ -886,16 +885,6 @@ struct FluidsyXApp {
       // Work this around by subtracting the current value of the destination generator from the modulator output, effectively treating the current value as a baseline.
       double offsetToCompensate = fluid_voice_gen_get(voice, fluid_mod_get_dest(mod));
       return secondsToTimecents(MIDItoTIME[std::clamp(value,  0, 103)] / 1000.0) - offsetToCompensate;
-  };
-
-  static constexpr auto sustainModCallback = [](const fluid_mod_t* mod, int value, int range, int is_src1, void* data)
-  {
-      fluid_voice_t* voice = static_cast<fluid_voice_t*>(data);
-      // SetAdsrCtrl overrides the sustain level, but fluidsynth's modulator adds to the destination generator.
-      // Hence, subtract the current value to treat it as a baseline.
-      double offset = fluid_voice_gen_get(voice, fluid_mod_get_dest(mod));
-      double sustainFactor = value * 1.0 / range;
-      return (1.0 - sustainFactor) * 1440.0 - offset;
   };
 
   /* Amuse parsed data */
@@ -1176,21 +1165,7 @@ static void dummy_preset_free(fluid_preset_t* preset) {
 /* ═══════════════════ FluidSynth init / shutdown ═══════════════════ */
 
 bool FluidsyXApp::initFluidSynth() {
-#if FLUID_VERSION_AT_LEAST(2,5,0) // due to fluid_mod_set_custom_mapping()
-    FluidModPtr blueprint{new_fluid_mod(), &delete_fluid_mod};
-
-    fluid_mod_set_source1(blueprint.get(), FLUID_MOD_NONE,
-                          FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
-    fluid_mod_set_source2(blueprint.get(), FLUID_MOD_NONE, 0);
-    fluid_mod_set_amount(blueprint.get(), 1);
-
-    modBlueprintADR.reset(new_fluid_mod());
-    fluid_mod_clone(modBlueprintADR.get(), blueprint.get());
-
-
-    modBlueprintSustain.reset(new_fluid_mod());
-    fluid_mod_clone(modBlueprintSustain.get(), blueprint.get());
-#endif
+    modBlueprintADSR.reset(new_fluid_mod());
 
     /* VelToAttack modulator: velocity (GC) → GEN_VOLENVATTACK.
      * Amount is set per-voice to velToAttack / 65536.0 (plain timecents). */
@@ -1254,8 +1229,7 @@ void FluidsyXApp::shutdownFluidSynth() {
     dummyPreset = nullptr;
     synth.reset();
     settings.reset();
-    modBlueprintADR.reset();
-    modBlueprintSustain.reset();
+    modBlueprintADSR.reset();
     modBlueprintVelToAttack.reset();
 }
 
@@ -1640,12 +1614,12 @@ void FluidsyXApp::killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
       // unset any release-related mods so they don't interfere with the instant release time
       if(ctx.useAdsrControllers)
       {
-        fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR.get()));
-        fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVRELEASE);
-        fluid_mod_set_amount(modBlueprintADR.get(), 0);
-        fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
+        fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADSR.get()));
+        fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVRELEASE);
+        fluid_mod_set_amount(modBlueprintADSR.get(), 0);
+        fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
         // restore the amount for the blueprint mod so it can be reused for upcoming release mods
-        fluid_mod_set_amount(modBlueprintADR.get(), 1);
+        fluid_mod_set_amount(modBlueprintADSR.get(), 1);
       }
       /* Set release to near-instant */
       fluid_voice_gen_set(v, GEN_VOLENVRELEASE, kInstantReleaseTimecents);
@@ -1662,26 +1636,32 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
     return;
 
 #if FLUID_VERSION_AT_LEAST(2,5,0)
-  fluid_mod_set_custom_mapping(modBlueprintADR.get(), attackDecayReleaseModCallback, v);
+  fluid_mod_set_source1(modBlueprintADSR.get(), FLUID_MOD_NONE,
+                        FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+  fluid_mod_set_source2(modBlueprintADSR.get(), FLUID_MOD_NONE, 0);
+  fluid_mod_set_amount(modBlueprintADSR.get(), 1);
+  fluid_mod_set_custom_mapping(modBlueprintADSR.get(), attackDecayReleaseModCallback, v);
   /* Attack */
-  fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADR.get()));
-  fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVATTACK);
-  fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADSR.get()));
+  fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVATTACK);
+  fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
 
   /* Decay */
-  fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADR.get()));
-  fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVDECAY);
-  fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADSR.get()));
+  fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVDECAY);
+  fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
 
   /* Release */
-  fluid_mod_set_source1(modBlueprintADR.get(), ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADR.get()));
-  fluid_mod_set_dest(modBlueprintADR.get(), GEN_VOLENVRELEASE);
-  fluid_voice_add_mod(v, modBlueprintADR.get(), FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiRelease, fluid_mod_get_flags1(modBlueprintADSR.get()));
+  fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVRELEASE);
+  fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
+
   /* Sustain – SF2: 0 cB = max volume, 1440 cB = silence */
-  fluid_mod_set_source1(modBlueprintSustain.get(), ctx.midiSustain, fluid_mod_get_flags1(modBlueprintSustain.get()));
-  fluid_mod_set_dest(modBlueprintSustain.get(), GEN_VOLENVSUSTAIN);
-  fluid_mod_set_custom_mapping(modBlueprintSustain.get(), sustainModCallback, v);
-  fluid_voice_add_mod(v, modBlueprintSustain.get(), FLUID_VOICE_OVERWRITE);
+  fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiSustain,
+                          FLUID_MOD_CC | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE | FLUID_MOD_CONCAVE);
+  fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVSUSTAIN);
+  fluid_mod_set_amount(modBlueprintADSR.get(), 1440);
+  fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
 
   if (started) {
     fluid_voice_update_param(v, GEN_VOLENVATTACK);
