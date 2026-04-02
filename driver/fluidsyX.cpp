@@ -1184,7 +1184,7 @@ bool FluidsyXApp::initFluidSynth() {
 
   // Processing soundMacros via callback can be too expensive for the default period-size of 64 samples
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
-  fluid_settings_setint(settings.get(), "synth.verbose", 1);
+  fluid_settings_setint(settings.get(), "synth.verbose", 0);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
   // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
@@ -1638,17 +1638,20 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 #if FLUID_VERSION_AT_LEAST(2,5,0)
   fluid_mod_set_source1(modBlueprintADSR.get(), FLUID_MOD_NONE,
                         FLUID_MOD_CC | FLUID_MOD_CUSTOM | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
-  fluid_mod_set_source2(modBlueprintADSR.get(), FLUID_MOD_NONE, 0);
   fluid_mod_set_amount(modBlueprintADSR.get(), 1);
   fluid_mod_set_custom_mapping(modBlueprintADSR.get(), attackDecayReleaseModCallback, v);
-  /* Attack */
-  fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADSR.get()));
-  fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVATTACK);
-  fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
 
   /* Decay */
   fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiDecay, fluid_mod_get_flags1(modBlueprintADSR.get()));
+  // Sustain should influcene decay time like so, but this causes incorrect sound.
+  //fluid_mod_set_source2(modBlueprintADSR.get(), ctx.midiSustain, FLUID_MOD_CC | FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE | FLUID_MOD_LINEAR);
   fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVDECAY);
+  fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
+
+  /* Attack */
+  fluid_mod_set_source1(modBlueprintADSR.get(), ctx.midiAttack, fluid_mod_get_flags1(modBlueprintADSR.get()));
+  fluid_mod_set_source2(modBlueprintADSR.get(), FLUID_MOD_NONE, 0);
+  fluid_mod_set_dest(modBlueprintADSR.get(), GEN_VOLENVATTACK);
   fluid_voice_add_mod(v, modBlueprintADSR.get(), FLUID_VOICE_OVERWRITE);
 
   /* Release */
