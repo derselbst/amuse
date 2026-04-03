@@ -1822,13 +1822,18 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     ctx.ended = true;
     return 0;
   }
+  bool timingMismatch = curTick != fluid_sequencer_get_tick(sequencer.get());
+  if(timingMismatch)
+  {
+    fmt::print(stderr, "Warning: processMacroCmd called with curTick {}, but sequencer tick is {}. Timing may be inaccurate.\n", curTick, fluid_sequencer_get_tick(sequencer.get()));
+  }
 
   const SoundMacro::ICmd& cmd = *ctx.macro->m_cmds[ctx.pc];
   SoundMacro::CmdOp op = cmd.Isa();
   unsigned int delay = 0;
   FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
 
-  if (verbose)
+  if (verbose || timingMismatch)
     fmt::print("fluidsyX: [ch{} pc{}] {}\n", ctx.channel, ctx.pc,
                formatMacroCmd(cmd));
 
@@ -2078,7 +2083,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
               static_cast<int>(c.rangeUp));
     }
     fluid_event_pitch_wheelsens(evt.get(), ctx.channel, c.rangeUp);
-    fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+    fluid_sequencer_send_now(sequencer.get(), evt.get());
     ctx.pc++;
     break;
   }
@@ -2249,7 +2254,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
               c.sample.id.id, ctx.channel, ctx.midiKey);
       /* Fallback: send note-on to trigger preset (wrong sample possible) */
       fluid_event_noteon(evt.get(), ctx.channel, ctx.midiKey, ctx.midiVel);
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+      fluid_sequencer_send_now(sequencer.get(), evt.get());
     }
     ctx.pc++;
     break;
@@ -2405,7 +2410,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       /* Fallback to channel-level modulation if no voice yet */
       int modVal = std::clamp(static_cast<int>(c.levelNote) * 8, 0, 127);
       fluid_event_modulation(evt.get(), ctx.channel, modVal);
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+      fluid_sequencer_send_now(sequencer.get(), evt.get());
     }
     ctx.pc++;
     break;
@@ -2416,7 +2421,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
     /* CC 65 = portamento on/off */
     fluid_event_control_change(evt.get(), ctx.channel, 65, enable ? 127 : 0);
-    fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+    fluid_sequencer_send_now(sequencer.get(), evt.get());
 
     if (enable) {
       /* Convert time value to milliseconds */
@@ -2429,9 +2434,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       }
       // CC5 * 128 + CC37 = millisec
       fluid_event_control_change(evt.get(), ctx.channel, 5, static_cast<int>(timeMs) / 128);
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+      fluid_sequencer_send_now(sequencer.get(), evt.get());
       fluid_event_control_change(evt.get(), ctx.channel, 37, static_cast<int>(timeMs) % 128);
-      fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
+      fluid_sequencer_send_now(sequencer.get(), evt.get());
 
       /* Set portamento mode based on MusyX PortType.
        * LastPressed → legato-only mode, Always → each-note mode. */
