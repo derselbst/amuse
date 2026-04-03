@@ -1889,18 +1889,17 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
       ctx.waitingKeyoff = false;
       ctx.waitingSampleEnd = false;
-      ctx.pc++;
-      break;
     }
-
-    if (c.ms == 0) {
-      ctx.inIndefiniteWait = true;
-      ctx.pc++;
-      delay = UINT_MAX;
-    } else {
-      delay = c.ms;
-      ctx.pc++;
+    else
+    {
+      if (c.ms == 0) {
+        ctx.inIndefiniteWait = true;
+        delay = UINT_MAX;
+      } else {
+        delay = c.ms;
+      }
     }
+    ctx.pc++;
     break;
   }
 
