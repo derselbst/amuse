@@ -1186,6 +1186,10 @@ bool FluidsyXApp::initFluidSynth() {
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
   fluid_settings_setint(settings.get(), "synth.verbose", 0);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
+  fluid_settings_setnum(settings.get(), "synth.reverb.level", 0.8);
+  fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
+  fluid_settings_setnum(settings.get(), "synth.reverb.width", 1);
+  fluid_settings_setnum(settings.get(), "synth.reverb.damping", 0);
   // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
 
@@ -2309,7 +2313,14 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
                           static_cast<uint8_t>(childKey), ctx.midiVel,
                           curTick);
         ctx.lastPlayMacroId = childId;
+        fmt::print(stderr, "fluidsyX: started child macro ID {} on ch {} with key {}\n", childId, ctx.channel, childKey);
       }
+      else {
+        fmt::print(stderr, "fluidsyX: warning: PlayMacro target macro ID {} not found\n", c.macro.id.id);
+      }
+    }
+    else {
+      fmt::print(stderr, "fluidsyX: warning: PlayMacro with no valid target (macro ID {})\n", c.macro.id.id);
     }
     ctx.pc++;
     break;
@@ -2430,6 +2441,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       else
         fluid_synth_set_portamento_mode(synth.get(), ctx.channel,
                                         FLUID_CHANNEL_PORTAMENTO_MODE_EACH_NOTE);
+      fmt::print(stderr, "fluidsyX: PORTAMENTO ON!!! for ch {} with time {} ms (mode {})\n",
+              ctx.channel, timeMs, (c.portType == SoundMacro::CmdPortamento::PortType::LastPressed) ? "legato-only" : "each-note");
     }
     ctx.pc++;
     break;
@@ -2600,7 +2613,15 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     [[fallthrough]];
   /* ── deliberately unimplemented ── */
   case SoundMacro::CmdOp::SRCmodeSelect:
+  {
+      auto& c = static_cast<const SoundMacro::CmdSRCmodeSelect&>(cmd);
+      if(c.type0SrcFilter != 0 || c.srcType != 1)
+      {
+        fmt::print(stderr, "fluidsyX: ignoring SRCmodeSelect with srcType={} type0SrcFilter={}\n", c.srcType, c.type0SrcFilter);
+      }
+  }
     // ignore – this is for sample rate conversion mode, which Fluidsynth only supports as global setting
+    [[fallthrough]];
   case SoundMacro::CmdOp::AddPriority:
   case SoundMacro::CmdOp::SetPriority:
     // ignore - this is only relevant if we would run out of polyphony, which we won't because fluidsynth has enough
