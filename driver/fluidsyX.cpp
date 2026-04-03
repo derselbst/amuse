@@ -2241,6 +2241,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       }
       pendingVoiceStart.flSamp = nullptr; /* prevent accidental reuse */
     } else {
+      fmt::print(stderr, "fluidsyX: note on event for sample {} on ch {} key {} (sample not found, using preset fallback)\n",
+              c.sample.id.id, ctx.channel, ctx.midiKey);
       /* Fallback: send note-on to trigger preset (wrong sample possible) */
       fluid_event_noteon(evt.get(), ctx.channel, ctx.midiKey, ctx.midiVel);
       fluid_sequencer_send_at(sequencer.get(), evt.get(), curTick, 1);
@@ -2252,6 +2254,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     /* Original amuse: vox.stopSample() = m_curSample.reset() – immediate stop.
      * In FluidSynth we kill the voice outright (no release phase). */
     killVoice(synth.get(), ctx);
+    fmt::print(stderr, "fluidsyX: OFFing voice ID {} on ch {}\n", ctx.voiceId, ctx.channel);
     ctx.pc++;
     break;
   }
@@ -2277,10 +2280,19 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     if (targetMacroId >= 0) {
       auto childIt = activeMacros.find(targetMacroId);
       if (childIt != activeMacros.end() && !childIt->second.ended) {
+        fmt::print(stderr, "fluidsyX: sending key off to foreign macro ID {} on ch {} (lastStarted={}, var={})\n",
+                targetMacroId, ctx.channel, c.lastStarted, c.variable & 0x1f);
         releaseVoice(synth.get(), childIt->second);
         childIt->second.keyoffReceived = true;
       }
+      else {
+        fmt::print(stderr, "fluidsyX: warning: SendKeyOff target macro ID {} not found or already ended (lastStarted={}, var={})\n",
+                targetMacroId, c.lastStarted, c.variable & 0x1f);
+      }
     }
+    else
+      fmt::print(stderr, "fluidsyX: warning: SendKeyOff with no valid target (lastStarted={}, var={})\n",
+              c.lastStarted, c.variable & 0x1f);
     ctx.pc++;
     break;
   }
