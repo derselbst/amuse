@@ -1382,7 +1382,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdSRCmodeSelect::Introspective =
     CmdType::Setup,
     "SRC Mode Select"sv,
     "Sets operating modes for sample rate converter."sv,
-    {{{FIELD_HEAD(SoundMacro::CmdSRCmodeSelect, srcType), "SRC Type"sv, 0, 2, 0},
+    {{{FIELD_HEAD(SoundMacro::CmdSRCmodeSelect, srcType), "SRC Type"sv, 0, 2, 0}, // point sample, linear, or 4-tap polyphase interpolation
      {FIELD_HEAD(SoundMacro::CmdSRCmodeSelect, type0SrcFilter), "Type 0 SRC Filter"sv, 0, 2, 1}}}};
 bool SoundMacro::CmdSRCmodeSelect::Do(SoundMacroState& st, Voice& vox) const { return false; }
 
