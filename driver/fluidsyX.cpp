@@ -1856,27 +1856,25 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
         (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
       ctx.waitingKeyoff = false;
       ctx.waitingSampleEnd = false;
-      ctx.pc++;
-      break;
     }
-
-    uint16_t ticks = c.ticksOrMs;
-    if (ticks == 0) {
-      /* Indefinite wait – macro pauses until keyOff or sampleEnd.
-       * Original amuse: m_indefiniteWait = true, m_inWait = true.
-       * We use UINT_MAX as sentinel; the processing loop will store the
-       * context but NOT schedule a timer. */
-      ctx.inIndefiniteWait = true;
-      ctx.pc++;
-      delay = UINT_MAX;
-    } else if (c.msSwitch) {
-      /* value is already in ms */
-      delay = ticks;
-      ctx.pc++;
-    } else {
-      delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
-      ctx.pc++;
+    else
+    {
+      uint16_t ticks = c.ticksOrMs;
+      if (ticks == 0) {
+        /* Indefinite wait – macro pauses until keyOff or sampleEnd.
+        * Original amuse: m_indefiniteWait = true, m_inWait = true.
+        * We use UINT_MAX as sentinel; the processing loop will store the
+        * context but NOT schedule a timer. */
+        ctx.inIndefiniteWait = true;
+        delay = UINT_MAX;
+      } else if (c.msSwitch) {
+        /* value is already in ms */
+        delay = ticks;
+      } else {
+        delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
+      }
     }
+    ctx.pc++;
     break;
   }
   case SoundMacro::CmdOp::WaitMs: {
