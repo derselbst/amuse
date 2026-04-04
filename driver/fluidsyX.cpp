@@ -3634,26 +3634,6 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  /* 1. Initialise FluidSynth */
-  if (!app.initFluidSynth())
-    return 1;
-
-  /* 2. Optionally load a SoundFont for audible output */
-  if (sf2Path) {
-    int sfId = fluid_synth_sfload(app.synth.get(), sf2Path, /*reset_presets=*/1);
-    if (sfId < 0) {
-      fmt::print(stderr,
-              "fluidsyX: warning: failed to load SoundFont '{}' – "
-              "sequencer events will still be processed but may be inaudible\n",
-              sf2Path);
-    } else {
-      fmt::print("fluidsyX: loaded SoundFont '{}' (id={})\n", sf2Path, sfId);
-    }
-  } else {
-    fmt::print("fluidsyX: no external SoundFont specified; MusyX samples will "
-           "be used for playback\n\n");
-  }
-
   /* 3. Load MusyX data */
   if (!app.loadMusyXData(groupPath))
     return 1;
@@ -3741,6 +3721,26 @@ int main(int argc, char** argv) {
   fmt::print("fluidsyX: group {} selected ({}), {} SoundMacros in pool\n",
          app.groupId, app.sfxGroup ? "SFX" : "Song",
          app.activePool->soundMacros().size());
+
+  /* 7. Initialise FluidSynth */
+  if (!app.initFluidSynth())
+    return 1;
+
+  /* 7a. Optionally load a SoundFont for audible output */
+  if (sf2Path) {
+    int sfId = fluid_synth_sfload(app.synth.get(), sf2Path, /*reset_presets=*/1);
+    if (sfId < 0) {
+      fmt::print(stderr,
+              "fluidsyX: warning: failed to load SoundFont '{}' – "
+              "sequencer events will still be processed but may be inaudible\n",
+              sf2Path);
+    } else {
+      fmt::print("fluidsyX: loaded SoundFont '{}' (id={})\n", sf2Path, sfId);
+    }
+  } else {
+    fmt::print("fluidsyX: no external SoundFont specified; MusyX samples will "
+           "be used for playback\n\n");
+  }
 
   /* 7b. Build the MusyX virtual SoundFont from decoded samples.
    *     This gives FluidSynth access to the original MusyX sounds. */
