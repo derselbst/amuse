@@ -600,6 +600,8 @@ struct MacroExecContext {
   float pendingAttnGen = 0.0f;  /**< GEN_ATTENUATION (centibels, 0..1440) */
   bool  hasPendingAttn = false;
 
+  std::optional<SoundMacro::CmdSetKeygroup> pendingExclusiveClass{}; /**< Exclusive class to apply at voice start */
+
   /* ADSR controller mapping (CmdSetAdsrCtrl).
    * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).
    * With voice-level generators this is now per-voice in FluidSynth too. */
@@ -1093,7 +1095,15 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
     fluid_voice_gen_set(voice, GEN_ATTENUATION, ctx.pendingAttnGen);
   if (ctx.curDetune != 0.0f)
     fluid_voice_gen_set(voice, GEN_FINETUNE, ctx.curDetune);
-
+  if (ctx.pendingExclusiveClass.has_value())
+  {
+    if(ctx.pendingExclusiveClass->killNow == false)
+    {
+      fmt::print(stderr, "fluidsyX warning: killNow=false is not supported before starting a new voice. Matching voices will be killed!");
+    }
+    fluid_voice_gen_set(voice, GEN_EXCLUSIVECLASS, ctx.pendingExclusiveClass->group);
+    ctx.pendingExclusiveClass = std::nullopt;
+  }
   if (ctx.adsrTableId.has_value()) {
     /* Convert MusyX linear sustain factor (0x1000 == 100%) to SF2 centibels
      * of attenuation (0 cB = full level, 1440 cB = silence).
@@ -2793,7 +2803,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::AgeCntVel:
   case SoundMacro::CmdOp::AddAgeCount:
   case SoundMacro::CmdOp::SetAgeCount:
-  case SoundMacro::CmdOp::SetKeygroup:
   case SoundMacro::CmdOp::WiiUnknown:
   case SoundMacro::CmdOp::WiiUnknown2:
   default: /* Unknown op – always log */
@@ -2817,6 +2826,21 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::AddPriority:
   case SoundMacro::CmdOp::SetPriority:
     // ignore - this is only relevant if we would run out of polyphony, which we won't because fluidsynth has enough
+    ctx.pc++;
+    break;
+  case SoundMacro::CmdOp::SetKeygroup:
+    auto& c = static_cast<const SoundMacro::CmdSetKeygroup&>(cmd);
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
+      fluid_voice_gen_set(v, GEN_EXCLUSIVECLASS, c.group);
+
+      if(ctx.pendingExclusiveClass->killNow == true)
+        fmt::print(stderr, "fluidsyX warning: killNow=true is not supported when setting the group for an already existing voice, ignoring");
+      else if (verbose)
+        fmt::print(stderr, "fluidsyX: set exclusive class {} for voice ID {} on ch {}\n", c.group, ctx.voiceId, ctx.channel);
+    }
+    else {
+      ctx.pendingExclusiveClass = c;
+    }
     ctx.pc++;
     break;
   }
