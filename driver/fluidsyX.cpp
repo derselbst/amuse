@@ -3009,7 +3009,7 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
           uint32_t relTick = ep->absTick - tl.loopStartTick;
           uint32_t newTick = iterBase + relTick;
           if (newTick >= maxDurationTicks)
-            continue;
+            break;
           scheduleOne(*ep, newTick);
           if (newTick > trackLastTick)
             trackLastTick = newTick;
