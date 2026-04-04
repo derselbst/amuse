@@ -2464,6 +2464,25 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
 
   /* ── Vibrato / Tremolo / Portamento ── */
+
+  case SoundMacro::CmdOp::Mod2Vibrange:
+  {
+    auto& c = static_cast<const SoundMacro::CmdMod2Vibrange&>(cmd);
+
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
+      fluid_mod_t *mod2vibrange_mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+      /* MOD2VIBRANGE [0x22]: CC1 adds an offset to vibrato depth */
+      fluid_mod_set_source1(mod2vibrange_mod, 1, FLUID_MOD_CC | FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+      fluid_mod_set_source2(mod2vibrange_mod, 0, 0);
+      fluid_mod_set_dest   (mod2vibrange_mod, GEN_VIBLFOTOPITCH);
+      fluid_mod_set_amount (mod2vibrange_mod, c.keys * 100 + c.cents); /* cents */
+      fluid_voice_add_mod  (v, mod2vibrange_mod, FLUID_VOICE_ADD); // << The ADD makes the difference!
+    } else {
+      fmt::print(stderr, "fluidsyX: warning: Mod2Vibrange command with no active voice on ch {}\n", ctx.channel);
+    }
+    ctx.pc++;
+    break;
+  }
   case SoundMacro::CmdOp::Vibrato: {
     auto& c = static_cast<const SoundMacro::CmdVibrato&>(cmd);
 
@@ -2495,12 +2514,12 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
           break;
       }
 
+      fluid_mod_set_source2(vib_mod, FLUID_MOD_NONE, 0);
+      fluid_mod_set_dest   (vib_mod, GEN_VIBLFOTOPITCH);
       if(modwheelFlag == 1 || modwheelFlag == 2)
       {
         // VIBRATO [0x1c] modwheel flag => set up modulator
         fluid_mod_set_source1(vib_mod, modSrc, modFlag);
-        fluid_mod_set_source2(vib_mod, FLUID_MOD_NONE, 0);
-        fluid_mod_set_dest   (vib_mod, GEN_VIBLFOTOPITCH);
         fluid_mod_set_amount (vib_mod, vibDepthCents);
         fluid_voice_add_mod  (v, vib_mod, FLUID_VOICE_OVERWRITE);
       }
@@ -2740,7 +2759,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
   /* Timer-driven modulation effects */
   case SoundMacro::CmdOp::SetupTremolo:
-  case SoundMacro::CmdOp::Mod2Vibrange:
   case SoundMacro::CmdOp::SetupLFO:
   case SoundMacro::CmdOp::PitchSweep1: // Timer-driven pitch sweep
   case SoundMacro::CmdOp::PitchSweep2:
