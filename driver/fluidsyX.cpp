@@ -528,26 +528,23 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
 
     /* Detect loop marker: regionIndex == -2 means "loop back to loopToRegion".
      * Each track independently detects its loop and gets its own loop range,
-     * mirroring amuse's per-track SongState::Track::advance() loop handling. */
+     * mirroring amuse's per-track SongState::Track::advance() loop handling.
+     *
+     * IMPORTANT: loopStartTick is taken from the SNG header's loopStartTicks[]
+     * (per-channel if bit31 of initialTempo is set, otherwise global slot 0),
+     * matching amuse's Track constructor.  The loopTo region index only
+     * determines WHERE the data pointer resets to, NOT the tick offset. */
     {
       int16_t termIdx = bigEndian ? SBig(nextRegion->regionIndex) : nextRegion->regionIndex;
       if (termIdx == -2) {
-        int16_t loopTo = bigEndian ? SBig(nextRegion->loopToRegion) : nextRegion->loopToRegion;
         uint32_t loopEndTick = bigEndian ? SBig(nextRegion->startTick) : nextRegion->startTick;
-        uint32_t loopStartTick = 0;
-        if (loopTo >= 0) {
-          loopStartTick = bigEndian ? SBig(firstRegion[loopTo].startTick)
-                                    : firstRegion[loopTo].startTick;
-        }
-        /* Also consult the header's loopStartTicks (per-channel or global) */
+        /* Read loopStartTick from header, exactly as amuse does in
+         * SongState::initialize() → Track(…, loopStart, …) */
+        uint32_t loopStartTick;
         if ((hdr.initialTempo & 0x80000000u) != 0u) {
-          uint32_t hdrLoop = hdr.loopStartTicks[midiChan];
-          if (hdrLoop != 0 && hdrLoop < loopEndTick)
-            loopStartTick = std::max(loopStartTick, hdrLoop);
+          loopStartTick = hdr.loopStartTicks[midiChan];
         } else {
-          uint32_t hdrLoop = hdr.loopStartTicks[0];
-          if (hdrLoop != 0 && hdrLoop < loopEndTick)
-            loopStartTick = std::max(loopStartTick, hdrLoop);
+          loopStartTick = hdr.loopStartTicks[0];
         }
         if (loopEndTick > loopStartTick) {
           outTrackLoops.push_back({i, midiChan, loopStartTick, loopEndTick});
