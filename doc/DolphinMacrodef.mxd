@@ -1,0 +1,1426 @@
+; MusyX Soundtool - SMaL Command-definitionfile for Dolphin
+;
+; Last changed by: Thomas Engel
+; Date           : 02/16/2001
+; Version	 : 1.01
+;
+; !!!! Please do not change anything here unless you know exactly what you are doing !!!!
+;
+[Soundmacro.Commanddef]
+System = Dolphin
+Name = Dolphin command definition
+
+;
+; Sample_Compression_Types:
+;
+[AudioCompressionTypes]
+
+0=Default
+1=PCM16
+2=ADPCM
+3=ADPCM+
+4=PCM8
+
+[CommandTypes]
+CMD_Structure
+CMD_Sample
+CMD_Volume
+CMD_Pitch
+CMD_Control
+CMD_Special
+CMD_Setup
+
+;
+; possible references=
+;
+; - none
+; - Sample
+; - Soundmacro
+; - Soundmacrostep
+; - Table
+; - Keymap
+;
+
+;-------------------------------------------------------------------------------------
+; Templates
+;-------------------------------------------------------------------------------------
+
+; Simple template with keyoff to play any sample
+[Template_begin]
+Name=?_basic_macro
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$01,$00,$01,$00,$00,$FF,$FF
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+[Template_begin]
+Name=?_looped
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$01,$00,$01,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$E8,$03
+Macrostep=$07,$00,$00,$01,$00,$00,$E8,$03
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; Loop, little reverb
+[Template_begin]
+Name=?_loop_release
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1C,$00,$0F,$01,$00,$01,$FA,$00
+Macrostep=$07,$01,$00,$00,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$0F,$50,$00,$00,$00,$01,$32,$00
+Macrostep=$07,$00,$00,$00,$00,$00,$32,$00
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$E8,$03
+Macrostep=$07,$00,$00,$00,$00,$00,$E8,$03
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+;Looped, more reverb
+[Template_begin]
+Name=?_loop_softrelease
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1C,$00,$0F,$01,$00,$01,$C8,$00
+Macrostep=$07,$01,$00,$00,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$0F,$60,$00,$00,$00,$01,$64,$00
+Macrostep=$07,$00,$00,$00,$00,$00,$64,$00
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$E8,$03
+Macrostep=$07,$00,$00,$00,$00,$00,$E8,$03
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+;Looped, reverb + Click removal
+[Template_begin]
+Name=?_loop_softrelease_noclick
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$14,$7F,$00,$00,$00,$01,$01,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1C,$00,$0F,$01,$00,$01,$C8,$00
+Macrostep=$07,$01,$00,$00,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$0F,$60,$00,$00,$00,$01,$64,$00
+Macrostep=$07,$00,$00,$00,$00,$00,$64,$00
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$E8,$03
+Macrostep=$07,$00,$00,$00,$00,$00,$E8,$03
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; template that uses ADSR
+[Template_begin]
+Name=?_loop_adsr
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$0C,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1C,$00,$0F,$01,$00,$01,$C8,$00
+Macrostep=$07,$01,$00,$01,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$12,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$E8,$03
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$E8,$03
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; template that uses ADSR and reverb type ending
+[Template_begin]
+Name=?_loop_adsr_softrelease
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$0C,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1C,$00,$0F,$01,$00,$01,$C8,$00
+Macrostep=$07,$01,$00,$01,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$0F,$60,$00,$00,$00,$01,$78,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$78,$00
+Macrostep=$12,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$E8,$03
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+[Template_begin]
+Name=?_loop_hold
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1C,$00,$0F,$01,$00,$01,$C8,$00
+Macrostep=$07,$01,$00,$01,$00,$00,$FF,$FF
+Macrostep=$30,$00,$D0,$8A,$00,$00,$00,$00
+Macrostep=$0F,$60,$00,$00,$00,$01,$64,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$64,$00
+Macrostep=$38,$00,$00,$00,$E8,$03,$00,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$E8,$03
+Macrostep=$07,$00,$00,$01,$00,$00,$E8,$03
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; Play it once
+[Template_begin]
+Name=?_oneshot
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+MacroStep=$10,$00,$00,$00,$00,$00,$00,$00
+MacroStep=$07,$00,$00,$01,$00,$00,$FF,$FF
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+MacroStep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+;Play fixed sample (C4)
+[Template_begin]
+Name=?_oneshot_fixed-note
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$19,$3C,$00,$00,$00,$01,$00,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$FF,$FF
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; Play it once + Click removal
+[Template_begin]
+Name=?_oneshot_noclick
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$14,$7F,$00,$00,$00,$01,$01,$00
+MacroStep=$10,$00,$00,$00,$00,$00,$00,$00
+MacroStep=$07,$00,$00,$01,$00,$00,$FF,$FF
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+MacroStep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+;Play fixed sample (C4) + Click removal
+[Template_begin]
+Name=?_oneshot_fixed_noclick
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$14,$7F,$00,$00,$00,$01,$01,$00
+Macrostep=$19,$3C,$00,$00,$00,$01,$00,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$FF,$FF
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; bubbling effect
+[Template_begin]
+Name=?_sfx_bubbles
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$0D,$60,$00,$00,$00,$01,$00,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$1D,$08,$E8,$03,$00,$01,$00,$00
+Macrostep=$1E,$05,$44,$FD,$00,$01,$00,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$F4,$01
+Macrostep=$07,$00,$00,$00,$00,$00,$F4,$01
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; trigger sample 12 times and pitching down
+[Template_begin]
+Name=?_sfx_downtrigger
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$00,$00,$00,$12,$00
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$00,$00,$00,$01,$00
+Macrostep=$18,$FE,$00,$00,$00,$01,$00,$00
+Macrostep=$05,$00,$00,$00,$01,$00,$0C,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$64,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$64,$00
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; long fade in and stop
+[Template_begin]
+Name=?_sfx_fade_in_long
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$14,$7F,$00,$00,$00,$01,$E8,$03
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$E8,$03
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; fade in and stop
+[Template_begin]
+Name=?_sfx_fade_in_short
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$14,$7F,$00,$00,$00,$01,$C8,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$C8,$00
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; random triggering effect
+[Template_begin]
+Name=?_sfx_randomtrigger
+Macrostep=$38,$00,$00,$00,$C0,$7A,$10,$00
+Macrostep=$0F,$00,$00,$00,$00,$01,$F4,$01
+Macrostep=$19,$5A,$00,$00,$00,$01,$00,$00
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$17,$50,$00,$5A,$01,$00,$00,$00
+Macrostep=$07,$00,$00,$01,$00,$00,$23,$00
+Macrostep=$05,$00,$00,$00,$03,$00,$14,$00
+Macrostep=$11,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$31,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+; Just play sample
+[Template_begin]
+Name=?_x_playsample
+Macrostep=$10,$00,$00,$00,$00,$00,$00,$00
+Macrostep=$00,$00,$00,$00,$00,$00,$00,$00
+[Template_end]
+
+;
+; **************************************************************************************
+;
+
+;-------------------------------------------------------------------------------------
+[$00]
+Type = Structure
+Name = END
+Icon =stop.ico
+
+MainHint=This always is the last macro comand. It cannot be deleted from the macro. It terminates the macro permanently.
+
+ShortHint=End of the macro
+
+;------------------------------------------------------------------------------------
+[$01]
+Type = Structure
+Name = STOP
+Icon =stop.ico
+
+MainHint=Has the same functionality as END, but can be freely placed within the macro.
+
+ShortHint=Similar to END
+
+;-------------------------------------------------------------------------------------
+[$02]
+Type = Structure
+Name = SPLITKEY
+Icon =branch.ico
+
+MainHint=This command is used to conditionally change the flow of execution in the current macro. The macro program will jump to the given macrostep inside the specified macro if the current key is higher than or equal to the key parameter.
+
+ShortHint=Splits the macro flow depending on the midikey
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=60, Type=VAL_Key, Reference=None , Hint=Keynumber
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro, Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep, Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$03]
+Type = Structure
+Name = SPLITVEL
+Icon =branch.ico
+
+MainHint=This command is used to conditionally change the flow of execution in the current macro. The macro program will jump to the given macrostep inside the specified macro if the current velocity is higher than or equal to the velocity parameter.
+
+ShortHint=Splits the macro flow depending on the velocity
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=100, Type=VAL_Normal, Reference=None , Hint= Velocity
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro, Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep, Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$06]
+Type = Structure
+Name = GOTO
+Icon =branch.ico
+
+MainHint=Performs an unconditional jump to the specified location.
+
+ShortHint=Jump to another macro
+
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro , Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep , Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$0a]
+Type = Structure
+Name = SPLITMOD
+Icon =branch.ico
+
+MainHint=This command is used to conditionally change the flow of execution in the current macro. The macro program will jump to the given macrostep inside the specified macro if the current modulation value is higher or same the modulation parameter.
+
+ShortHint=Splits the macro flow depending on modwheel
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=64, Type=VAL_Normal, Reference=None , Hint=Mod value
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro, Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep, Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$0b]
+Type = Control
+Name = PIANOPAN
+Icon =pan.ico
+
+MainHint=This macro command is especially designed to give instruments like a piano a naturalistic stereo behaviour. The current key will be used to calculate a panning position. First the key is converted to an offset by subtracting the centerkey. Next the scale is applied. A scale of 127 will give you the full range, while a scale of 0 will eleminate any offset. Finally the centerpan is added. This last value can be viewed as the position of the instrument in the room. Since the final values may exceed the normal panning range, illegal values are clipped.
+
+ShortHint=Piano stereo panning
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=127, Type=VAL_Normal, Reference=None , Hint=Scale
+Value = 8bit@byte2, MinValue=0, MaxValue=127, PresetValue=36, Type=VAL_Normal, Reference=None , Hint=Centerkey
+Value = 8bit@byte3, MinValue=0, MaxValue=127, PresetValue=64, Type=VAL_Panning, Reference=None , Hint=Centerpan
+
+;-------------------------------------------------------------------------------------
+[$0c]
+Type = Volume
+Name = SETADSR
+Icon =adsr.ico
+
+MainHint=The data from the specified table will be used to define an ADSR to be used with the voice.
+
+ShortHint=Define ADSR Envelope
+
+Value = 16bit@byte1, MinValue=0, MaxValue=16383, PresetValue=0, Type=VAL_TableID, Reference=Table, Hint=Table-ID (ADSR)
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=DLS mode
+
+;-------------------------------------------------------------------------------------
+[$16]
+Type = Volume
+Name = SETADSRCTRL
+Icon =adsr.ico
+
+MainHint=The four controllers' values specify the ADSR parameters of the ADSR to be set
+
+ShortHint=Define ADSR Envelope via MIDI controllers
+
+Value = 8bit@byte1, MinValue=0, MaxValue=255, PresetValue=20, Type=VAL_Normal, Reference=None, Hint=Attack
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=22, Type=VAL_Normal, Reference=None, Hint=Decay
+Value = 8bit@byte3, MinValue=0, MaxValue=255, PresetValue=23, Type=VAL_Normal, Reference=None, Hint=Sustain
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=24, Type=VAL_Normal, Reference=None, Hint=Release
+
+;-------------------------------------------------------------------------------------
+[$0e]
+Type = Control
+Name = PANNING
+Icon =pan.ico
+
+MainHint=Sets the panning to be used with the macro. If no panning is specified the default center panning will be used. The panning parameter specifies the position (0=Left, 64=Center, 127=Right). The time and width parameters enable to cause an automated pan-sweep. The panning will move from the current location to the new one specified by the signed offset width in time ms. If these parameters are zero, the new panning will be set immediately.
+
+ShortHint=Panning
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=64, Type=VAL_Panning, Reference=None , Hint=Pan position
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=Time ms
+Value = 8bit@byte4, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None ,Hint=Width
+
+;-------------------------------------------------------------------------------------
+[$0f]
+Type = Volume
+Name = ENVELOPE
+Icon =adsr.ico
+
+MainHint=Start a software envelope. The velocity of the current macro will be faded to the new one in the time specified by the ticks parameter. If the millisec flag is set ms will be used instead of ticks. The new volume is calculated just as described in SCALEVOLUME. The volume sweep may be of lower quality than the hardware ADSR.
+
+ShortHint=Software envelope
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=0, Type=VAL_Volume, Reference=None , Hint=Scale
+Value = 8bit@byte2, MinValue=0, MaxValue=127, PresetValue=0, Type=VAL_Volume, Reference=None , Hint=Add
+Value = 16bit@byte3, MinValue=0, MaxValue=16383, PresetValue=0, Type=VAL_TableID, Reference=Table, Hint=Table-ID (Curve)
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=500, Type=VAL_Normal, Reference=None, Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$10]
+Type = Sample
+Name = STARTSAMPLE
+Icon =sample.ico
+
+Mainhint=Starts a sample on the current voice. An offset in sample-units can be applied. The mode-parameter can be used to select a scaling of the offset through the velocity (1=negative, 2=positive).
+
+Shorthint=Play a sample
+
+Value = 16bit@byte1, Minvalue=0, Maxvalue=$ffff, Type=VAL_SAMPLEID, Reference=Sample, Hint=Sample-ID
+Value = 8bit@byte3, MinValue=0, MaxValue=2, Type=VAL_Normal, Reference=None, Hint=Mode--->
+Value = 32bit@byte4, Minvalue=0, Maxvalue=$ffffff, Type=VAL_UNSIGNED, Reference=None, Hint=Offset
+
+;-------------------------------------------------------------------------------------
+[$11]
+Type = Sample
+Name = STOPSAMPLE
+Icon =sample.ico
+
+Mainhint=Stops the sample playback immediately by sending a keyoff and setting the ADSR to a very short release time. Click-sounds will be avoided as far as possible.
+
+Shorthint=Stop sample
+
+;-------------------------------------------------------------------------------------
+[$13]
+Type = Structure
+Name = SPLITRND
+Icon =branch.ico
+
+MainHint=This command is used to conditionally change the flow of execution in the current macro. The lower the RND value (0-255) the higher the possibility that the program will jump to the given macrostep inside the specified macro.
+
+ShortHint=Splits the macro flow depending on random
+
+Value = 8bit@byte1, MinValue=0, MaxValue=255, PresetValue=128, Type=VAL_Normal, Reference=None , Hint=RND
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro, Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep, Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$14]
+Type = Volume
+Name = FADE-IN
+Icon =adsr.ico
+
+MainHint=Start a software envelope. The volume will be faded from 0 to the calculated value (velocity scale+add) in the time specified by the ticks parameter. If the millisec flag is set ms will be used instead of ticks. The new volume is calculated just as described in SCALEVOLUME. The volume sweep may be of lower quality than the hardware ADSR. This command can also be used to prevent a click noise at the start of a sample even if the fade time is very fast (18 ms).
+
+ShortHint=Fade volume in
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=127, Type=VAL_Volume, Reference=None , Hint=Scale
+Value = 8bit@byte2, MinValue=0, MaxValue=127, PresetValue=0, Type=VAL_Volume, Reference=None , Hint=Add
+Value = 16bit@byte3, MinValue=0, MaxValue=16383, PresetValue=0, Type=VAL_TableID, Reference=Table, Hint=Table-ID (Curve)
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=18, Type=VAL_Normal, Reference=None, Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$0d]
+Type = Volume
+Name = SCALEVOLUME
+Icon =volume.ico
+
+MainHint=Calculates a new volume for the current voice by scaling the velocity. The velocity is either passed to the macro by the sequencer or the effect handler. A scale of 127 equals 100%, smaller values scale down, larger up. In addition to the simple scale an offset can be specified in the 'add' parameter. The result of this calculation can be passed through a curve which will act as a translation table. A value of 0 in the curve parameter will disable this feature.
+
+ShortHint=Calculate new volume using velocity
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=127, Type=VAL_Volume, Reference=None , Hint=Scale
+Value = 8bit@byte2, MinValue=0, MaxValue=127, PresetValue=0, Type=VAL_Volume, Reference=None , Hint=Add
+Value = 16bit@byte3, MinValue=0, MaxValue=16383, PresetValue=0, Type=VAL_TableID, Reference=Table, Hint=Table-ID (Curve)
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=Org vol
+
+;-------------------------------------------------------------------------------------
+[$15]
+Type = Control
+Name = SPANNING
+Icon =pan.ico
+
+MainHint=Sets the surround panning to be used with the macro. If no panning is specified the default front panning will be used. The panning parameter specifies the position (0=Left, 64=Center, 127=Right). The time and width parameters enable to cause an automated pan-sweep. The panning will move from the current location to the new one specified by the signed offset width in time ms. If these parameters are zero, the new panning will be set immediately.
+
+ShortHint=Surround Panning
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=64, Type=VAL_Panning, Reference=None , Hint=Pan position
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=Time ms
+Value = 8bit@byte4, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None ,Hint=Width
+
+;-------------------------------------------------------------------------------------
+[$12]
+Type = Control
+Name = KEYOFF
+Icon =switch.ico
+
+Mainhint=Sends a keyoff to the currently used voice, but does not change the ADSR. This command should be used instead of STOPSAMPLE to finish sample playback if any ADSR has been set.
+
+Shorthint=Send keyoff to voice
+
+;-------------------------------------------------------------------------------------
+[$17]
+Type = Pitch
+Name = RNDNOTE
+Icon =note.ico
+
+Mainhint=Sets random pitch. Note lo is the lower end of the range, note hi the upper one. The detune value will added after the random pitch is calculated. It is specified in cents. If the fixed/free flag is set the pitch will be generated freely inside the range without respect to any key steps.
+
+Shorthint=Random pitch
+
+Value = 8bit@byte1, MinValue=-127, MaxValue=127, PresetValue=48, Type=VAL_Signed, Reference=None , Hint=Note Lo
+Value = 8bit@byte2, MinValue=0, MaxValue=99, PresetValue=0, Type=VAL_Percent, Reference=None , Hint=Detune
+Value = 8bit@byte3, MinValue=-127, MaxValue=127, PresetValue=72, Type=VAL_Signed, Reference=None , Hint=Note Hi
+Value = 8bit@byte4, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Fixed/Free
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Abs/Rel
+
+;-------------------------------------------------------------------------------------
+[$18]
+Type = Pitch
+Name = ADDNOTE
+Icon =note.ico
+
+Mainhint=Recalculates the current pitch/key by adding add keysteps to the current key and applying the detune value in cents. Add is a signed value. The last two parameters are zero by default. If they are non-zero they will be used like in WAIT to suspend the execution of the current macro for a given time interval.
+
+Shorthint=Add note
+
+Value = 8bit@byte1, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Add
+Value = 8bit@byte2, MinValue=-99, MaxValue=99, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Detune
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=org key
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None,Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$19]
+Type = Pitch
+Name = SETNOTE
+Icon =note.ico
+
+Mainhint=Sets the current pitch/key to the new value specified by key. After this the detune specified in cents will be applied. The last two parameters are zero by default. If they are non-zero they will be used like in WAIT to suspend the execution of the current macro for a given time interval.
+
+Shorthint=Set note by a fixed key
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=60, Type=VAL_Key, Reference=None , Hint=Key
+Value = 8bit@byte2, MinValue=-99, MaxValue=99, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Detune
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None,Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$1a]
+Type = Pitch
+Name = LASTNOTE
+Icon =note.ico
+
+Mainhint=Recalculates the current pitch/key by adding 'add' keysteps to the last key played on this MIDI (!) channel and applying the detune value in cents. The 'add' parameter is a signed value. The last two parameters are zero by default. If they are non-zero they will be used like in WAIT to suspend the execution of the current macro for a given time interval.
+
+Shorthint=Set last note of the current channel
+
+Value = 8bit@byte1, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Add
+Value = 8bit@byte2, MinValue=-99, MaxValue=99, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Detune
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None,Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$1b]
+Type = Setup
+Name = PORTAMENTO
+Icon =note.ico
+
+Mainhint=Setup the mode for the portamento operation. If state equals zero the portamento will be disabled, while 1 enables it. A value of 2 keeps the state unchanged. By default the portamento is controlled by the MIDI portamento controller. The time parameter controls the time needed to reach the current key. By default this is 500ms. Type defines the type of portamento function desired. Zero performes the portamento only if the last key is still depressed, while 1 performes it all the time. A legato function can be achived by setting the time parameter to zero.
+
+Shorthint=Set portamento mode and time
+
+Value = 8bit@byte1, MinValue=0, MaxValue=2, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=Port. State
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=Port. Type
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None,Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$1f]
+Type = Pitch
+Name = SETPITCH
+Icon =note.ico
+
+Mainhint=Directly sets the frequency to be used to playback a sample. The fine parameter is not supported by all platforms since most platforms do not have such a fine resolution in selecting the playback frequency (Actually 10Hz steps are quite normal).
+
+Shorthint=Sets the pitch directly
+
+Value = 24bit@byte1, MinValue=0, MaxValue=$ffffff, PresetValue=22050, Type=Val_Unsigned, Reference=None, Hint=Frequency (Hz)
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=Val_Unsigned, Reference=None, Hint=Fine
+
+;-------------------------------------------------------------------------------------
+[$1c]
+Type = Pitch
+Name = VIBRATO
+Icon =wave.ico
+
+Mainhint=Add a vibrato to the voice currently used to play the macro. Vibrato means that the pitch is modulated by a triangular waveform with a period specified by ticks. If the millisec flag is set the period is given in ms instead of ticks. The amplitude of the waveform is given by the number of keysteps it should go up or down. Level Note is a signed value! If it is negative the pitch offset will go down first, if it is positive the offset will go up first. LevelFine is specified in cents. If the modulation flag is set to 1 the values from the modulation wheel will be used to scale the vibrato; if it is set to 2 the aftertouch information will be used instead. 0 disables any scaling by controllers.
+
+Shorthint=Add a vibrato
+
+Value = 8bit@byte1, MinValue=-127, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Level note
+Value = 8bit@byte2, MinValue=-99, MaxValue=99, PresetValue=15, Type=VAL_Signed, Reference=None , Hint=Level fine
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=Modwheel flag
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=250, Type=VAL_Normal, Reference=None, Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$1d]
+Type = Pitch
+Name = PITCHSWEEP1
+Icon =wave.ico
+
+Mainhint=Adds add times times to the current pitch. After this the action starts again at the original pitch. To stop the effect set add to zero. The last two parameters are zero by default. If they are non-zero they will be used like in WAIT to suspend the execution of the current macro for a given time interval. There actually two commands of this kind: 29 & 30. They are working independendly from each other and combine to quite nice effects if used simultaniously.
+
+Shorthint=Add a sweep to the pitch
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=100, Type=VAL_Normal, Reference=None , Hint=Times
+Value = 16bit@byte2, MinValue=-32768, MaxValue=32768, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Add
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=1000, Type=VAL_Normal, Reference=None, Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$1e]
+Type = Pitch
+Name = PITCHSWEEP2
+Icon =wave.ico
+
+Mainhint=Adds add times times to the current pitch. After this the action starts again at the original pitch. To stop the effect set add to zero. The last two parameters are zero by default. If they are non-zero they will be used like in WAIT to suspend the execution of the current macro for a given time interval. There actually two commands of this kind: 29 & 30. They are working independendly from each other and combine to quite nice effects if used simultaniously.
+
+Shorthint=Add a sweep to the pitch
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=66, Type=VAL_Normal, Reference=None , Hint=Times
+Value = 16bit@byte2, MinValue=-32768, MaxValue=32768, PresetValue=-333, Type=VAL_Signed, Reference=None, Hint=Add
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=333, Type=VAL_Normal, Reference=None, Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$20]
+Type = Pitch
+Name = SETPITCHADSR
+Icon =adsr.ico
+
+MainHint=The data from the specified curve will be used to define a pitch ADSR.
+
+ShortHint=Pitch ADSR Envelope
+
+Value = 16bit@byte1, MinValue=0, MaxValue=16383, PresetValue=0, Type=VAL_TableID, Reference=Table, Hint=Table-ID (ADSR)
+Value = 8bit@byte4, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Note range
+Value = 8bit@byte5, MinValue=-99, MaxValue=99, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Detune range
+
+;-------------------------------------------------------------------------------------
+[$21]
+Type = Volume
+Name = SCALEVOLUME DLS
+Icon =volume.ico
+
+MainHint=Calculates a new volume for the current voice by scaling the velocity.
+
+ShortHint=Scale current velocity
+
+Value = 16bit@byte1, MinValue=0, MaxValue=16383, PresetValue=4096, Type=VAL_Volume, Reference=None , Hint=Scale
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=Org vol
+
+;-------------------------------------------------------------------------------------
+[$22]
+Type = Pitch
+Name = MOD2VIBRANGE
+Icon =mapto.ico
+
+MainHint=Sets the offset to be added, scaled by the mod wheel, to the vibrato range
+
+ShortHint=Scale current velocity
+
+Value = 8bit@byte1, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Key range
+Value = 8bit@byte2, MinValue=-99, MaxValue=99, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Cent range
+
+;-------------------------------------------------------------------------------------
+[$23]
+Type = Special
+Name = SETUP TREMOLO
+Icon =mapto.ico
+
+MainHint=Configure tremolo effect scale (DLS). This scale is applied to the output of LFO1. This LFO is the source for the tremolo waveform. The 1st parameter defines a base scale to be used. The second scale is used to scale the modulation wheel input. The result will be added to the first parameter to form th final scale.
+
+ShortHint=Scale LFO1 with scale add modulatin wheel scaled by 2nd scale. Use value to modulate volume.
+
+Value = 16bit@byte1, MinValue=0, MaxValue=16383, PresetValue=8192, Type=VAL_Normal, Reference=None, Hint=Tremolo scale
+Value = 16bit@byte4, MinValue=0, MaxValue=16383, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Modw. add scale
+
+;------------------------------------------------------------------------------------
+[$24]
+Type = Structure
+Name = RETURN
+Icon =branch.ico
+
+MainHint=Macro execution continues after the last issued GOSUB command.
+
+ShortHint=Return from sub program
+
+;-------------------------------------------------------------------------------------
+[$25]
+Type = Structure
+Name = GOSUB
+Icon =branch.ico
+
+MainHint=Performs an unconditional jump to the specified location and stores the return location on the call stack.
+
+ShortHint=Jump to a sub program location
+
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro , Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep , Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$28]
+Type = Structure
+Name = TRAP_EVENT
+Icon =branch.ico
+
+Mainhint=Sets a trap to a desired macro and step if an event is triggered. The macro can go on proceeding and at the time the keyoff is received it jumps directly to the new macro and step.
+
+Shorthint=Sets a trap on event
+
+Value = 8bit@byte1, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_NORMAL, Reference=none, Hint=Event
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro , Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep , Hint=SoundMacro step
+
+;-------------------------------------------------------------------------------------
+[$29]
+Type = Structure
+Name = UNTRAP_EVENT
+Icon =branch.ico
+
+Mainhint=Remove a previously set TRAP_EVENT.
+
+Shorthint=Remove a trap on event
+
+Value = 8bit@byte1, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_NORMAL, Reference=none, Hint=Event
+
+;-------------------------------------------------------------------------------------
+[$2A]
+Type = Special
+Name = SEND_MESSAGE
+Icon =msg.ico
+
+Mainhint=Send numerical message to macro-type or voice.
+
+Shorthint=Send message
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_SWITCH, Reference=none, Hint=IsVar
+Value = 16bit@byte2, MinValue=1, MaxValue=65535, PresetValue=1, Type=VAL_SoundMacroID, Reference=SoundMacro, Hint=Macro
+Value = 8bit@byte4, MinValue=0, MaxValue=31, PresetValue=0, Type=VAL_NORMAL, Reference=none, Hint=VID
+Value = 8bit@byte5, MinValue=0, MaxValue=31, PresetValue=0, Type=VAL_NORMAL, Reference=none, Hint=Varibale
+
+;-------------------------------------------------------------------------------------
+[$2B]
+Type = Special
+Name = GET_MESSAGE
+Icon =msg.ico
+
+Mainhint=Get message previously received by macro
+
+Shorthint=Get message
+
+Value = 8bit@byte1, MinValue=0, MaxValue=31, PresetValue=0, Type=VAL_NORMAL, Reference=none, Hint=Varibale
+
+;-------------------------------------------------------------------------------------
+[$32]
+Type = Special
+Name = SENDFLAG
+Icon =flag.ico
+
+Mainhint=Sends a flag to the game program. This feature is mainly used to signal certain events to the game program. After startup the values are all zero. There are 16 values.
+
+Shorthint=Send a flag
+
+Value = 8bit@byte1, MinValue=0, MaxValue=15, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=Flag-ID
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=255, Type=VAL_Normal, Reference=None , Hint=Value
+
+;-------------------------------------------------------------------------------------
+[$30]
+Type = Special
+Name = ADDAGECOUNT
+Icon =prio1.ico
+
+Mainhint=Adds a signed number to the age-counter of the current voice. This allowes customized priority handling.
+
+Shorthint=Add value to the age-counter
+
+Value = 16bit@byte2, MinValue=-32768, MaxValue=32767, PresetValue=-30000, Type=VAL_Signed, Reference=None, Hint=Add
+
+;-------------------------------------------------------------------------------------
+[$31]
+Type = Special
+Name = SETAGECOUNT
+Icon =prio1.ico
+
+Mainhint=Directly sets the age-counter of the current voice. This allowes customized priority handling.
+
+Shorthint=Set age-counter
+
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Counter
+
+;-------------------------------------------------------------------------------------
+[$33]
+Type = Setup
+Name = PITCHWHEELR
+Icon =note.ico
+
+Mainhint=Sets the number of keysteps used to calculate the pitchwheel range. The size of the lower and the upper range can be selected seperately. The default value is two keysteps for both ranges.
+
+Shorthint=Set pitchwheelrange
+
+Value = 8bit@byte1, MinValue=0, MaxValue=127, PresetValue=2, Type=VAL_Normal,Reference=None, Hint=Range up
+Value = 8bit@byte2, MinValue=0, MaxValue=127, PresetValue=2, Type=VAL_Normal,Reference=None, Hint=Range down
+
+;-------------------------------------------------------------------------------------
+[$36]
+Type = Special
+Name = SETPRIORITY
+Icon =prio1.ico
+
+Mainhint=Directly sets the priority of the current voice. This allowes customized priority handling.
+
+Shorthint=Set priority directly
+
+Value = 8bit@byte1, MinValue=0, MaxValue=254, PresetValue=50, Type=VAL_Unsigned, Reference=None, Hint=Prio
+
+;-------------------------------------------------------------------------------------
+[$37]
+Type = Special
+Name = ADDPRIORITY
+Icon =prio1.ico
+
+Mainhint=Adds a signed number to the priority of the current voice. This allowes customized priority handling.
+
+Shorthint=Add value to priority
+
+Value = 16bit@byte2, MinValue=-255, MaxValue=255, PresetValue=1, Type=VAL_Signed, Reference=None, Hint=Add
+
+;-------------------------------------------------------------------------------------
+[$38]
+Type = Special
+Name = AGECNTSPEED
+Icon =prio1.ico
+
+Mainhint=Changes the speed by which the priority counter of the current voice is decremented. By default the counter will reach zero after about 18 minutes. The time value sets the time in milliseconds the counter will need to decrement to zero from itäs current value. This allowes customized priority handling.
+
+Shorthint=Set priority counter speed
+
+Value = 32bit@byte4, MinValue=0, MaxValue=16777215, PresetValue=1080000, Type=VAL_Normal, Reference=None, Hint=Time
+
+;-------------------------------------------------------------------------------------
+[$39]
+Type = Special
+Name = AGECNTVEL
+Icon =prio1.ico
+
+Mainhint=Sets the age-counter of the current voice calculated from a base number and the midi velocity. This allowes customized priority handling.
+
+Shorthint=Sets the age-counter using velocity
+
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=60000, Type=VAL_Normal, Reference=None, Hint=AGE Base
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=127, Type=VAL_Normal, Reference=None, Hint=AGE Scale
+
+;-------------------------------------------------------------------------------------
+[$2C]
+Type = Special
+Name = GET_VID
+Icon =var02.ico
+
+Mainhint=Get VID and store it into a variable
+
+Shorthint=Get VID
+
+Value = 8bit@byte1, MinValue=0, MaxValue=31, PresetValue=0, Type=VAL_NORMAL, Reference=none, Hint=Varibale
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_SWITCH, Reference=none, Hint=PLAY_MACRO
+
+;-------------------------------------------------------------------------------------
+[$40]
+Type = Setup
+Name = VOL_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the volume calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup volume controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=7, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$41]
+Type = Setup
+Name = PAN_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the panning calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup panning controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=10, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$42]
+Type = Setup
+Name = PitchW_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the pitchwheel calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup pitchwheel controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=128, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$43]
+Type = Setup
+Name = ModW_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the modulation wheel calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup modwheel controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$44]
+Type = Setup
+Name = PEDAL_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the pedal calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup pedal controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$45]
+Type = Setup
+Name = PORTA_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the portamento calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup portamento controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$46]
+Type = Setup
+Name = REVERB_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects an additional component for the reverb calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup reverb controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$47]
+Type = Setup
+Name = SPAN_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the surround panning calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup surround pan controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=19, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$48]
+Type = Setup
+Name = DOPPLER_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the doppler effect calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup doppler controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=132, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$49]
+Type = Setup
+Name = TREMOLO_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects an additional component for the tremolo calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup tremolo controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$4A]
+Type = Setup
+Name = PREA_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects an additional component for the pre-AUXA calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup pre-AUXA controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$4B]
+Type = Setup
+Name = PREB_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects an additional component for the pre-AUXB calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup pre-AUXB volume controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$4C]
+Type = Setup
+Name = POSTB_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects an additional component for the post-AUXB calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup post-AUXB volume controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+
+;-------------------------------------------------------------------------------------
+[$4D]
+Type = Setup
+Name = AUXAFX_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the global AUXA FX calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup AUXA FX parameter controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+Value = 8bit@byte7, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Parameter index
+
+;-------------------------------------------------------------------------------------
+[$4E]
+Type = Setup
+Name = AUXBFX_SELECT
+Icon =select2.ico
+
+Mainhint=Selects an additional component for the global AUXB FX calculation. The first use of this command resets the default values to empty and adds the new component. All further calls add additional components. A comb value of 0 sets the value, 1 adds the value and 2 multiplies the old and the new value.
+
+Shorthint=Setup AUXB FX parameter controller
+
+Value = 8bit@byte1, MinValue=0, MaxValue=132, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=MIDI Contr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Signed, Reference=None, Hint=Scaling percentage
+Value = 8bit@byte4, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Combine
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=is var.
+Value = 8bit@byte6, MinValue=-100, MaxValue=100, PresetValue=0, Type=VAL_Signed, Reference=None, Hint=Fine scaling
+Value = 8bit@byte7, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Parameter index
+
+;-------------------------------------------------------------------------------------
+[$58]
+Type = Setup
+Name = MODE_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects operating modes for current voice
+
+Shorthint=Mode Select
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=DLS vol
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=ITD
+
+;-------------------------------------------------------------------------------------
+[$5A]
+Type = Setup
+Name = SRCMODE_SELECT
+Icon =select2.ico
+
+
+Mainhint=Selects SRC mode and parameters
+
+Shorthint=SRC Mode Select
+
+Value = 8bit@byte1, MinValue=0, MaxValue=2, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=SRC type
+Value = 8bit@byte2, MinValue=0, MaxValue=2, PresetValue=1, Type=VAL_Normal, Reference=None , Hint=Type 0 SRC filter
+
+;-------------------------------------------------------------------------------------
+[$60]
+Type = Special
+Name = ADD_VARS
+Icon =var02.ico
+
+Mainhint=The current values of variable B and C are added together and stored in variable A. There are 32 possible variables. The first 16 variables are local (only for the current macro), whereas the next 16 (16-31) are global for all macros. The Var/Ctrl switches are selecting whether a variable or a controller should be accessed. If the switch is set to "On" (1) the corresponding value index is used as an extended controller number (0-132). Hint: Controllers are handled internally as 14-bit values.
+
+Shorthint=Add vars
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  =
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B  +
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte6, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=C
+
+;-------------------------------------------------------------------------------------
+[$61]
+Type = Special
+Name = SUB_VARS
+Icon =var02.ico
+
+Mainhint=Subtracts two variables and stores the result in a third variable.
+
+Shorthint=Sub vars
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  =
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B  -
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte6, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=C
+
+;-------------------------------------------------------------------------------------
+[$62]
+Type = Special
+Name = MUL_VARS
+Icon =var02.ico
+
+Mainhint=Multiplies two variables and stores the result in a third variable.
+
+Shorthint=Mul vars
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  =
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B  *
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte6, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=C
+
+;-------------------------------------------------------------------------------------
+[$63]
+Type = Special
+Name = DIV_VARS
+Icon =var02.ico
+
+Mainhint=Divides two variables and stores the new result in a third variable.
+
+Shorthint=Div vars
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  =
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B  /
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte6, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=C
+
+;-------------------------------------------------------------------------------------
+[$64]
+Type = Special
+Name = ADDI_VARS
+Icon =var02.ico
+
+Mainhint=Adds an immediate value to a variable and stores the result in a second variable.
+
+Shorthint=Add imm.
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  =
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Var/Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B  +
+Value = 16bit@byte5, MinValue=-32768, MaxValue=32767, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Immediate
+
+;-------------------------------------------------------------------------------------
+[$65]
+Type = Special
+Name = SET_VAR
+Icon =var02.ico
+
+Mainhint=Set a variable to an immediate value.
+
+Shorthint=Set Var
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  =
+Value = 16bit@byte4, MinValue=-32768, MaxValue=32767, PresetValue=0, Type=VAL_Signed, Reference=None , Hint=Imm
+
+;-------------------------------------------------------------------------------------
+[$70]
+Type = Structure
+Name = IF_EQUAL
+Icon =branch.ico
+
+Mainhint=Jumps if comparison is true
+
+Shorthint=If equal
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  ==
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Not
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=SoundMacro Step
+
+;-------------------------------------------------------------------------------------
+[$59]
+Type = Setup
+Name = SET_KEYGROUP
+Icon =play3.ico
+
+Mainhint=Selects key group to be used with this voice
+
+Shorthint=Set key group
+
+Value = 8bit@byte1, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=group
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=kill
+
+;-------------------------------------------------------------------------------------
+[$50]
+Type = Setup
+Name = SETUP_LFO
+Icon =wave.ico
+
+Mainhint=Enables or disables the specified LFO. A value of zero as period will disable the LFO. From that point on it will continue to produce the last value as a constant. The LFO will always start at center level, unless it already was active. The LFO Nr. specifies which LFO should be setup. Currently two LFOs (0,1) are supported. The LFOs always swing through the full amplitude. Use the scale parameter when combining them by one or more x_SELECT commands to control the amplitude. The LFOs are mapped to the internal controller numbers 130 (LFO 0) and 131 (LFO 1).
+
+Shorthint=Setup LFO
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=LFO Nr.
+Value = 16bit@byte2, MinValue=-10000, MaxValue=10000, PresetValue=100, Type=VAL_Normal, Reference=None, Hint=Period in ms
+
+;-------------------------------------------------------------------------------------
+[$71]
+Type = Structure
+Name = IF_LESS
+Icon =branch.ico
+
+Mainhint=Jumps if comparison is true
+
+Shorthint=If less
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Ctrl
+Value = 8bit@byte2, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=A  <
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Ctrl
+Value = 8bit@byte4, MinValue=0, MaxValue=255, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=B
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None , Hint=Not
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None , Hint=SoundMacro Step
+
+;-------------------------------------------------------------------------------------
+[$09]
+Type = Structure
+Name = SENDKEYOFF
+Icon =switch.ico
+
+MainHint=Send a keyoff to the specified voice. Either a voice specified by a VID or the last one started using PLAY_MACRO can be the target.
+
+ShortHint=Send a keyoff
+
+Value = 8bit@byte1, MinValue=0, MaxValue=31, PresetValue=0, Type=VAL_NORMAL, Reference=None , Hint=Variable
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_SWITCH, Reference=None , Hint=Last started
+
+;-------------------------------------------------------------------------------------
+[$07]
+Type = Structure
+Name = WAIT_MS
+Icon =wait.ico
+
+MainHint=The execution of the current macro will be suspendet until the given time is over. By default the time is specified in ms. A value of $FFFF (65535) will cause an endless wait. If one of the other flags is set the execution will resument as soon as one of the corresponding conditions gets true or the time given is over. Key Release - Wait until a keyoff is send to the macro. Sampleend - Wait until the sample has reached its end. Random - The time will be used as a maximum to get a randomized delay.
+
+ShortHint=Wait, depending on different conditions
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=1, Type=VAL_Switch, Reference=None, Hint=Keyoff
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Random
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Sample end
+Value = 8bit@byte4, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Absolute
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=65535, Type=VAL_Normal, Reference=None, Hint=Millisec.
+
+;-------------------------------------------------------------------------------------
+[$04]
+Type = Structure
+Name = WAIT_TICKS
+Icon =wait.ico
+
+MainHint=The execution of the current macro will be suspended until the given time is elapsed. By default, the time is specified in ticks. If the millisec flag is set the time will be specified in ms. Independent from the selected time format a value of $FFFF (65535) will cause an endless wait. If one of the other flags is set the execution will resument as soon as one of the corresponding conditions gets true or the time given is over. Key Release - Wait until a keyoff is send to the macro. Sampleend - Wait until the sample has reached its end. Random - The time will be used as a maximum to get a randomized delay.
+
+ShortHint=Wait, depending on different conditions
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Keyoff
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Random
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Sampleend
+Value = 8bit@byte4, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Absolute
+Value = 8bit@byte5, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=ms switch
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=96, Type=VAL_Normal, Reference=None, Hint=Ticks/Millisec.
+
+;-------------------------------------------------------------------------------------
+[$05]
+Type = Structure
+Name = LOOP
+Icon =loop.ico
+
+MainHint=Loop to the specified location within the current macro times times. If one of the flags is set the loop may be executed less than the specified number of times. A value of $FFFF (65535) will cause an endless loop. Key Release - Loop until a keyoff is send to the macro. Sampleend - Loop until the sample has reached its end. Random - The number of loops will be used as a maximum to get a randomized counter.
+
+ShortHint=Loop back to a macrostep
+
+Value = 8bit@byte1, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Keyoff
+Value = 8bit@byte2, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Random
+Value = 8bit@byte3, MinValue=0, MaxValue=1, PresetValue=0, Type=VAL_Switch, Reference=None, Hint=Sampleend
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroLoopStep, Hint=SoundMacro step
+Value = 16bit@byte6, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=None, Hint=Times
+
+;-------------------------------------------------------------------------------------
+[$08]
+Type = Structure
+Name = PLAYMACRO
+Icon =play.ico
+
+MainHint=Starts another macro in parallel to the current one. Since it will be started like any other macro the normal delays etc. apply. The macro will be passed the priority and the maxvoices value specified. The key is calculated by adding addnote to the current key of the macro starting the new one. The new macro may be started at any macrostep using the step parameter.
+
+ShortHint=Starts another macro
+
+Value = 8bit@byte1, MinValue=-128, MaxValue=127, PresetValue=0, Type=VAL_SIGNED, Reference=None , Hint=Addnote
+Value = 16bit@byte2, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_SoundMacroID, Reference=SoundMacro, Hint=SoundMacro ID
+Value = 16bit@byte4, MinValue=0, MaxValue=65535, PresetValue=0, Type=VAL_Normal, Reference=SoundMacroStep, Hint=SoundMacro step
+Value = 8bit@byte6, MinValue=0, MaxValue=127, PresetValue=50, Type=VAL_Normal, Reference=None , Hint=Priority
+Value = 8bit@byte7, MinValue=0, MaxValue=255, PresetValue=255, Type=VAL_Normal, Reference=None , Hint=MaxVoices
+
+;end <------ do not delete this comment
