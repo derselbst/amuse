@@ -2466,11 +2466,54 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   /* ── Vibrato / Tremolo / Portamento ── */
   case SoundMacro::CmdOp::Vibrato: {
     auto& c = static_cast<const SoundMacro::CmdVibrato&>(cmd);
+
     if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      /* GEN_VIBLFOTOPITCH: vibrato depth in cents */
-      float depthCents = static_cast<float>(c.levelNote * 100 + c.levelFine);
-      fluid_voice_gen_set(v, GEN_VIBLFOTOPITCH, depthCents);
-      fluid_voice_update_param(v, GEN_VIBLFOTOPITCH);
+      fluid_mod_t *vib_mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+
+      uint8_t modSrc;
+      uint8_t modFlag = FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE;
+      // Taken from DolphinMacrodef.mxd:
+      //   If the modulation flag is set to 1 the values from the modulation wheel will be used to scale the vibrato;
+      //   if it is set to 2 the aftertouch information will be used instead. 0 disables any scaling by controllers.
+      // Note that this contradicts to the documentation of the modwheel flag bytes a few lines below, which only mention values 0 and 1.
+      switch(uint8_t(c.modwheelFlag))
+      {
+        default:
+        case 0:
+          modSrc = FLUID_MOD_NONE;
+          modFlag |= FLUID_MOD_GC;
+          break;
+        case 1:
+          modSrc = 1; /* CC1 / modwheel MSB */
+          modFlag |= FLUID_MOD_CC;
+          break;
+        case 2:
+          modSrc = FLUID_MOD_CHANNELPRESSURE;
+          modFlag |= FLUID_MOD_GC;
+          break;
+      }
+
+      /* VIBRATO [0x1c] modwheel flag: CC1 scales vibrato amplitude */
+      fluid_mod_set_source1(vib_mod, modSrc, modFlag);
+      fluid_mod_set_source2(vib_mod, FLUID_MOD_NONE, 0);
+      fluid_mod_set_dest   (vib_mod, GEN_VIBLFOTOPITCH);
+      fluid_mod_set_amount (vib_mod, c.levelNote * 100.0 + c.levelFine); /* cents */
+      fluid_voice_add_mod(v, vib_mod, FLUID_VOICE_OVERWRITE);
+
+      if(uint8_t(c.modwheelFlag) == 0 || uint8_t(c.modwheelFlag) == 2)
+      {
+        // we now need to disable the default ModWheel2Vibrato modulator
+        modFlag &= ~FLUID_MOD_GC;
+        modFlag |= FLUID_MOD_CC;
+        fluid_mod_set_source1(vib_mod, 1, modFlag);
+        fluid_mod_set_amount(vib_mod, 0);
+        fluid_voice_add_mod(v, vib_mod, FLUID_VOICE_OVERWRITE);
+      }
+      else if (uint8_t(c.modwheelFlag) != 1)
+      {
+          fmt::print(stderr, "fluidsyX: warning: unknown modwheelFlag value {} in Vibrato command; treating as modwheelFlag==0\n", c.modwheelFlag);
+          break;
+      }
 
       /* GEN_VIBLFOFREQ: vibrato frequency in absolute cents from 8.176 Hz */
       if (c.ticksOrMs > 0) {
@@ -2482,12 +2525,10 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
           fluid_voice_gen_set(v, GEN_VIBLFOFREQ, freqCents);
           fluid_voice_update_param(v, GEN_VIBLFOFREQ);
         }
+        // Technically, the sign of c.levelNote decides whether the LFO start phase is 0 or period / 2, but FluidSynth doesn't support that.
       }
     } else {
-      /* Fallback to channel-level modulation if no voice yet */
-      int modVal = std::clamp(static_cast<int>(c.levelNote) * 8, 0, 127);
-      fluid_event_modulation(evt.get(), ctx.channel, modVal);
-      fluid_sequencer_send_now(sequencer.get(), evt.get());
+      fmt::print(stderr, "fluidsyX: warning: Vibrato command with no active voice on ch {}\n", ctx.channel);
     }
     ctx.pc++;
     break;
