@@ -2147,7 +2147,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
      * never added to current. fixedFree controls whether detune is randomized. */
     ctx.midiKey = static_cast<uint8_t>(std::clamp(note, 0, 127));
     if (c.fixedFree) {
-      /* Free mode: random detune for continuous pitch */
+      /* Free mode: random detune (+/- 100 cents = +/- 1 semitone) for continuous pitch */
       std::uniform_int_distribution<int> detuneDist(-100, 100);
       ctx.curDetune = detuneDist(rng);
     } else {

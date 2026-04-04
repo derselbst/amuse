@@ -674,7 +674,7 @@ bool SoundMacro::CmdRndNote::Do(SoundMacroState& st, Voice& vox) const {
   if (absRel) {
     /* MusyX mcmdRandomKey: range is relative to current note, not initKey.
      * lo = curNote - noteLo, hi = curNote + noteHi */
-    int32_t curKey = static_cast<int32_t>(st.m_curPitch / 100);
+    int32_t curKey = static_cast<int32_t>(st.m_curPitch / 100); /* m_curPitch is in cents; /100 gives MIDI key */
     useNoteLo = curKey - noteLo;
     useNoteHi = curKey + noteHi;
   }
