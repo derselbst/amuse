@@ -2093,7 +2093,15 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::AddNote: {
     auto& c = static_cast<const SoundMacro::CmdAddNote&>(cmd);
-    int newKey = ctx.midiKey + c.add;
+    /* MusyX mcmdAddKey: when originalKey (orgKey) is set (default),
+     * the note is reset to orgNote + add rather than accumulated.
+     * Detune always replaces (never accumulates). */
+    int newKey;
+    if (c.originalKey) {
+      newKey = static_cast<int>(ctx.initKey) + c.add;
+    } else {
+      newKey = static_cast<int>(ctx.midiKey) + c.add;
+    }
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
     ctx.curDetune = c.detune;
     applyVoicePitch(ctx);
@@ -2106,9 +2114,9 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   case SoundMacro::CmdOp::LastNote: {
     auto& c = static_cast<const SoundMacro::CmdLastNote&>(cmd);
-    /* Original amuse: m_curPitch = (add + vox.getLastNote()) * 100 + detune
-     * getLastNote() returns m_state.m_initKey — the original trigger key,
-     * NOT the current midiKey (which may have been modified by SetNote). */
+    /* MusyX mcmdLastKey: uses the per-MIDI-channel "last note" (svoice->lastNote),
+     * which falls back to orgNote if no previous note exists on the channel.
+     * We use initKey as approximation since we don't track per-channel lastNote. */
     int newKey = static_cast<int>(ctx.initKey) + c.add;
     ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
     ctx.curDetune = c.detune;
@@ -2125,24 +2133,27 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     int lo = c.noteLo;
     int hi = c.noteHi;
 
-    /* absRel mode: range is relative to initial key (m_initKey in amuse). */
+    /* absRel mode: range is relative to current note (curNote in MusyX). */
     if (c.absRel) {
-      lo = ctx.initKey - c.noteLo;
-      hi = ctx.initKey + c.noteHi;
+      lo = static_cast<int>(ctx.midiKey) - c.noteLo;
+      hi = static_cast<int>(ctx.midiKey) + c.noteHi;
     }
 
     if (lo > hi)
       std::swap(lo, hi);
     std::uniform_int_distribution<int> dist(lo, hi);
     int note = dist(rng);
+    /* MusyX mcmdRandomKey: the note is always set absolutely (via mcmdSetKey),
+     * never added to current. fixedFree controls whether detune is randomized. */
+    ctx.midiKey = static_cast<uint8_t>(std::clamp(note, 0, 127));
     if (c.fixedFree) {
-      ctx.midiKey = static_cast<uint8_t>(std::clamp(note, 0, 127));
+      /* Free mode: random detune for continuous pitch */
+      std::uniform_int_distribution<int> detuneDist(-100, 100);
+      ctx.curDetune = detuneDist(rng);
     } else {
-      ctx.midiKey = static_cast<uint8_t>(
-          std::clamp(ctx.midiKey + note, 0, 127));
+      /* Key step mode: use explicit detune parameter */
+      ctx.curDetune = c.detune;
     }
-    /* Apply RndNote detune (same +/-99 cent field as SetNote et al.) */
-    ctx.curDetune = c.detune;
     applyVoicePitch(ctx);
     ctx.pc++;
     break;

@@ -672,8 +672,11 @@ bool SoundMacro::CmdRndNote::Do(SoundMacroState& st, Voice& vox) const {
   int32_t useNoteHi = noteHi;
 
   if (absRel) {
-    useNoteLo = st.m_initKey - noteLo;
-    useNoteHi = noteLo + noteHi;
+    /* MusyX mcmdRandomKey: range is relative to current note, not initKey.
+     * lo = curNote - noteLo, hi = curNote + noteHi */
+    int32_t curKey = static_cast<int32_t>(st.m_curPitch / 100);
+    useNoteLo = curKey - noteLo;
+    useNoteHi = curKey + noteHi;
   }
 
   useNoteLo *= 100;
@@ -703,10 +706,17 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAddNote::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdAddNote, msSwitch), "Use Millisec"sv, 0, 1, 1},
      {FIELD_HEAD(SoundMacro::CmdAddNote, ticksOrMs), "Ticks/Millisec"sv, 0, 65535, 0}}}};
 bool SoundMacro::CmdAddNote::Do(SoundMacroState& st, Voice& vox) const {
-  st.m_curPitch += add * 100 + detune;
+  /* MusyX mcmdAddKey: when originalKey (orgKey) is set (default),
+   * the note is reset to orgNote + add rather than accumulated.
+   * Detune always replaces (never accumulates). */
+  if (originalKey) {
+    st.m_curPitch = (static_cast<int>(st.m_initKey) + add) * 100 + detune;
+  } else {
+    st.m_curPitch = (static_cast<int>(st.m_curPitch / 100) + add) * 100 + detune;
+  }
 
   /* Set wait state */
-  if (msSwitch) {
+  if (ticksOrMs) {
     float q = msSwitch ? 1000.f : st.m_ticksPerSec;
     float secTime = ticksOrMs / q;
     st.m_waitCountdown = secTime;
@@ -756,7 +766,7 @@ bool SoundMacro::CmdLastNote::Do(SoundMacroState& st, Voice& vox) const {
   st.m_curPitch = (add + vox.getLastNote()) * 100 + detune;
 
   /* Set wait state */
-  if (msSwitch) {
+  if (ticksOrMs) {
     float q = msSwitch ? 1000.f : st.m_ticksPerSec;
     float secTime = ticksOrMs / q;
     st.m_waitCountdown = secTime;
