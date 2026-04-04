@@ -1776,11 +1776,16 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 }
 
 void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
-  fluid_voice_t* v = getActiveVoice(synth.get(), ctx);
-  if (!v) return;
   int offsetCents = (ctx.midiKey - ctx.allocKey) * 100 + ctx.curDetune;
   int coarse = offsetCents / 100;
   int fine   = offsetCents % 100;
+  fluid_voice_t* v = getActiveVoice(synth.get(), ctx);
+  if (!v)
+  {
+    fmt::print(stderr, "Warning: unable to find active voice for pitch change (key {}, coarse {}, fine {})\n",
+               ctx.midiKey, coarse, fine);
+    return;
+  }
   fluid_voice_gen_set(v, GEN_COARSETUNE, static_cast<float>(coarse));
   fluid_voice_gen_set(v, GEN_FINETUNE,   static_cast<float>(fine));
   fluid_voice_update_param(v, GEN_COARSETUNE);
