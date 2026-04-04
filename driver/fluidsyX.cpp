@@ -301,15 +301,16 @@ struct SngEvent {
   uint8_t  data2;   /* velocity / value */
   int      pitchBend14; /* 14-bit pitch bend (only for PitchBend type) */
   double   tempoScale;  /* ticks/sec (only for Tempo type) */
+  int      trackIdx;    /* originating track index (0..63), -1 for global (e.g. Tempo) */
 };
 
-/** Information about the SNG song's loop structure.
- *  If the song has a loop (regionIndex == -2), `hasLoop` is true,
- *  `loopStartTick` is the tick the loop body begins at, and
- *  `loopEndTick` is the tick where the loop marker is hit (the point
- *  at which playback would jump back to `loopStartTick`). */
-struct SngLoopInfo {
-  bool     hasLoop      = false;
+/** Per-track loop information.
+ *  In the original amuse, each track independently detects its loop marker
+ *  (regionIndex == -2) and loops back to its own loopStartTick.  Tracks with
+ *  shorter loops repeat more often than tracks with longer loops. */
+struct SngTrackLoop {
+  int      trackIdx     = -1;
+  uint8_t  channel      = 0;
   uint32_t loopStartTick = 0;
   uint32_t loopEndTick   = 0;
 };
@@ -330,14 +331,14 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
                            int sngVersion,
                            std::vector<SngEvent>& outEvents,
                            double& outInitialScale,
-                           SngLoopInfo& outLoop) {
+                           std::vector<SngTrackLoop>& outTrackLoops) {
   SngHeader hdr = *reinterpret_cast<const SngHeader*>(sngData);
   if (bigEndian)
     hdr.swapFromBig();
 
   uint32_t initBpm = hdr.initialTempo & 0x7fffffffu;
   outInitialScale = bpmToScale(initBpm);
-  outLoop = {};
+  outTrackLoops.clear();
 
   /* Collect tempo change events */
   if (hdr.tempoTableOff != 0) {
@@ -353,6 +354,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
       ev.type = SngEvent::Tempo;
       ev.absTick = tc.tick;
       ev.tempoScale = bpmToScale(bpm);
+      ev.trackIdx = -1; /* global event */
       outEvents.push_back(ev);
       ++tp;
     }
@@ -383,7 +385,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
       /* Program change at region start */
       if (region->progNum != 0xff) {
         outEvents.push_back({SngEvent::Program, regStart, midiChan,
-                             region->progNum, 0, 0});
+                             region->progNum, 0, 0, 0.0, i});
       }
 
       /* Locate region data via regionIdx table */
@@ -406,7 +408,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
           pitchVal  += delta.second;
           int bend14 = std::clamp(pitchVal + kPitchBendCenter, 0, kPitchBendMax);
           outEvents.push_back({SngEvent::PitchBend, regStart + pitchTick,
-                               midiChan, 0, 0, bend14});
+                               midiChan, 0, 0, bend14, 0.0, i});
         }
       }
 
@@ -422,7 +424,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
           uint8_t ccVal = static_cast<uint8_t>(
               std::clamp(modVal / kSngModToCCDivisor, 0, 127));
           outEvents.push_back({SngEvent::CC, regStart + modTick,
-                               midiChan, 1 /*mod wheel*/, ccVal, 0});
+                               midiChan, 1 /*mod wheel*/, ccVal, 0, 0.0, i});
         }
       }
 
@@ -440,13 +442,13 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
             /* Control change */
             uint8_t val  = data[0] & 0x7f;
             uint8_t ctrl = data[1] & 0x7f;
-            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0});
+            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
             data += 2;
           } else if ((data[0] & 0x80) != 0) {
             /* Program change */
             uint8_t prog = data[0] & 0x7f;
             outEvents.push_back({SngEvent::Program, evTick, midiChan,
-                                 prog, 0, 0});
+                                 prog, 0, 0, 0.0, i});
             data += 2;
           } else {
             /* Note */
@@ -456,14 +458,14 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
                 ? SBig(*reinterpret_cast<const uint16_t*>(data + 2))
                 : *reinterpret_cast<const uint16_t*>(data + 2);
             outEvents.push_back({SngEvent::NoteOn, evTick, midiChan,
-                                 note, vel, 0});
+                                 note, vel, 0, 0.0, i});
             if (length == 0) {
               outEvents.push_back({SngEvent::NoteOff, evTick, midiChan,
-                                   note, 0, 0});
+                                   note, 0, 0, 0.0, i});
             } else {
               outEvents.push_back({SngEvent::NoteOff,
                                    evTick + length, midiChan,
-                                   note, 0, 0});
+                                   note, 0, 0, 0.0, i});
             }
             data += 4;
           }
@@ -492,25 +494,25 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
             uint8_t note = data[2] & 0x7f;
             uint8_t vel  = data[3] & 0x7f;
             outEvents.push_back({SngEvent::NoteOn, evTick, midiChan,
-                                 note, vel, 0});
+                                 note, vel, 0, 0.0, i});
             if (length == 0) {
               outEvents.push_back({SngEvent::NoteOff, evTick, midiChan,
-                                   note, 0, 0});
+                                   note, 0, 0, 0.0, i});
             } else {
               outEvents.push_back({SngEvent::NoteOff,
                                    evTick + length, midiChan,
-                                   note, 0, 0});
+                                   note, 0, 0, 0.0, i});
             }
           } else if ((data[2] & 0x80) != 0 && (data[3] & 0x80) != 0) {
             /* Control change */
             uint8_t val  = data[2] & 0x7f;
             uint8_t ctrl = data[3] & 0x7f;
-            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0});
+            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
           } else if ((data[2] & 0x80) != 0) {
             /* Program change */
             uint8_t prog = data[2] & 0x7f;
             outEvents.push_back({SngEvent::Program, evTick, midiChan,
-                                 prog, 0, 0});
+                                 prog, 0, 0, 0.0, i});
           }
           data += 4;
 
@@ -525,9 +527,9 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
     }
 
     /* Detect loop marker: regionIndex == -2 means "loop back to loopToRegion".
-     * The loop end tick is the terminating region's startTick, and the loop
-     * start tick is the startTick of the target region. */
-    if (!outLoop.hasLoop) {
+     * Each track independently detects its loop and gets its own loop range,
+     * mirroring amuse's per-track SongState::Track::advance() loop handling. */
+    {
       int16_t termIdx = bigEndian ? SBig(nextRegion->regionIndex) : nextRegion->regionIndex;
       if (termIdx == -2) {
         int16_t loopTo = bigEndian ? SBig(nextRegion->loopToRegion) : nextRegion->loopToRegion;
@@ -548,9 +550,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
             loopStartTick = std::max(loopStartTick, hdrLoop);
         }
         if (loopEndTick > loopStartTick) {
-          outLoop.hasLoop = true;
-          outLoop.loopStartTick = loopStartTick;
-          outLoop.loopEndTick   = loopEndTick;
+          outTrackLoops.push_back({i, midiChan, loopStartTick, loopEndTick});
         }
       }
     }
@@ -2892,19 +2892,20 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
   std::vector<SngEvent> events;
   double initialScale = 1000.0;
-  SngLoopInfo loopInfo;
+  std::vector<SngTrackLoop> trackLoops;
   if (!parseSngEvents(sngData, bigEndian, sngVersion, events, initialScale,
-                      loopInfo)) {
+                      trackLoops)) {
     fmt::print(stderr, "fluidsyX: failed to parse SNG events\n");
     return 0.0;
   }
 
   fmt::print("fluidsyX: parsed {} song events, initial tempo scale {:.1f} ticks/s\n",
          events.size(), initialScale);
-  if (loopInfo.hasLoop)
-    fmt::print("fluidsyX: loop detected: ticks {} → {} (body = {} ticks)\n",
-           loopInfo.loopStartTick, loopInfo.loopEndTick,
-           loopInfo.loopEndTick - loopInfo.loopStartTick);
+  for (const auto& tl : trackLoops)
+    fmt::print("fluidsyX: track {} (ch {}) loop: ticks {} → {} (body = {} ticks)\n",
+           tl.trackIdx, tl.channel,
+           tl.loopStartTick, tl.loopEndTick,
+           tl.loopEndTick - tl.loopStartTick);
   if (events.empty())
     return 0.0;
 
@@ -2974,41 +2975,52 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       lastTick = e.absTick;
   }
 
-  /* ── Loop support ──
-   * If the song has a loop and --duration was specified, re-schedule the
-   * events from the loop body (loopStartTick..loopEndTick) at successive
-   * offsets until maxDurationTicks is reached. */
-  if (loopInfo.hasLoop && maxDurationTicks > 0 && lastTick < maxDurationTicks) {
-    uint32_t loopLen = loopInfo.loopEndTick - loopInfo.loopStartTick;
-    if (loopLen > 0) {
-      /* Collect events within the loop body */
+  /* ── Per-track loop support ──
+   * Each track independently loops back to its own loopStartTick when it
+   * reaches its loopEndTick.  Tracks with shorter loops repeat more often.
+   * Tempo events (trackIdx == -1) are considered global; we replicate them
+   * at the longest loop boundary so tempo changes remain active in all
+   * iterations.  This mirrors amuse's SongState::Track::advance() where
+   * each track checks its own loop marker independently. */
+  if (!trackLoops.empty() && maxDurationTicks > 0 && lastTick < maxDurationTicks) {
+    /* For each track with a loop, collect its events and re-schedule */
+    for (const auto& tl : trackLoops) {
+      uint32_t loopLen = tl.loopEndTick - tl.loopStartTick;
+      if (loopLen == 0)
+        continue;
+
+      /* Collect events belonging to this track within the loop body */
       std::vector<const SngEvent*> loopEvents;
       for (const auto& e : events) {
-        if (e.absTick >= loopInfo.loopStartTick &&
-            e.absTick < loopInfo.loopEndTick)
+        if (e.trackIdx == tl.trackIdx &&
+            e.absTick >= tl.loopStartTick &&
+            e.absTick < tl.loopEndTick)
           loopEvents.push_back(&e);
       }
 
-      /* Keep re-scheduling the loop body until we've filled maxDurationTicks.
-       * Each iteration shifts events by one additional loopLen. */
+      /* Re-schedule this track's loop body independently */
       unsigned int loopIter = 0;
-      while (lastTick < maxDurationTicks) {
-        uint32_t iterBase = loopInfo.loopEndTick + loopLen * loopIter;
+      uint32_t trackLastTick = tl.loopEndTick;
+      while (trackLastTick < maxDurationTicks) {
+        uint32_t iterBase = tl.loopEndTick + loopLen * loopIter;
         if (iterBase >= maxDurationTicks)
           break;
         for (const auto* ep : loopEvents) {
-          uint32_t relTick = ep->absTick - loopInfo.loopStartTick;
+          uint32_t relTick = ep->absTick - tl.loopStartTick;
           uint32_t newTick = iterBase + relTick;
           if (newTick >= maxDurationTicks)
-            break;
+            continue;
           scheduleOne(*ep, newTick);
-          if (newTick > lastTick)
-            lastTick = newTick;
+          if (newTick > trackLastTick)
+            trackLastTick = newTick;
         }
         ++loopIter;
       }
-      fmt::print("fluidsyX: looped {} iterations to reach {} ticks\n",
-             loopIter, lastTick);
+      if (trackLastTick > lastTick)
+        lastTick = trackLastTick;
+      fmt::print("fluidsyX: track {} (ch {}): looped {} iterations to {} ticks "
+                 "(body {} ticks)\n",
+             tl.trackIdx, tl.channel, loopIter, trackLastTick, loopLen);
     }
   }
 
