@@ -1797,16 +1797,17 @@ void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
 /** Format a SoundMacro command using its CmdIntrospection metadata.
  *  Produces a string like: "SetNote(Key=60, Detune=0, Use Millisec=1, Ticks/Millisec=0)"
  *  If no introspection is available, falls back to the numeric CmdOp value. */
-static std::string formatMacroCmd(const SoundMacro::ICmd& cmd) {
+static std::string formatMacroCmd(const SoundMacro::ICmd& cmd, unsigned int curTick) {
   using Field = SoundMacro::CmdIntrospection::Field;
   const SoundMacro::CmdOp op = cmd.Isa();
   const auto* intro = SoundMacro::GetCmdIntrospection(op);
 
-  std::string result;
+  std::string result = fmt::format("{}", curTick);
+  result += ", ";
   if (intro) {
-    result = std::string(intro->m_name);
+    result += std::string(intro->m_name);
   } else {
-    result = fmt::format("CmdOp({})", static_cast<int>(op));
+    result += fmt::format("CmdOp({})", static_cast<int>(op));
   }
 
   if (!intro)
@@ -1934,7 +1935,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
 
   if (verbose || timingMismatch)
     fmt::print("fluidsyX: [ch{} pc{}] {}\n", ctx.channel, ctx.pc,
-               formatMacroCmd(cmd));
+               formatMacroCmd(cmd, curTick));
 
   fluid_event_set_source(evt.get(), callbackSeqId);
   fluid_event_set_dest(evt.get(), synthSeqId);
@@ -2830,7 +2831,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   default: /* Unknown op – always log */
     if (!verbose)
     {
-      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n", ctx.channel, ctx.pc, formatMacroCmd(cmd));
+      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n", ctx.channel, ctx.pc, formatMacroCmd(cmd, curTick));
     }
     [[fallthrough]];
   /* ── deliberately unimplemented ── */
