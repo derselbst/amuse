@@ -1682,22 +1682,16 @@ bool FluidsyXApp::executeTrap(MacroExecContext& ctx,
     return false;
   }
 
-  if (targetMacro == ctx.macro) {
-    /* Same macro — just jump to the target step. */
-    int step = static_cast<int>(trap.macroStep);
-    if (step >= 0 && step < static_cast<int>(ctx.macro->m_cmds.size()))
-      ctx.pc = step;
-    else
-      ctx.pc = 0;
-  } else {
-    /* Different macro — replace the current macro and jump to the step. */
+  if (targetMacro != ctx.macro) {
+    /* Different macro — replace the current macro. */
     ctx.macro = targetMacro;
-    int step = static_cast<int>(trap.macroStep);
-    if (step >= 0 && step < static_cast<int>(ctx.macro->m_cmds.size()))
-      ctx.pc = step;
-    else
-      ctx.pc = 0;
   }
+  /* Jump to the target step (same or different macro). */
+  int step = static_cast<int>(trap.macroStep);
+  if (step >= 0 && step < static_cast<int>(ctx.macro->m_cmds.size()))
+    ctx.pc = step;
+  else
+    ctx.pc = 0;
 
   /* Clear wait state so macro processing resumes immediately. */
   ctx.ended = false;
@@ -3199,13 +3193,15 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
           if (newTick >= maxDurationTicks)
             break;
           scheduleOne(*ep, newTick);
-          if (newTick > tempoLastTick)
-            tempoLastTick = newTick;
         }
+        /* Advance trackLastTick by one full loop body regardless of how many
+         * events were actually scheduled, ensuring the while-loop terminates
+         * even if no tempo events fall below maxDurationTicks. */
+        tempoLastTick = iterBase + maxLoopLen;
         ++tempoIter;
       }
       if (tempoLastTick > lastTick)
-        lastTick = tempoLastTick;
+        lastTick = std::min(tempoLastTick, maxDurationTicks);
     }
   }
 
