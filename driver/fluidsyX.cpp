@@ -2875,6 +2875,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     else {
       ctx.pendingSetupLFO = c;
     }
+    ctx.pc++;
+    break;
   }
   }
 
