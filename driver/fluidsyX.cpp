@@ -625,7 +625,8 @@ struct MacroExecContext {
    * A trap registers a "when event X fires, redirect execution to macro M
    * step S" entry.  In amuse, traps are stored on the Voice struct and
    * checked when keyOff / sampleEnd / message events arrive.
-   * The trap is NOT cleared after firing (matches amuse's behavior). */
+   * The trap is cleared after firing (one-shot, matching musyx ExecuteTrap
+   * which sets trapEventAddr[trapType] = NULL on fire). */
   struct EventTrap {
     uint16_t macroId = 0xffff;  /**< 0xffff = no trap registered */
     uint16_t macroStep = 0;
@@ -1062,7 +1063,7 @@ struct FluidsyXApp {
    *  If the trap's macroId matches the current macro, just jump to the step.
    *  If it's a different macro, replace the current macro entirely.
    *  Returns true if the trap was executed, false if the macro couldn't be found. */
-  bool executeTrap(MacroExecContext& ctx, const MacroExecContext::EventTrap& trap,
+  bool executeTrap(MacroExecContext& ctx, MacroExecContext::EventTrap& trap,
                    unsigned int curTick);
 
   void killVoice(fluid_synth_t* synth, MacroExecContext& ctx);
@@ -1654,7 +1655,7 @@ void FluidsyXApp::killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
 }
 
 bool FluidsyXApp::executeTrap(MacroExecContext& ctx,
-                              const MacroExecContext::EventTrap& trap,
+                              MacroExecContext::EventTrap& trap,
                               unsigned int curTick) {
   if (!trap.isSet())
     return false;
@@ -1702,6 +1703,10 @@ bool FluidsyXApp::executeTrap(MacroExecContext& ctx,
   if (verbose)
     fmt::print("fluidsyX: [ch{}] trap fired → macro {} step {}\n",
                ctx.channel, trap.macroId, trap.macroStep);
+
+  /* Clear the trap after firing (one-shot, matches musyx ExecuteTrap which
+   * sets trapEventAddr[trapType] = NULL on fire). */
+  trap.clear();
 
   return true;
 }
@@ -2906,6 +2911,9 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       for (auto& [id, mctx] : app->activeMacros) {
         if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
           if (mctx.keyoffTrap.isSet()) {
+            /* musyx macSetExternalKeyoff sets cFlags|=8 (keyoff received) BEFORE
+             * calling ExecuteTrap, so the trap macro has full awareness. */
+            mctx.keyoffReceived = true;
             /* Trap is registered — redirect execution instead of releasing. */
             if (app->executeTrap(mctx, mctx.keyoffTrap, time)) {
               /* Schedule timer to continue macro execution from trap target */
