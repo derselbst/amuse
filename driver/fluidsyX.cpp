@@ -1180,6 +1180,7 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
         fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
       }
     }
+    ctx.adsrTableId = std::nullopt; // Clear pending ADSR table since it's now applied
   }
 
   app->applyAdsrToVoice(voice, ctx, false);
