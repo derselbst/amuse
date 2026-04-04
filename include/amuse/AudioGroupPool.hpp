@@ -15,6 +15,8 @@
 #include <athena/DNA.hpp>
 #include <athena/MemoryReader.hpp>
 
+#include <fluidsynth.h>
+
 namespace amuse {
 class AudioGroupData;
 struct SoundMacroState;
@@ -804,6 +806,7 @@ struct SoundMacro {
     Value<uint8_t> lfoNumber;
     Value<int16_t> periodInMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    bool fluid(fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetupLFO; }
   };
   struct CmdModeSelect : ICmd {

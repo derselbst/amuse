@@ -601,6 +601,7 @@ struct MacroExecContext {
   bool  hasPendingAttn = false;
 
   std::optional<SoundMacro::CmdSetKeygroup> pendingExclusiveClass{}; /**< Exclusive class to apply at voice start */
+  std::optional<SoundMacro::CmdSetupLFO> pendingSetupLFO{}; /**< LFO settings to apply at voice start */
 
   /* ADSR controller mapping (CmdSetAdsrCtrl).
    * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).
@@ -1103,6 +1104,11 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
     }
     fluid_voice_gen_set(voice, GEN_EXCLUSIVECLASS, ctx.pendingExclusiveClass->group);
     ctx.pendingExclusiveClass = std::nullopt;
+  }
+  if(ctx.pendingSetupLFO.has_value())
+  {
+    ctx.pendingSetupLFO->fluid(voice);
+    ctx.pendingSetupLFO = std::nullopt;
   }
   if (ctx.adsrTableId.has_value()) {
     /* Convert MusyX linear sustain factor (0x1000 == 100%) to SF2 centibels
@@ -2770,7 +2776,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
   /* Timer-driven modulation effects */
   case SoundMacro::CmdOp::SetupTremolo:
-  case SoundMacro::CmdOp::SetupLFO:
   case SoundMacro::CmdOp::PitchSweep1: // Timer-driven pitch sweep
   case SoundMacro::CmdOp::PitchSweep2:
   case SoundMacro::CmdOp::SetPitchAdsr:  // Timer-driven pitch ADSR
@@ -2829,7 +2834,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     // ignore - this is only relevant if we would run out of polyphony, which we won't because fluidsynth has enough
     ctx.pc++;
     break;
-  case SoundMacro::CmdOp::SetKeygroup:
+  case SoundMacro::CmdOp::SetKeygroup: {
     auto& c = static_cast<const SoundMacro::CmdSetKeygroup&>(cmd);
     if (auto* v = getActiveVoice(synth.get(), ctx)) {
       fluid_voice_gen_set(v, GEN_EXCLUSIVECLASS, c.group);
@@ -2844,6 +2849,16 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     }
     ctx.pc++;
     break;
+  }
+  case SoundMacro::CmdOp::SetupLFO: {
+    auto& c = static_cast<const SoundMacro::CmdSetupLFO&>(cmd);
+    if (auto* v = getActiveVoice(synth.get(), ctx)) {
+      c.fluid(v);
+    }
+    else {
+      ctx.pendingSetupLFO = c;
+    }
+  }
   }
 
   return delay;
