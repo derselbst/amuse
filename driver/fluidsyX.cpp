@@ -2578,12 +2578,14 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SetPitchAdsr:  // Timer-driven pitch ADSR
   /* ── Miscellaneous ── */
   case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
+  if(op == SoundMacro::CmdOp::SetAdsr)
   {
       auto& c = static_cast<const SoundMacro::CmdSetAdsr&>(cmd);
       ctx.adsrTableId = std::make_optional(std::make_tuple(uint16_t(c.table.id.id), c.dlsMode));
       ctx.pc++;
       break;
   }
+  [[fallthrough]];
   case SoundMacro::CmdOp::ModeSelect:
   if(op == SoundMacro::CmdOp::ModeSelect)
   {
@@ -2595,7 +2597,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
       break;
     }
   }
-    [[fallthrough]];
+  [[fallthrough]];
   case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
   case SoundMacro::CmdOp::Envelope:
   case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
