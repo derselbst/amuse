@@ -620,6 +620,21 @@ struct MacroExecContext {
    * AddNote, LastNote, RndNote (all have a ±99-cent 'detune' field)
    * and SetPitch (absolute Hz + 1/65536 Hz fine). */
   int curDetune = 0;
+
+  /* ── Event traps (TRAP_EVENT / UNTRAP_EVENT) ──
+   * A trap registers a "when event X fires, redirect execution to macro M
+   * step S" entry.  In amuse, traps are stored on the Voice struct and
+   * checked when keyOff / sampleEnd / message events arrive.
+   * The trap is NOT cleared after firing (matches amuse's behavior). */
+  struct EventTrap {
+    uint16_t macroId = 0xffff;  /**< 0xffff = no trap registered */
+    uint16_t macroStep = 0;
+    bool isSet() const { return macroId != 0xffff; }
+    void clear() { macroId = 0xffff; macroStep = 0; }
+  };
+  EventTrap keyoffTrap;
+  EventTrap sampleEndTrap;
+  EventTrap messageTrap;
 };
 
 /* ═══════════════ Custom SoundFont loader for MusyX samples ═══════════════
@@ -1042,6 +1057,13 @@ struct FluidsyXApp {
   /** Apply pitch offset (GEN_COARSETUNE + GEN_FINETUNE) to the macro's voice.
    *  Computes the offset from allocKey and curDetune. */
   void applyVoicePitch(MacroExecContext& ctx);
+
+  /** Execute an event trap: redirect macro execution to the trap target.
+   *  If the trap's macroId matches the current macro, just jump to the step.
+   *  If it's a different macro, replace the current macro entirely.
+   *  Returns true if the trap was executed, false if the macro couldn't be found. */
+  bool executeTrap(MacroExecContext& ctx, const MacroExecContext::EventTrap& trap,
+                   unsigned int curTick);
 
   void killVoice(fluid_synth_t* synth, MacroExecContext& ctx);
   /** Kick off the next pending timer step for all active macros */
@@ -1629,6 +1651,65 @@ void FluidsyXApp::killVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
     fluid_synth_stop(synth, ctx.voiceId);
   }
   ctx.voiceId = 0;
+}
+
+bool FluidsyXApp::executeTrap(MacroExecContext& ctx,
+                              const MacroExecContext::EventTrap& trap,
+                              unsigned int curTick) {
+  if (!trap.isSet())
+    return false;
+
+  /* Look up the target SoundMacro by ID in the active pool.
+   * In amuse's Voice::keyOff(), if the trap's macroId matches the current
+   * macro, it just jumps to the step (setPC).  Otherwise it loads a new
+   * macro entirely (loadMacroObject). */
+  const SoundMacro* targetMacro = nullptr;
+
+  /* Check if the trap targets the CURRENT macro (same ID → just jump to step).
+   * We compare by ID: look up the pool's macro ID → SoundMacro* mapping. */
+  if (activePool) {
+    SoundMacroId smId;
+    smId.id = trap.macroId;
+    auto it = activePool->soundMacros().find(smId);
+    if (it != activePool->soundMacros().end())
+      targetMacro = it->second.get();
+  }
+
+  if (!targetMacro) {
+    if (verbose)
+      fmt::print(stderr, "fluidsyX: trap target macroId {} not found in pool\n",
+                 trap.macroId);
+    return false;
+  }
+
+  if (targetMacro == ctx.macro) {
+    /* Same macro — just jump to the target step. */
+    int step = static_cast<int>(trap.macroStep);
+    if (step >= 0 && step < static_cast<int>(ctx.macro->m_cmds.size()))
+      ctx.pc = step;
+    else
+      ctx.pc = 0;
+  } else {
+    /* Different macro — replace the current macro and jump to the step. */
+    ctx.macro = targetMacro;
+    int step = static_cast<int>(trap.macroStep);
+    if (step >= 0 && step < static_cast<int>(ctx.macro->m_cmds.size()))
+      ctx.pc = step;
+    else
+      ctx.pc = 0;
+  }
+
+  /* Clear wait state so macro processing resumes immediately. */
+  ctx.ended = false;
+  ctx.inIndefiniteWait = false;
+  ctx.waitingKeyoff = false;
+  ctx.waitingSampleEnd = false;
+
+  if (verbose)
+    fmt::print("fluidsyX: [ch{}] trap fired → macro {} step {}\n",
+               ctx.channel, trap.macroId, trap.macroStep);
+
+  return true;
 }
 
 void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
@@ -2544,6 +2625,46 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     break;
   }
 
+  /* ── Event trapping (TRAP_EVENT / UNTRAP_EVENT) ── */
+  case SoundMacro::CmdOp::TrapEvent: {
+    auto& c = static_cast<const SoundMacro::CmdTrapEvent&>(cmd);
+    MacroExecContext::EventTrap trap;
+    trap.macroId = static_cast<uint16_t>(c.macro.id.id);
+    trap.macroStep = static_cast<uint16_t>(c.macroStep.step);
+    switch (c.event) {
+    case SoundMacro::CmdTrapEvent::EventType::KeyOff:
+      ctx.keyoffTrap = trap;
+      break;
+    case SoundMacro::CmdTrapEvent::EventType::SampleEnd:
+      ctx.sampleEndTrap = trap;
+      break;
+    case SoundMacro::CmdTrapEvent::EventType::MessageRecv:
+      ctx.messageTrap = trap;
+      break;
+    default: break;
+    }
+    ctx.pc++;
+    break;
+  }
+
+  case SoundMacro::CmdOp::UntrapEvent: {
+    auto& c = static_cast<const SoundMacro::CmdUntrapEvent&>(cmd);
+    switch (c.event) {
+    case SoundMacro::CmdTrapEvent::EventType::KeyOff:
+      ctx.keyoffTrap.clear();
+      break;
+    case SoundMacro::CmdTrapEvent::EventType::SampleEnd:
+      ctx.sampleEndTrap.clear();
+      break;
+    case SoundMacro::CmdTrapEvent::EventType::MessageRecv:
+      ctx.messageTrap.clear();
+      break;
+    default: break;
+    }
+    ctx.pc++;
+    break;
+  }
+
   /* ── Selector evaluators (controller → parameter mapping) ── */
   case SoundMacro::CmdOp::SpanSelect:      /* surround panning – no-op (FluidSynth limitation) */
   case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
@@ -2565,9 +2686,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   case SoundMacro::CmdOp::SendMessage:
   case SoundMacro::CmdOp::GetMessage:
   case SoundMacro::CmdOp::GetVid:
-  /* ── Event trapping ── */
-  case SoundMacro::CmdOp::TrapEvent:
-  case SoundMacro::CmdOp::UntrapEvent:
   case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
   /* Timer-driven modulation effects */
   case SoundMacro::CmdOp::SetupTremolo:
@@ -2779,31 +2897,49 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       break;
 
     case PendingSngNoteEvent::NoteOff: {
-      /* Trigger ADSR release on all active macro voices triggered by this
+      /* Trigger keyoff on all active macro voices triggered by this
        * (channel, note).  We match on triggerNote (the original SNG note
        * before keymap/layer transpose).
-       * Original amuse: voice->keyOff() → _doKeyOff() → ADSR release +
+       *
+       * Original amuse: Voice::keyOff() first checks m_keyoffTrap.
+       * If set, the trap redirects macro execution to the trap target
+       * WITHOUT triggering ADSR release.  The new macro code can issue
+       * its own KeyOff if desired.
+       * If no trap: _macroKeyOff() → _doKeyOff() → ADSR release +
        * keyoffNotify (sets m_keyoff flag so waiting macros can resume). */
       uint8_t ch = sngEvt.channel;
       uint8_t note = sngEvt.note;
       for (auto& [id, mctx] : app->activeMacros) {
         if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
-          /* Trigger ADSR release (voice fades out naturally) */
-          releaseVoice(app->synth.get(), mctx);
-          mctx.keyoffReceived = true;
+          if (mctx.keyoffTrap.isSet()) {
+            /* Trap is registered — redirect execution instead of releasing. */
+            if (app->executeTrap(mctx, mctx.keyoffTrap, time)) {
+              /* Schedule timer to continue macro execution from trap target */
+              FluidEventPtr resumeEvt(new_fluid_event(), &delete_fluid_event);
+              fluid_event_set_source(resumeEvt.get(), app->callbackSeqId);
+              fluid_event_set_dest(resumeEvt.get(), app->callbackSeqId);
+              fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(
+                  static_cast<intptr_t>(id)));
+              fluid_sequencer_send_at(app->sequencer.get(), resumeEvt.get(), time, 1);
+            }
+          } else {
+            /* No trap — normal keyoff behavior. */
+            releaseVoice(app->synth.get(), mctx);
+            mctx.keyoffReceived = true;
 
-          /* If the macro is waiting for keyoff (either indefinite or timed),
-           * schedule a timer to resume it now so it can break out of the
-           * wait early (original amuse: m_keyoff → m_inWait = false). */
-          if (mctx.waitingKeyoff) {
-            mctx.inIndefiniteWait = false;
-            mctx.waitingKeyoff = false;
-            FluidEventPtr resumeEvt(new_fluid_event(), &delete_fluid_event);
-            fluid_event_set_source(resumeEvt.get(), app->callbackSeqId);
-            fluid_event_set_dest(resumeEvt.get(), app->callbackSeqId);
-            fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(
-                static_cast<intptr_t>(id)));
-            fluid_sequencer_send_at(app->sequencer.get(), resumeEvt.get(), time, 1);
+            /* If the macro is waiting for keyoff (either indefinite or timed),
+             * schedule a timer to resume it now so it can break out of the
+             * wait early (original amuse: m_keyoff → m_inWait = false). */
+            if (mctx.waitingKeyoff) {
+              mctx.inIndefiniteWait = false;
+              mctx.waitingKeyoff = false;
+              FluidEventPtr resumeEvt(new_fluid_event(), &delete_fluid_event);
+              fluid_event_set_source(resumeEvt.get(), app->callbackSeqId);
+              fluid_event_set_dest(resumeEvt.get(), app->callbackSeqId);
+              fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(
+                  static_cast<intptr_t>(id)));
+              fluid_sequencer_send_at(app->sequencer.get(), resumeEvt.get(), time, 1);
+            }
           }
         }
       }
@@ -2977,11 +3113,36 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
   /* ── Per-track loop support ──
    * Each track independently loops back to its own loopStartTick when it
    * reaches its loopEndTick.  Tracks with shorter loops repeat more often.
-   * Tempo events (trackIdx == -1) are considered global; we replicate them
-   * at the longest loop boundary so tempo changes remain active in all
-   * iterations.  This mirrors amuse's SongState::Track::advance() where
-   * each track checks its own loop marker independently. */
+   *
+   * In amuse, Track::advance() calls resetTempo() when a track loops,
+   * causing the tempo table to be re-traversed on each loop iteration.
+   * We mirror this by also rescheduling tempo events (trackIdx == -1)
+   * within each loop iteration — using the longest loop period so that
+   * tempo changes are replayed consistently.
+   *
+   * This mirrors amuse's SongState::Track::advance() where each track
+   * checks its own loop marker independently. */
   if (!trackLoops.empty() && maxDurationTicks > 0 && lastTick < maxDurationTicks) {
+    /* Collect global tempo events for rescheduling with loop iterations. */
+    uint32_t maxLoopEndTick = 0;
+    uint32_t maxLoopStartTick = 0;
+    for (const auto& tl : trackLoops) {
+      if (tl.loopEndTick > maxLoopEndTick) {
+        maxLoopEndTick = tl.loopEndTick;
+        maxLoopStartTick = tl.loopStartTick;
+      }
+    }
+    uint32_t maxLoopLen = maxLoopEndTick - maxLoopStartTick;
+
+    std::vector<const SngEvent*> tempoEvents;
+    if (maxLoopLen > 0) {
+      for (const auto& e : events) {
+        if (e.trackIdx == -1 && e.type == SngEvent::Tempo &&
+            e.absTick >= maxLoopStartTick && e.absTick < maxLoopEndTick)
+          tempoEvents.push_back(&e);
+      }
+    }
+
     /* For each track with a loop, collect its events and re-schedule */
     for (const auto& tl : trackLoops) {
       uint32_t loopLen = tl.loopEndTick - tl.loopStartTick;
@@ -3020,6 +3181,31 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       fmt::print("fluidsyX: track {} (ch {}): looped {} iterations to {} ticks "
                  "(body {} ticks)\n",
              tl.trackIdx, tl.channel, loopIter, trackLastTick, loopLen);
+    }
+
+    /* Reschedule tempo events at the longest loop period.  In amuse,
+     * resetTempo() resets the tempo pointer so changes replay on each
+     * loop iteration.  We reschedule them at maxLoopLen intervals. */
+    if (maxLoopLen > 0 && !tempoEvents.empty()) {
+      unsigned int tempoIter = 0;
+      uint32_t tempoLastTick = maxLoopEndTick;
+      while (tempoLastTick < maxDurationTicks) {
+        uint32_t iterBase = maxLoopEndTick + maxLoopLen * tempoIter;
+        if (iterBase >= maxDurationTicks)
+          break;
+        for (const auto* ep : tempoEvents) {
+          uint32_t relTick = ep->absTick - maxLoopStartTick;
+          uint32_t newTick = iterBase + relTick;
+          if (newTick >= maxDurationTicks)
+            break;
+          scheduleOne(*ep, newTick);
+          if (newTick > tempoLastTick)
+            tempoLastTick = newTick;
+        }
+        ++tempoIter;
+      }
+      if (tempoLastTick > lastTick)
+        lastTick = tempoLastTick;
     }
   }
 
