@@ -2734,6 +2734,7 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     [[fallthrough]];
   /* ── deliberately unimplemented ── */
   case SoundMacro::CmdOp::SRCmodeSelect:
+  if(op == SoundMacro::CmdOp::SRCmodeSelect)
   {
       auto& c = static_cast<const SoundMacro::CmdSRCmodeSelect&>(cmd);
       if(c.type0SrcFilter != 0 || c.srcType != 1)
