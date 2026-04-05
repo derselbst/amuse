@@ -642,10 +642,10 @@ bool SoundMacro::CmdSetAdsrCtrl::Do(SoundMacroState& st, Voice& vox) const {
   st.m_midiSustain = sustain;
   st.m_midiRelease = release;
 
-  std::cerr << "AttackCC" << (int)attack << "\n"
-            << "DecayCC" << (int)decay << "\n"
-            << "SustainCC" << (int)sustain << "\n"
-            << "ReleaseCC" << (int)release <<"\n";
+  // std::cerr << "AttackCC" << (int)attack << "\n"
+  //           << "DecayCC" << (int)decay << "\n"
+  //           << "SustainCC" << (int)sustain << "\n"
+  //           << "ReleaseCC" << (int)release <<"\n";
 
   /* Bootstrap ADSR defaults here */
   if (!vox.getCtrlValue(st.m_midiSustain)) {
@@ -672,8 +672,11 @@ bool SoundMacro::CmdRndNote::Do(SoundMacroState& st, Voice& vox) const {
   int32_t useNoteHi = noteHi;
 
   if (absRel) {
-    useNoteLo = st.m_initKey - noteLo;
-    useNoteHi = noteLo + noteHi;
+    /* MusyX mcmdRandomKey: range is relative to current note, not initKey.
+     * lo = curNote - noteLo, hi = curNote + noteHi */
+    int32_t curKey = static_cast<int32_t>(st.m_curPitch / 100); /* m_curPitch is in cents; /100 gives MIDI key */
+    useNoteLo = curKey - noteLo;
+    useNoteHi = curKey + noteHi;
   }
 
   useNoteLo *= 100;
@@ -703,10 +706,17 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAddNote::Introspective = {
      {FIELD_HEAD(SoundMacro::CmdAddNote, msSwitch), "Use Millisec"sv, 0, 1, 1},
      {FIELD_HEAD(SoundMacro::CmdAddNote, ticksOrMs), "Ticks/Millisec"sv, 0, 65535, 0}}}};
 bool SoundMacro::CmdAddNote::Do(SoundMacroState& st, Voice& vox) const {
-  st.m_curPitch += add * 100 + detune;
+  /* MusyX mcmdAddKey: when originalKey (orgKey) is set (default),
+   * the note is reset to orgNote + add rather than accumulated.
+   * Detune always replaces (never accumulates). */
+  if (originalKey) {
+    st.m_curPitch = (static_cast<int>(st.m_initKey) + add) * 100 + detune;
+  } else {
+    st.m_curPitch = (static_cast<int>(st.m_curPitch / 100) + add) * 100 + detune;
+  }
 
   /* Set wait state */
-  if (msSwitch) {
+  if (ticksOrMs) {
     float q = msSwitch ? 1000.f : st.m_ticksPerSec;
     float secTime = ticksOrMs / q;
     st.m_waitCountdown = secTime;
@@ -756,7 +766,7 @@ bool SoundMacro::CmdLastNote::Do(SoundMacroState& st, Voice& vox) const {
   st.m_curPitch = (add + vox.getLastNote()) * 100 + detune;
 
   /* Set wait state */
-  if (msSwitch) {
+  if (ticksOrMs) {
     float q = msSwitch ? 1000.f : st.m_ticksPerSec;
     float secTime = ticksOrMs / q;
     st.m_waitCountdown = secTime;
@@ -1351,6 +1361,29 @@ bool SoundMacro::CmdSetupLFO::Do(SoundMacroState& st, Voice& vox) const {
     vox.setLFO2Period(periodInMs / 1000.f);
   return false;
 }
+bool SoundMacro::CmdSetupLFO::fluid(fluid_voice_t *v) const
+{
+    switch(this->lfoNumber)
+    {
+      case 0: {
+      fluid_voice_gen_set(v, GEN_MODLFODELAY, -12000);
+      float freqHz = 1000.0f / this->periodInMs;
+      float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
+      fluid_voice_gen_set(v, GEN_MODLFOFREQ, freqCents);
+      }
+      break;
+      case 1: {
+      fluid_voice_gen_set(v, GEN_VIBLFODELAY, -12000);
+      float freqHz = 1000.0f / this->periodInMs;
+      float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
+      fluid_voice_gen_set(v, GEN_VIBLFOFREQ, freqCents);
+      }
+      break;
+      default:
+      return false;
+    }
+    return true;
+}
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdModeSelect::Introspective = {
     CmdType::Setup,
@@ -1382,7 +1415,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdSRCmodeSelect::Introspective =
     CmdType::Setup,
     "SRC Mode Select"sv,
     "Sets operating modes for sample rate converter."sv,
-    {{{FIELD_HEAD(SoundMacro::CmdSRCmodeSelect, srcType), "SRC Type"sv, 0, 2, 0},
+    {{{FIELD_HEAD(SoundMacro::CmdSRCmodeSelect, srcType), "SRC Type"sv, 0, 2, 0}, // point sample, linear, or 4-tap polyphase interpolation
      {FIELD_HEAD(SoundMacro::CmdSRCmodeSelect, type0SrcFilter), "Type 0 SRC Filter"sv, 0, 2, 1}}}};
 bool SoundMacro::CmdSRCmodeSelect::Do(SoundMacroState& st, Voice& vox) const { return false; }
 

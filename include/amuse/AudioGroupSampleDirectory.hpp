@@ -164,6 +164,24 @@ public:
     SampleIdDNA<DNAEn> m_sfxId;
     Seek<2, athena::SeekOrigin::Current> pad;
     Value<uint32_t, DNAEn> m_sampleOff;
+
+    // Claude Opus 4.6 answer when being asked about m_unk meaning by analyzing the decompiled MusyX runtime code at https://github.com/derselbst/musyx:
+    // m_unk (uint32_t at offset 0x8 of the on-disk sample directory entry) is the addr field of SDIR_DATA_INTER — a runtime ARAM address cache slot. On disk, it is stored as a zero (or uninitialized) 32-bit value; it carries no meaningful on-disk semantic. At runtime, the system fills it in with a pointer/ARAM address to the sample's location in audio RAM. It is not a pitch, sample rate, flags field, or meaningful file offset.
+    //     m_unk (uint32_t, offset 0x8) = SDIR_DATA_INTER::addr — a runtime ARAM address cache field, zero/unused on disk.
+
+    //   * The field is a 32-bit slot that the runtime populates with the ARAM (audio RAM) address once the sample data has been uploaded to the GameCube/Wii's ARAM hardware.
+    //   * On disk it has no semantic meaning (tools leave it as 0).
+    //   * It is separate from m_sampleOff (the file-relative byte offset, 0x4) and from SAMPLE_HEADER::info (the pitch/rate word, 0x0C).
+    //   * The reason it exists in the on-disk struct is simply that SDIR_DATA is written to disk as-is (as SDIR_DATA_INTER), and this field serves as pre-allocated storage for the runtime address so no separate allocation is needed.
+
+    // Cited sources:
+
+    //     include/musyx/synthdata.h lines 56–79 (struct definitions)
+    //     src/musyx/runtime/synthdata.c lines 392–412 (runtime addr population and hwSaveSample call)
+    //     src/musyx/runtime/synthdata.c lines 625–659 (dataGetSample copying addr to SAMPLE_INFO)
+    //     src/musyx/runtime/synthdata.c lines 740–768 (sndConvert32BitSDIRTo64BitSDIR)
+    //     src/musyx/runtime/hardware.c lines 560–577 (hwSaveSample overwriting addr with ARAM address)
+    //     src/musyx/runtime/synth_ac.c lines 53–71 (sndGetPitch — SAMPLE_HEADER::info encoding)
     Value<uint32_t, DNAEn> m_unk;
     Value<uint8_t, DNAEn> m_pitch;
     Seek<1, athena::SeekOrigin::Current> pad2;

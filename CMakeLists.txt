@@ -92,12 +92,17 @@ if(NOT LZO2_LIBRARY OR NOT LZO2_INCLUDE_DIR)
 endif()
 target_include_directories(amuse PRIVATE ${LZO2_INCLUDE_DIR})
 
+find_package(ZLIB)
+
 target_link_libraries(amuse
   ${LZO2_LIBRARY}
-  logvisor
   fmt
   ${ZLIB_LIBRARIES}
 )
+
+if(TARGET logvisor)
+  target_link_libraries(amuse logvisor)
+endif()
 
 if(NX)
   target_sources(amuse PRIVATE include/switch_math.hpp)
@@ -179,4 +184,23 @@ if(TARGET boo AND NOT WINDOWS_STORE AND NOT NX)
       message(STATUS "Qt6 not found, amuse-gui will not be built")
     endif()
   endif()
+endif()
+
+# fluidsyX – MusyX player using FluidSynth (does not depend on Boo)
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+  pkg_check_modules(FLUIDSYNTH fluidsynth)
+endif()
+if(FLUIDSYNTH_FOUND)
+  target_link_libraries(amuse  ${FLUIDSYNTH_LIBRARIES})
+  message(STATUS "FluidSynth found, fluidsyX will be built")
+  add_executable(fluidsyX driver/fluidsyX.cpp)
+  target_include_directories(fluidsyX PRIVATE ${FLUIDSYNTH_INCLUDE_DIRS})
+  target_link_libraries(fluidsyX amuse fmt ${FLUIDSYNTH_LIBRARIES})
+  target_link_directories(fluidsyX PRIVATE ${FLUIDSYNTH_LIBRARY_DIRS})
+  if(COMMAND add_sanitizers)
+    add_sanitizers(fluidsyX)
+  endif()
+else()
+  message(STATUS "FluidSynth not found, fluidsyX will not be built")
 endif()

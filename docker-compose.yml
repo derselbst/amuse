@@ -1,0 +1,10 @@
+version: "3"
+
+services:
+  amuse:
+    image: amuse
+    build:
+      context: .
+    volumes:
+      - .:/amuse
+      - /home:/home:ro
