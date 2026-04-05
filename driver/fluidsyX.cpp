@@ -2959,7 +2959,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       uint8_t ch = sngEvt.channel;
       uint8_t note = sngEvt.note;
       for (auto& [id, mctx] : app->activeMacros) {
-        if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended) {
+        if (mctx.channel == ch && mctx.triggerNote == note && !mctx.ended && !mctx.keyoffReceived) {
           if (mctx.keyoffTrap.isSet()) {
             /* musyx macSetExternalKeyoff sets cFlags|=8 (keyoff received) BEFORE
              * calling ExecuteTrap, so the trap macro has full awareness. */
@@ -2972,7 +2972,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
               fluid_event_set_dest(resumeEvt.get(), app->callbackSeqId);
               fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(
                   static_cast<intptr_t>(id)));
-              fluid_sequencer_send_at(app->sequencer.get(), resumeEvt.get(), time, 1);
+              fluid_sequencer_send_now(app->sequencer.get(), resumeEvt.get());
             }
           } else {
             /* No trap — normal keyoff behavior. */
@@ -2990,9 +2990,11 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
               fluid_event_set_dest(resumeEvt.get(), app->callbackSeqId);
               fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(
                   static_cast<intptr_t>(id)));
-              fluid_sequencer_send_at(app->sequencer.get(), resumeEvt.get(), time, 1);
+              fluid_sequencer_send_now(app->sequencer.get(), resumeEvt.get());
             }
           }
+          // key off processed for this macro, stop processing here
+          break;
         }
       }
       break;
