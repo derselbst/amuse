@@ -1142,7 +1142,7 @@ bool FluidsyXApp::initFluidSynth() {
 
   // Processing soundMacros via callback can be too expensive for the default period-size of 64 samples
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
-  fluid_settings_setint(settings.get(), "synth.verbose", 0);
+  fluid_settings_setint(settings.get(), "synth.verbose", 1);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
   fluid_settings_setnum(settings.get(), "synth.reverb.level", 0.8);
   fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
@@ -1564,6 +1564,7 @@ static fluid_voice_t* getActiveVoice(fluid_synth_t* synth, MacroExecContext& ctx
 static void releaseVoice(fluid_synth_t* synth, MacroExecContext& ctx) {
   if (ctx.voiceId != 0)
     fluid_synth_stop(synth, ctx.voiceId);
+  ctx.voiceId = 0;
 }
 
 /** Immediately silence a voice (near-instant release).
@@ -1890,13 +1891,12 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     else
     {
       uint16_t ticks = c.ticksOrMs;
-      if (ticks == 0) {
+      if (ticks == std::numeric_limits<uint16_t>::max()) {
         /* Indefinite wait – macro pauses until keyOff or sampleEnd.
         * Original amuse: m_indefiniteWait = true, m_inWait = true.
-        * We use UINT_MAX as sentinel; the processing loop will store the
+        * The processing loop will store the
         * context but NOT schedule a timer. */
         ctx.inIndefiniteWait = true;
-        delay = UINT_MAX;
       } else if (c.msSwitch) {
         /* value is already in ms */
         delay = ticks;
@@ -1922,9 +1922,8 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     }
     else
     {
-      if (c.ms == 0) {
+      if (c.ms == std::numeric_limits<uint16_t>::max()) {
         ctx.inIndefiniteWait = true;
-        delay = UINT_MAX;
       } else {
         delay = c.ms;
       }
@@ -2896,7 +2895,7 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   int safetyCounter = 0;
   while (!ctx.ended && safetyCounter < kMaxMacroCmdsPerBurst) {
     unsigned int d = processMacroCmd(ctx, tick);
-    if (d == UINT_MAX) {
+    if (ctx.inIndefiniteWait) {
       /* Indefinite wait – store context but do NOT schedule a timer.
        * The macro will be resumed by an external event (keyoff, sampleEnd). */
       int macroId = nextMacroId++;
@@ -3043,7 +3042,7 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
   int safetyCounter = 0;
   while (!ctx.ended && safetyCounter < kMaxMacroCmdsPerBurst) {
     unsigned int d = app->processMacroCmd(ctx, tick);
-    if (d == UINT_MAX) {
+    if (ctx.inIndefiniteWait) {
       /* Indefinite wait – macro pauses until external event (keyoff/sampleEnd).
        * Keep in activeMacros but don't schedule a timer. */
       return;
