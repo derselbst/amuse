@@ -4,6 +4,7 @@
 #include <optional>
 #include <array>
 #include <cstdint>
+#include <vector>
 
 /* ────────────── Runtime state for a single SoundMacro VM ────────────── */
 
@@ -39,16 +40,16 @@ struct MacroExecContext {
   uint8_t allocKey = 60;      /**< MIDI key at voice allocation time */
   uint8_t triggerNote = 60;   /**< Original SNG note (before keymap/layer transpose), used for NoteOff matching */
 
-  /* Pending voice state – set by commands that run BEFORE CmdStartSample
-   * creates the voice.  Applied between alloc and start. */
-  float pendingPanGen = 0.0f;   /**< GEN_PAN (-500..500, 0=center) */
-  bool  hasPendingPan = false;
-  float pendingAttnGen = 0.0f;  /**< GEN_ATTENUATION (centibels, 0..1440) */
-  bool  hasPendingAttn = false;
+  /* ── Pending SoundMacro commands ──
+   * Commands executed before CmdStartSample creates the voice are stored
+   * here.  Once the voice is allocated in dummy_preset_noteon(), all pending
+   * commands are replayed against the new voice. */
+  std::vector<const SoundMacro::ICmd*> pendingCmds;
 
-  std::optional<SoundMacro::CmdAddNote> pendingAddNote{}; /**< AddNote command to apply at voice start */
-  std::optional<SoundMacro::CmdSetKeygroup> pendingExclusiveClass{}; /**< Exclusive class to apply at voice start */
-  std::optional<SoundMacro::CmdSetupLFO> pendingSetupLFO{}; /**< LFO settings to apply at voice start */
+  /* ── Opaque pointer to the FluidsyXApp instance ──
+   * DoFluid() implementations that need access to app-level state
+   * (activePool, sequencer, etc.) cast this to FluidsyXApp*. */
+  void* appData = nullptr;
 
   /* ADSR controller mapping (CmdSetAdsrCtrl).
    * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).

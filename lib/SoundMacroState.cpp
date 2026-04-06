@@ -9,9 +9,18 @@
 #include "amuse/AudioGroupPool.hpp"
 #include "amuse/Common.hpp"
 #include "amuse/Engine.hpp"
+#include "amuse/FluidsyXMacroContext.hpp"
 #include "amuse/Voice.hpp"
 
 using namespace std::literals;
+
+namespace amuse {
+/* Default DoFluid implementation: prints unimplemented warning and advances PC. */
+unsigned int SoundMacro::ICmd::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  ctx.pc++;
+  return 0;
+}
+} // namespace amuse
 
 /* C++17 will error out if an offsetof cannot be computed, so ignore this warning */
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"

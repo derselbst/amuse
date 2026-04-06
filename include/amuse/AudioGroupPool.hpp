@@ -21,6 +21,7 @@ namespace amuse {
 class AudioGroupData;
 struct SoundMacroState;
 class Voice;
+struct MacroExecContext;
 
 /** Header at the top of the pool file */
 template <std::endian DNAEn>
@@ -165,17 +166,21 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     virtual bool Do(SoundMacroState& st, Voice& vox) const = 0;
     virtual CmdOp Isa() const = 0;
+    /** Execute this command for fluidsyX.  Returns delay in ms (0 = continue immediately). */
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
   };
   struct CmdEnd : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::End; }
   };
   struct CmdStop : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Stop; }
   };
   struct CmdSplitKey : ICmd {
@@ -185,6 +190,7 @@ struct SoundMacro {
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SplitKey; }
   };
   struct CmdSplitVel : ICmd {
@@ -194,6 +200,7 @@ struct SoundMacro {
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SplitVel; }
   };
   struct CmdWaitTicks : ICmd {
@@ -206,6 +213,7 @@ struct SoundMacro {
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::WaitTicks; }
   };
   struct CmdLoop : ICmd {
@@ -217,6 +225,7 @@ struct SoundMacro {
     SoundMacroStepDNA<std::endian::little> macroStep;
     Value<uint16_t> times;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Loop; }
   };
   struct CmdGoto : ICmd {
@@ -226,6 +235,7 @@ struct SoundMacro {
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Goto; }
   };
   struct CmdWaitMs : ICmd {
@@ -238,6 +248,7 @@ struct SoundMacro {
     Seek<1, athena::SeekOrigin::Current> dummy;
     Value<uint16_t> ms;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::WaitMs; }
   };
   struct CmdPlayMacro : ICmd {
@@ -249,6 +260,7 @@ struct SoundMacro {
     Value<uint8_t> priority;
     Value<uint8_t> maxVoices;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::PlayMacro; }
   };
   struct CmdSendKeyOff : ICmd {
@@ -257,6 +269,7 @@ struct SoundMacro {
     Value<uint8_t> variable;
     Value<bool> lastStarted;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SendKeyOff; }
   };
   struct CmdSplitMod : ICmd {
@@ -275,6 +288,7 @@ struct SoundMacro {
     Value<int8_t> centerKey;
     Value<int8_t> centerPan;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::PianoPan; }
   };
   struct CmdSetAdsr : ICmd {
@@ -283,6 +297,7 @@ struct SoundMacro {
     TableIdDNA<std::endian::little> table;
     Value<bool> dlsMode;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetAdsr; }
   };
   struct CmdScaleVolume : ICmd {
@@ -293,6 +308,7 @@ struct SoundMacro {
     TableIdDNA<std::endian::little> table;
     Value<bool> originalVol;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::ScaleVolume; }
   };
   struct CmdPanning : ICmd {
@@ -302,6 +318,7 @@ struct SoundMacro {
     Value<uint16_t> timeMs;
     Value<int8_t> width;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Panning; }
   };
   struct CmdEnvelope : ICmd {
@@ -323,18 +340,21 @@ struct SoundMacro {
     Value<Mode> mode;
     Value<uint32_t> offset;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::StartSample; }
   };
   struct CmdStopSample : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::StopSample; }
   };
   struct CmdKeyOff : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::KeyOff; }
   };
   struct CmdSplitRnd : ICmd {
@@ -344,6 +364,7 @@ struct SoundMacro {
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SplitRnd; }
   };
   struct CmdFadeIn : ICmd {
@@ -374,6 +395,7 @@ struct SoundMacro {
     Value<uint8_t> sustain;
     Value<uint8_t> release;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetAdsrCtrl; }
   };
   struct CmdRndNote : ICmd {
@@ -385,6 +407,7 @@ struct SoundMacro {
     Value<bool> fixedFree;
     Value<bool> absRel;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::RndNote; }
   };
   struct CmdAddNote : ICmd {
@@ -397,6 +420,7 @@ struct SoundMacro {
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::AddNote; }
   };
   struct CmdSetNote : ICmd {
@@ -408,6 +432,7 @@ struct SoundMacro {
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetNote; }
   };
   struct CmdLastNote : ICmd {
@@ -419,6 +444,7 @@ struct SoundMacro {
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::LastNote; }
   };
   struct CmdPortamento : ICmd {
@@ -432,6 +458,7 @@ struct SoundMacro {
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Portamento; }
   };
   struct CmdVibrato : ICmd {
@@ -444,6 +471,7 @@ struct SoundMacro {
     Value<bool> msSwitch;
     Value<uint16_t> ticksOrMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Vibrato; }
   };
   struct CmdPitchSweep1 : ICmd {
@@ -474,6 +502,7 @@ struct SoundMacro {
     LittleUInt24 hz;
     Value<uint16_t> fine;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetPitch; }
   };
   struct CmdSetPitchAdsr : ICmd {
@@ -492,6 +521,7 @@ struct SoundMacro {
     Value<int16_t> scale;
     Value<bool> originalVol;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::ScaleVolumeDLS; }
   };
   struct CmdMod2Vibrange : ICmd {
@@ -500,6 +530,7 @@ struct SoundMacro {
     Value<int8_t> keys;
     Value<int8_t> cents;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Mod2Vibrange; }
   };
   struct CmdSetupTremolo : ICmd {
@@ -515,6 +546,7 @@ struct SoundMacro {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::Return; }
   };
   struct CmdGoSub : ICmd {
@@ -524,6 +556,7 @@ struct SoundMacro {
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::GoSub; }
   };
   struct CmdTrapEvent : ICmd {
@@ -534,6 +567,7 @@ struct SoundMacro {
     SoundMacroIdDNA<std::endian::little> macro;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::TrapEvent; }
   };
   struct CmdUntrapEvent : ICmd {
@@ -541,6 +575,7 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     Value<CmdTrapEvent::EventType> event;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::UntrapEvent; }
   };
   struct CmdSendMessage : ICmd {
@@ -598,6 +633,7 @@ struct SoundMacro {
     Value<int8_t> rangeUp;
     Value<int8_t> rangeDown;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::PitchWheelR; }
   };
   struct CmdSetPriority : ICmd {
@@ -807,6 +843,7 @@ struct SoundMacro {
     Value<int16_t> periodInMs;
     bool Do(SoundMacroState& st, Voice& vox) const override;
     bool fluid(fluid_voice_t* v) const;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetupLFO; }
   };
   struct CmdModeSelect : ICmd {
@@ -815,6 +852,7 @@ struct SoundMacro {
     Value<bool> dlsVol;
     Value<bool> itd;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::ModeSelect; }
   };
   struct CmdSetKeygroup : ICmd {
@@ -823,6 +861,7 @@ struct SoundMacro {
     Value<uint8_t> group;
     Value<bool> killNow;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetKeygroup; }
   };
   struct CmdSRCmodeSelect : ICmd {
@@ -831,6 +870,7 @@ struct SoundMacro {
     Value<uint8_t> srcType;
     Value<uint8_t> type0SrcFilter;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SRCmodeSelect; }
   };
   struct CmdWiiUnknown : ICmd {
@@ -857,6 +897,7 @@ struct SoundMacro {
     Value<bool> varCtrlC;
     Value<uint8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::AddVars; }
   };
   struct CmdSubVars : ICmd {
@@ -869,6 +910,7 @@ struct SoundMacro {
     Value<bool> varCtrlC;
     Value<int8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SubVars; }
   };
   struct CmdMulVars : ICmd {
@@ -881,6 +923,7 @@ struct SoundMacro {
     Value<bool> varCtrlC;
     Value<int8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::MulVars; }
   };
   struct CmdDivVars : ICmd {
@@ -893,6 +936,7 @@ struct SoundMacro {
     Value<bool> varCtrlC;
     Value<int8_t> c;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::DivVars; }
   };
   struct CmdAddIVars : ICmd {
@@ -904,6 +948,7 @@ struct SoundMacro {
     Value<int8_t> b;
     Value<int16_t> imm;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::AddIVars; }
   };
   struct CmdSetVar : ICmd {
@@ -914,6 +959,7 @@ struct SoundMacro {
     Seek<1, athena::SeekOrigin::Current> pad;
     Value<int16_t> imm;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::SetVar; }
   };
   struct CmdIfEqual : ICmd {
@@ -926,6 +972,7 @@ struct SoundMacro {
     Value<bool> notEq;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::IfEqual; }
   };
   struct CmdIfLess : ICmd {
@@ -938,6 +985,7 @@ struct SoundMacro {
     Value<bool> notLt;
     SoundMacroStepDNA<std::endian::little> macroStep;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
     CmdOp Isa() const override { return CmdOp::IfLess; }
   };
 
