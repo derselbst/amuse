@@ -1011,21 +1011,17 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
   auto& ctx = *p.macroContext;
   if (p.looped)
     fluid_voice_gen_set(voice, GEN_SAMPLEMODE, 1);
-  if (ctx.hasPendingPan)
-    fluid_voice_gen_set(voice, GEN_PAN, ctx.pendingPanGen);
-  if (ctx.hasPendingAttn)
-    fluid_voice_gen_set(voice, GEN_ATTENUATION, ctx.pendingAttnGen);
-  if (ctx.curDetune != 0.0f)
-    fluid_voice_gen_set(voice, GEN_FINETUNE, ctx.curDetune);
-  if (ctx.pendingExclusiveClass.has_value())
-  {
-    fluid_voice_gen_set(voice, GEN_EXCLUSIVECLASS, ctx.pendingExclusiveClass->group);
-    ctx.pendingExclusiveClass = std::nullopt;
-  }
-  if(ctx.pendingSetupLFO.has_value())
-  {
-    ctx.pendingSetupLFO->fluid(voice);
-    ctx.pendingSetupLFO = std::nullopt;
+  if (ctx.curDetune != 0)
+    fluid_voice_gen_set(voice, GEN_FINETUNE, static_cast<float>(ctx.curDetune));
+  /* Replay any commands that were executed before the voice was created.
+   * Save/restore pc to prevent pending commands from advancing the program counter. */
+  if (!ctx.pendingCmds.empty()) {
+      int savedPc = ctx.pc;
+      for (auto* pendingCmd : ctx.pendingCmds) {
+          pendingCmd->DoFluid(ctx, voice);
+      }
+      ctx.pc = savedPc;
+      ctx.pendingCmds.clear();
   }
   if (ctx.adsrTableId.has_value()) {
     /* Convert MusyX linear sustain factor (0x1000 == 100%) to SF2 centibels
@@ -1710,6 +1706,775 @@ void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
   fluid_voice_update_param(v, GEN_FINETUNE);
 }
 
+/* ═══════════════════ SoundMacro DoFluid overrides ═══════════════════
+ * Each override extracts its logic from the former processMacroCmd() switch.
+ * Methods that need app-level state cast ctx.appData to FluidsyXApp*.
+ * Methods that need a voice but don't have one yet push `this` to
+ * ctx.pendingCmds so they can be replayed once the voice is created. */
+
+unsigned int SoundMacro::CmdEnd::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  ctx.ended = true;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdStop::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  ctx.ended = true;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  unsigned int delay = 0;
+  if (keyOff)
+    ctx.waitingKeyoff = true;
+  if (sampleEnd)
+    ctx.waitingSampleEnd = true;
+  if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
+      (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
+    ctx.waitingKeyoff = false;
+    ctx.waitingSampleEnd = false;
+  } else {
+    uint16_t ticks = ticksOrMs;
+    if (ticks == std::numeric_limits<uint16_t>::max()) {
+      ctx.inIndefiniteWait = true;
+    } else if (msSwitch) {
+      delay = ticks;
+    } else {
+      delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
+    }
+  }
+  ctx.pc++;
+  return delay;
+}
+
+unsigned int SoundMacro::CmdWaitMs::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  unsigned int delay = 0;
+  if (keyOff)
+    ctx.waitingKeyoff = true;
+  if (sampleEnd)
+    ctx.waitingSampleEnd = true;
+  if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
+      (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
+    ctx.waitingKeyoff = false;
+    ctx.waitingSampleEnd = false;
+  } else {
+    if (ms == std::numeric_limits<uint16_t>::max()) {
+      ctx.inIndefiniteWait = true;
+    } else {
+      delay = ms;
+    }
+  }
+  ctx.pc++;
+  return delay;
+}
+
+unsigned int SoundMacro::CmdGoto::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  if (macro.id.id != 0xffff && macro.id.id != 0) {
+    const SoundMacro* target = app->activePool ? app->activePool->soundMacro(macro.id) : nullptr;
+    if (target) {
+      ctx.macro = target;
+      ctx.pc = macroStep.step;
+    } else {
+      ctx.pc++;
+    }
+  } else {
+    ctx.pc = macroStep.step;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdLoop::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  if ((keyOff && ctx.keyoffReceived) || (sampleEnd && ctx.sampleEndReceived)) {
+    ctx.loopCountdown = -1;
+    ctx.pc++;
+    return 0;
+  }
+  if (ctx.loopCountdown < 0) {
+    uint16_t useTimes = times;
+    if (useTimes == kInfiniteLoopSentinel) {
+      ctx.loopCountdown = -2;
+    } else {
+      ctx.loopCountdown = static_cast<int>(useTimes);
+    }
+    ctx.loopStep = macroStep.step;
+  }
+  if (ctx.loopCountdown == -2) {
+    ctx.pc = ctx.loopStep;
+  } else if (ctx.loopCountdown > 0) {
+    ctx.loopCountdown--;
+    ctx.pc = ctx.loopStep;
+  } else {
+    ctx.loopCountdown = -1;
+    ctx.pc++;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdReturn::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  ctx.ended = true;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdGoSub::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  if (macro.id.id != 0xffff && macro.id.id != 0) {
+    const SoundMacro* target = app->activePool ? app->activePool->soundMacro(macro.id) : nullptr;
+    if (target) {
+      ctx.macro = target;
+      ctx.pc = macroStep.step;
+    } else {
+      ctx.pc++;
+    }
+  } else {
+    ctx.pc = macroStep.step;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  unsigned int delay = 0;
+  ctx.midiKey = static_cast<uint8_t>(std::clamp(static_cast<int>(key), 0, 127));
+  ctx.curDetune = detune;
+  app->applyVoicePitch(ctx);
+  if (msSwitch)
+    delay = ticksOrMs;
+  else
+    delay = static_cast<unsigned int>(ticksOrMs * 1000.0 / ctx.ticksPerSec);
+  ctx.pc++;
+  return delay;
+}
+
+unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  unsigned int delay = 0;
+  int newKey;
+  if (originalKey) {
+    newKey = static_cast<int>(ctx.initKey) + add;
+  } else {
+    newKey = static_cast<int>(ctx.midiKey) + add;
+  }
+  ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
+  ctx.curDetune = detune;
+  app->applyVoicePitch(ctx);
+  if (msSwitch)
+    delay = ticksOrMs;
+  else
+    delay = static_cast<unsigned int>(ticksOrMs * 1000.0 / ctx.ticksPerSec);
+  ctx.pc++;
+  return delay;
+}
+
+unsigned int SoundMacro::CmdLastNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  unsigned int delay = 0;
+  int newKey = static_cast<int>(ctx.initKey) + add;
+  ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
+  ctx.curDetune = detune;
+  app->applyVoicePitch(ctx);
+  if (msSwitch)
+    delay = ticksOrMs;
+  else
+    delay = static_cast<unsigned int>(ticksOrMs * 1000.0 / ctx.ticksPerSec);
+  ctx.pc++;
+  return delay;
+}
+
+unsigned int SoundMacro::CmdRndNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  int lo = noteLo;
+  int hi = noteHi;
+  if (absRel) {
+    lo = static_cast<int>(ctx.midiKey) - noteLo;
+    hi = static_cast<int>(ctx.midiKey) + noteHi;
+  }
+  if (lo > hi)
+    std::swap(lo, hi);
+  std::uniform_int_distribution<int> dist(lo, hi);
+  int note = dist(app->rng);
+  ctx.midiKey = static_cast<uint8_t>(std::clamp(note, 0, 127));
+  if (fixedFree) {
+    std::uniform_int_distribution<int> detuneDist(-100, 100);
+    ctx.curDetune = detuneDist(app->rng);
+  } else {
+    ctx.curDetune = detune;
+  }
+  app->applyVoicePitch(ctx);
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetPitch::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  double freq = static_cast<double>(hz) + fine / 65536.0;
+  if (freq > 0.0) {
+    double midiNote = 69.0 + 12.0 * std::log2(freq / 440.0);
+    int noteInt = static_cast<int>(std::round(midiNote));
+    noteInt = std::clamp(noteInt, 0, 127);
+    double centFrac = (midiNote - noteInt) * 100.0;
+    ctx.midiKey = static_cast<uint8_t>(noteInt);
+    ctx.curDetune = static_cast<int>(std::round(centFrac));
+    app->applyVoicePitch(ctx);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdPitchWheelR::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  if (rangeUp != rangeDown) {
+    fmt::print(stderr,
+            "fluidsyX: warning: PitchWheelR has asymmetric range "
+            "(up={}, down={}); FluidSynth only supports symmetric "
+            "pitch bend range, using rangeUp={}\n",
+            static_cast<int>(rangeUp), static_cast<int>(rangeDown),
+            static_cast<int>(rangeUp));
+  }
+  FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
+  fluid_event_set_source(evt.get(), app->callbackSeqId);
+  fluid_event_set_dest(evt.get(), app->synthSeqId);
+  fluid_event_pitch_wheelsens(evt.get(), ctx.channel, rangeUp);
+  fluid_sequencer_send_now(app->sequencer.get(), evt.get());
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdScaleVolume::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  int vol = (ctx.midiVel * (scale + 128)) / 256 + add;
+  vol = std::clamp(vol, 0, 127);
+  float attn = (vol > 0)
+      ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
+      : 1440.0f;
+  attn = std::clamp(attn, 0.0f, 1440.0f);
+  if (v) {
+    fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
+    fluid_voice_update_param(v, GEN_ATTENUATION);
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdScaleVolumeDLS::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  int vol = (ctx.midiVel * (scale + 32768)) / 65536;
+  vol = std::clamp(vol, 0, 127);
+  float attn = (vol > 0)
+      ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
+      : 1440.0f;
+  attn = std::clamp(attn, 0.0f, 1440.0f);
+  if (v) {
+    fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
+    fluid_voice_update_param(v, GEN_ATTENUATION);
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetAdsrCtrl::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  ctx.useAdsrControllers = true;
+  ctx.midiAttack  = attack;
+  ctx.midiDecay   = decay;
+  ctx.midiSustain = sustain;
+  ctx.midiRelease = release;
+  if (!ctx.adsrBootstrapped) {
+    ctx.adsrBootstrapped = true;
+    ctx.ctrlVals[ctx.midiAttack]  = 10;
+    ctx.ctrlVals[ctx.midiSustain] = 127;
+    ctx.ctrlVals[ctx.midiRelease] = 10;
+    app->channelCtrlVals[ctx.channel][ctx.midiAttack]  = 10;
+    app->channelCtrlVals[ctx.channel][ctx.midiSustain] = 127;
+    app->channelCtrlVals[ctx.channel][ctx.midiRelease] = 10;
+  }
+  if (ctx.channel < 16) {
+    auto& m = app->channelAdsrMap[ctx.channel];
+    m.active    = true;
+    m.attackCC  = attack;
+    m.decayCC   = decay;
+    m.sustainCC = sustain;
+    m.releaseCC = release;
+  }
+  if (v) {
+    app->applyAdsrToVoice(v, ctx, /*started=*/true);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdPanning::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  if (panPosition == -128) {
+    /* -128 = surround-channel only; no-op in FluidSynth */
+  } else {
+    float panGen = (panPosition / 127.0f) * 500.0f;
+    if (v) {
+      fluid_voice_gen_set(v, GEN_PAN, panGen);
+      fluid_voice_update_param(v, GEN_PAN);
+    } else {
+      ctx.pendingCmds.push_back(this);
+    }
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdPianoPan::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  int diff = ctx.initKey - centerKey;
+  int panPos = centerPan + diff * scale / 127;
+  panPos = std::clamp(panPos, -127, 127);
+  float panGen = (panPos / 127.0f) * 500.0f;
+  if (v) {
+    fluid_voice_gen_set(v, GEN_PAN, panGen);
+    fluid_voice_update_param(v, GEN_PAN);
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdStartSample::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  fluid_sample_t* flSamp = nullptr;
+  bool looped = false;
+  if (app->musyxSfData) {
+    auto sIt = app->musyxSfData->sampleIndex.find(sample.id.id);
+    if (sIt != app->musyxSfData->sampleIndex.end()) {
+      auto& ds = app->musyxSfData->samples[sIt->second];
+      flSamp = ds.flSample;
+      looped = ds.looped;
+    }
+  }
+  if (flSamp && app->dummyPreset) {
+    app->pendingVoiceStart.flSamp = flSamp;
+    app->pendingVoiceStart.looped = looped;
+    app->pendingVoiceStart.macroContext = &ctx;
+    unsigned int id = app->nextVoiceId++;
+    if (id == 0) id = app->nextVoiceId++;
+    if (fluid_synth_start(app->synth.get(), id, app->dummyPreset, 0, ctx.channel,
+                           ctx.midiKey, ctx.midiVel) == FLUID_OK) {
+      ctx.voiceId  = id;
+      ctx.allocKey = ctx.midiKey;
+    } else {
+      fmt::print(stderr, "fluidsyX: warning: voice start failed for "
+                      "sample {} on ch {} key {}\n",
+              sample.id.id, ctx.channel, ctx.midiKey);
+    }
+    app->pendingVoiceStart.flSamp = nullptr;
+  } else {
+    FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
+    fluid_event_set_source(evt.get(), app->callbackSeqId);
+    fluid_event_set_dest(evt.get(), app->synthSeqId);
+    fmt::print(stderr, "fluidsyX: note on event for sample {} on ch {} key {} (sample not found, using preset fallback)\n",
+            sample.id.id, ctx.channel, ctx.midiKey);
+    fluid_event_noteon(evt.get(), ctx.channel, ctx.midiKey, ctx.midiVel);
+    fluid_sequencer_send_now(app->sequencer.get(), evt.get());
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdStopSample::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  app->killVoice(app->synth.get(), ctx);
+  fmt::print(stderr, "fluidsyX: OFFing voice ID {} on ch {}\n", ctx.voiceId, ctx.channel);
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdKeyOff::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  releaseVoice(app->synth.get(), ctx);
+  ctx.keyoffReceived = true;
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSendKeyOff::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  int targetMacroId = -1;
+  if (lastStarted) {
+    targetMacroId = ctx.lastPlayMacroId;
+  } else {
+    targetMacroId = ctx.vars[variable & 0x1f];
+  }
+  if (targetMacroId >= 0) {
+    auto childIt = app->activeMacros.find(targetMacroId);
+    if (childIt != app->activeMacros.end() && !childIt->second.ended) {
+      fmt::print(stderr, "fluidsyX: sending key off to foreign macro ID {} on ch {} (lastStarted={}, var={})\n",
+              targetMacroId, ctx.channel, lastStarted, variable & 0x1f);
+      releaseVoice(app->synth.get(), childIt->second);
+      childIt->second.keyoffReceived = true;
+    } else {
+      fmt::print(stderr, "fluidsyX: warning: SendKeyOff target macro ID {} not found or already ended (lastStarted={}, var={})\n",
+              targetMacroId, lastStarted, variable & 0x1f);
+    }
+  } else {
+    fmt::print(stderr, "fluidsyX: warning: SendKeyOff with no valid target (lastStarted={}, var={})\n",
+            lastStarted, variable & 0x1f);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdPlayMacro::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  if (app->activePool && macro.id.id != 0xffff) {
+    const SoundMacro* child = app->activePool->soundMacro(macro.id);
+    if (child) {
+      int childKey = std::clamp(static_cast<int>(ctx.initKey) + addNote, 0, 127);
+      unsigned int curTick = fluid_sequencer_get_tick(app->sequencer.get());
+      int childId = app->enqueueSoundMacro(child, macroStep.step, ctx.channel,
+                        static_cast<uint8_t>(childKey), ctx.midiVel,
+                        curTick);
+      ctx.lastPlayMacroId = childId;
+      fmt::print(stderr, "fluidsyX: started child macro ID {} on ch {} with key {}\n", childId, ctx.channel, childKey);
+    } else {
+      fmt::print(stderr, "fluidsyX: warning: PlayMacro target macro ID {} not found\n", macro.id.id);
+    }
+  } else {
+    fmt::print(stderr, "fluidsyX: warning: PlayMacro with no valid target (macro ID {})\n", macro.id.id);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSplitKey::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  if (ctx.initKey >= static_cast<uint8_t>(key)) {
+    if (macro.id.id != 0xffff && macro.id.id != 0 && app->activePool) {
+      const SoundMacro* target = app->activePool->soundMacro(macro.id);
+      if (target) {
+        ctx.macro = target;
+        ctx.pc = macroStep.step;
+        return 0;
+      }
+    }
+    ctx.pc = macroStep.step;
+  } else {
+    ctx.pc++;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSplitVel::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  if (ctx.midiVel >= static_cast<uint8_t>(velocity)) {
+    if (macro.id.id != 0xffff && macro.id.id != 0 && app->activePool) {
+      const SoundMacro* target = app->activePool->soundMacro(macro.id);
+      if (target) {
+        ctx.macro = target;
+        ctx.pc = macroStep.step;
+        return 0;
+      }
+    }
+    ctx.pc = macroStep.step;
+  } else {
+    ctx.pc++;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSplitRnd::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  std::uniform_int_distribution<int> dist(0, 255);
+  if (dist(app->rng) >= rnd) {
+    if (macro.id.id != 0xffff && macro.id.id != 0 && app->activePool) {
+      const SoundMacro* target = app->activePool->soundMacro(macro.id);
+      if (target) {
+        ctx.macro = target;
+        ctx.pc = macroStep.step;
+        return 0;
+      }
+    }
+    ctx.pc = macroStep.step;
+  } else {
+    ctx.pc++;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdMod2Vibrange::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  if (v) {
+    fluid_mod_t* mod2vibrange_mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+    fluid_mod_set_source1(mod2vibrange_mod, 1, FLUID_MOD_CC | FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+    fluid_mod_set_source2(mod2vibrange_mod, 0, 0);
+    fluid_mod_set_dest   (mod2vibrange_mod, GEN_VIBLFOTOPITCH);
+    fluid_mod_set_amount (mod2vibrange_mod, keys * 100 + cents);
+    fluid_voice_add_mod  (v, mod2vibrange_mod, FLUID_VOICE_ADD);
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdVibrato::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  if (v) {
+    fluid_mod_t* vib_mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+    uint8_t modSrc;
+    uint8_t modFlag = FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE;
+    double vibDepthCents = levelNote * 100.0 + levelFine;
+    uint8_t mwFlag = static_cast<uint8_t>(modwheelFlag);
+    switch (mwFlag) {
+      default:
+      case 0:
+        modSrc = FLUID_MOD_NONE;
+        modFlag |= FLUID_MOD_GC;
+        break;
+      case 1:
+        modSrc = 1;
+        modFlag |= FLUID_MOD_CC;
+        break;
+      case 2:
+        modSrc = FLUID_MOD_CHANNELPRESSURE;
+        modFlag |= FLUID_MOD_GC;
+        break;
+    }
+    fluid_mod_set_source2(vib_mod, FLUID_MOD_NONE, 0);
+    fluid_mod_set_dest   (vib_mod, GEN_VIBLFOTOPITCH);
+    if (mwFlag == 1 || mwFlag == 2) {
+      fluid_mod_set_source1(vib_mod, modSrc, modFlag);
+      fluid_mod_set_amount (vib_mod, vibDepthCents);
+      fluid_voice_add_mod  (v, vib_mod, FLUID_VOICE_OVERWRITE);
+    } else if (mwFlag == 0) {
+      fluid_voice_gen_set(v, GEN_VIBLFOTOPITCH, vibDepthCents);
+      fluid_voice_update_param(v, GEN_VIBLFOTOPITCH);
+    } else {
+      fmt::print(stderr, "fluidsyX: warning: unknown modwheelFlag value {} in Vibrato command; treating as modwheelFlag==0\n", modwheelFlag);
+      ctx.pc++;
+      return 0;
+    }
+    if (mwFlag == 0 || mwFlag == 2) {
+      modFlag &= ~FLUID_MOD_GC;
+      modFlag |= FLUID_MOD_CC;
+      fluid_mod_set_source1(vib_mod, 1, modFlag);
+      fluid_mod_set_amount(vib_mod, 0);
+      fluid_voice_add_mod(v, vib_mod, FLUID_VOICE_OVERWRITE);
+    }
+    if (ticksOrMs > 0) {
+      float q = msSwitch ? 1000.0f : static_cast<float>(ctx.ticksPerSec);
+      float periodSec = ticksOrMs / q;
+      if (periodSec > 0.0f) {
+        float freqHz = 1.0f / periodSec;
+        float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
+        fluid_voice_gen_set(v, GEN_VIBLFOFREQ, freqCents);
+        fluid_voice_update_param(v, GEN_VIBLFOFREQ);
+      }
+    }
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdPortamento::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
+  bool enable = (portState != SoundMacro::CmdPortamento::PortState::Disable);
+  FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
+  fluid_event_set_source(evt.get(), app->callbackSeqId);
+  fluid_event_set_dest(evt.get(), app->synthSeqId);
+  fluid_event_control_change(evt.get(), ctx.channel, 65, enable ? 127 : 0);
+  fluid_sequencer_send_now(app->sequencer.get(), evt.get());
+  if (enable) {
+    uint16_t timeVal = ticksOrMs;
+    double timeMs;
+    if (msSwitch) {
+      timeMs = static_cast<double>(timeVal);
+    } else {
+      timeMs = timeVal * 1000.0 / ctx.ticksPerSec;
+    }
+    fluid_event_control_change(evt.get(), ctx.channel, 5, static_cast<int>(timeMs) / 128);
+    fluid_sequencer_send_now(app->sequencer.get(), evt.get());
+    fluid_event_control_change(evt.get(), ctx.channel, 37, static_cast<int>(timeMs) % 128);
+    fluid_sequencer_send_now(app->sequencer.get(), evt.get());
+    if (portType == SoundMacro::CmdPortamento::PortType::LastPressed)
+      fluid_synth_set_portamento_mode(app->synth.get(), ctx.channel,
+                                      FLUID_CHANNEL_PORTAMENTO_MODE_LEGATO_ONLY);
+    else
+      fluid_synth_set_portamento_mode(app->synth.get(), ctx.channel,
+                                      FLUID_CHANNEL_PORTAMENTO_MODE_EACH_NOTE);
+    fmt::print(stderr, "fluidsyX: PORTAMENTO ON!!! for ch {} with time {} ms (mode {})\n",
+            ctx.channel, timeMs, (portType == SoundMacro::CmdPortamento::PortType::LastPressed) ? "legato-only" : "each-note");
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetVar::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int idx = static_cast<int>(a);
+  if (idx >= 0 && idx < 32)
+    ctx.vars[idx] = imm;
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdAddVars::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  int ib = static_cast<int>(b);
+  if (ia >= 0 && ia < 32 && ib >= 0 && ib < 32)
+    ctx.vars[ia] += ctx.vars[ib];
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSubVars::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  int ib = static_cast<int>(b);
+  if (ia >= 0 && ia < 32 && ib >= 0 && ib < 32)
+    ctx.vars[ia] -= ctx.vars[ib];
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdMulVars::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  int ib = static_cast<int>(b);
+  if (ia >= 0 && ia < 32 && ib >= 0 && ib < 32)
+    ctx.vars[ia] *= ctx.vars[ib];
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdDivVars::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  int ib = static_cast<int>(b);
+  if (ia >= 0 && ia < 32 && ib >= 0 && ib < 32 && ctx.vars[ib] != 0)
+    ctx.vars[ia] /= ctx.vars[ib];
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdAddIVars::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  if (ia >= 0 && ia < 32)
+    ctx.vars[ia] += imm;
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdIfEqual::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  int ib = static_cast<int>(b);
+  bool cond = false;
+  if (ia >= 0 && ia < 32 && ib >= 0 && ib < 32)
+    cond = (ctx.vars[ia] == ctx.vars[ib]);
+  if (cond) {
+    if (!notEq)
+      ctx.pc = macroStep.step;
+    else
+      ctx.pc++;
+  } else {
+    if (notEq)
+      ctx.pc = macroStep.step;
+    else
+      ctx.pc++;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdIfLess::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  int ia = static_cast<int>(a);
+  int ib = static_cast<int>(b);
+  bool cond = false;
+  if (ia >= 0 && ia < 32 && ib >= 0 && ib < 32)
+    cond = (ctx.vars[ia] < ctx.vars[ib]);
+  if (cond) {
+    if (!notLt)
+      ctx.pc = macroStep.step;
+    else
+      ctx.pc++;
+  } else {
+    if (notLt)
+      ctx.pc = macroStep.step;
+    else
+      ctx.pc++;
+  }
+  return 0;
+}
+
+unsigned int SoundMacro::CmdTrapEvent::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  MacroExecContext::EventTrap trap;
+  trap.macroId = static_cast<uint16_t>(macro.id.id);
+  trap.macroStep = static_cast<uint16_t>(macroStep.step);
+  switch (event) {
+  case SoundMacro::CmdTrapEvent::EventType::KeyOff:
+    ctx.keyoffTrap = trap;
+    break;
+  case SoundMacro::CmdTrapEvent::EventType::SampleEnd:
+    ctx.sampleEndTrap = trap;
+    break;
+  case SoundMacro::CmdTrapEvent::EventType::MessageRecv:
+    ctx.messageTrap = trap;
+    break;
+  default: break;
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdUntrapEvent::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  switch (event) {
+  case SoundMacro::CmdTrapEvent::EventType::KeyOff:
+    ctx.keyoffTrap.clear();
+    break;
+  case SoundMacro::CmdTrapEvent::EventType::SampleEnd:
+    ctx.sampleEndTrap.clear();
+    break;
+  case SoundMacro::CmdTrapEvent::EventType::MessageRecv:
+    ctx.messageTrap.clear();
+    break;
+  default: break;
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetAdsr::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  ctx.adsrTableId = std::make_optional(std::make_tuple(uint16_t(table.id.id), dlsMode));
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdModeSelect::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  if (dlsVol == true && itd == false) {
+    /* Matches fluidsynth's default curve; ignore */
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSRCmodeSelect::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  if (type0SrcFilter != 0 || srcType != 1) {
+    fmt::print(stderr, "fluidsyX: ignoring SRCmodeSelect with srcType={} type0SrcFilter={}\n", srcType, type0SrcFilter);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetKeygroup::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  if (v) {
+    fluid_voice_gen_set(v, GEN_EXCLUSIVECLASS, group);
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+unsigned int SoundMacro::CmdSetupLFO::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  if (v) {
+    this->fluid(v);
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
 /* ═══════════════════ SoundMacro → FluidSynth translation ═══════════════════ */
 
 /** Format a SoundMacro command using its CmdIntrospection metadata.
@@ -1842,957 +2607,18 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
   }
   bool timingMismatch = curTick != fluid_sequencer_get_tick(sequencer.get());
   if(timingMismatch)
-  {
     fmt::print(stderr, "Warning: processMacroCmd called with curTick {}, but sequencer tick is {}. Timing may be inaccurate.\n", curTick, fluid_sequencer_get_tick(sequencer.get()));
-  }
 
   const SoundMacro::ICmd& cmd = *ctx.macro->m_cmds[ctx.pc];
-  SoundMacro::CmdOp op = cmd.Isa();
-  unsigned int delay = 0;
-  FluidEventPtr evt(new_fluid_event(), &delete_fluid_event);
 
   if (verbose || timingMismatch)
     fmt::print("fluidsyX: [ch{} pc{}] {}\n", ctx.channel, ctx.pc,
                formatMacroCmd(cmd, curTick));
 
-  fluid_event_set_source(evt.get(), callbackSeqId);
-  fluid_event_set_dest(evt.get(), synthSeqId);
-
-  switch (op) {
-  /* ── Termination ── */
-  case SoundMacro::CmdOp::End:
-  case SoundMacro::CmdOp::Stop: {
-    /* Original amuse: CmdEnd/CmdStop just set PC=-1 (stop macro execution).
-     * The voice is NOT stopped – it continues playing until its ADSR envelope
-     * completes naturally or an external note-off arrives. */
-    ctx.ended = true;
-    break;
-  }
-
-  /* ── Wait / Timing ── */
-  case SoundMacro::CmdOp::WaitTicks: {
-    auto& c = static_cast<const SoundMacro::CmdWaitTicks&>(cmd);
-    if (c.keyOff)
-      ctx.waitingKeyoff = true;
-    if (c.sampleEnd)
-      ctx.waitingSampleEnd = true;
-
-    /* If the wait condition is already satisfied, skip the wait entirely
-     * (matches original amuse: m_keyoffWait && m_keyoff → no wait). */
-    if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
-        (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
-      ctx.waitingKeyoff = false;
-      ctx.waitingSampleEnd = false;
-    }
-    else
-    {
-      uint16_t ticks = c.ticksOrMs;
-      if (ticks == std::numeric_limits<uint16_t>::max()) {
-        /* Indefinite wait – macro pauses until keyOff or sampleEnd.
-        * Original amuse: m_indefiniteWait = true, m_inWait = true.
-        * The processing loop will store the
-        * context but NOT schedule a timer. */
-        ctx.inIndefiniteWait = true;
-      } else if (c.msSwitch) {
-        /* value is already in ms */
-        delay = ticks;
-      } else {
-        delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
-      }
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::WaitMs: {
-    auto& c = static_cast<const SoundMacro::CmdWaitMs&>(cmd);
-    if (c.keyOff)
-      ctx.waitingKeyoff = true;
-    if (c.sampleEnd)
-      ctx.waitingSampleEnd = true;
-
-    /* Already satisfied? Skip immediately. */
-    if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
-        (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
-      ctx.waitingKeyoff = false;
-      ctx.waitingSampleEnd = false;
-    }
-    else
-    {
-      if (c.ms == std::numeric_limits<uint16_t>::max()) {
-        ctx.inIndefiniteWait = true;
-      } else {
-        delay = c.ms;
-      }
-    }
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Control flow ── */
-  case SoundMacro::CmdOp::Goto: {
-    auto& c = static_cast<const SoundMacro::CmdGoto&>(cmd);
-    /* If macro ID references a different macro, spawn it */
-    if (c.macro.id.id != 0xffff && c.macro.id.id != 0) {
-      const SoundMacro* target = activePool ? activePool->soundMacro(c.macro.id) : nullptr;
-      if (target) {
-        ctx.macro = target;
-        ctx.pc = c.macroStep.step;
-      } else {
-        ctx.pc++;
-      }
-    } else {
-      ctx.pc = c.macroStep.step;
-    }
-    break;
-  }
-  case SoundMacro::CmdOp::Loop: {
-    auto& c = static_cast<const SoundMacro::CmdLoop&>(cmd);
-    /* Original amuse: if keyOff/sampleEnd conditions are met, break out
-     * of the loop immediately (st.m_keyoff / st.m_sampleEnd). */
-    if ((c.keyOff && ctx.keyoffReceived) || (c.sampleEnd && ctx.sampleEndReceived)) {
-      ctx.loopCountdown = -1;
-      ctx.pc++;
-      break;
-    }
-    if (ctx.loopCountdown < 0) {
-      /* First encounter: initialize loop.
-       * times==65535 → infinite loop (original amuse convention). */
-      uint16_t useTimes = c.times;
-      if (useTimes == kInfiniteLoopSentinel) {
-        ctx.loopCountdown = -2; /* infinite */
-      } else {
-        ctx.loopCountdown = static_cast<int>(useTimes);
-      }
-      ctx.loopStep = c.macroStep.step;
-    }
-    if (ctx.loopCountdown == -2) {
-      /* Infinite loop */
-      ctx.pc = ctx.loopStep;
-    } else if (ctx.loopCountdown > 0) {
-      ctx.loopCountdown--;
-      ctx.pc = ctx.loopStep;
-    } else {
-      ctx.loopCountdown = -1;
-      ctx.pc++;
-    }
-    break;
-  }
-  case SoundMacro::CmdOp::Return: {
-    /* For now just end; full subroutine support would need a call stack */
-    ctx.ended = true;
-    break;
-  }
-  case SoundMacro::CmdOp::GoSub: {
-    auto& c = static_cast<const SoundMacro::CmdGoSub&>(cmd);
-    /* Simplified: just goto the subroutine target */
-    if (c.macro.id.id != 0xffff && c.macro.id.id != 0) {
-      const SoundMacro* target = activePool ? activePool->soundMacro(c.macro.id) : nullptr;
-      if (target) {
-        ctx.macro = target;
-        ctx.pc = c.macroStep.step;
-      } else {
-        ctx.pc++;
-      }
-    } else {
-      ctx.pc = c.macroStep.step;
-    }
-    break;
-  }
-
-  /* ── Note / Pitch ── */
-  case SoundMacro::CmdOp::SetNote: {
-    auto& c = static_cast<const SoundMacro::CmdSetNote&>(cmd);
-    ctx.midiKey = static_cast<uint8_t>(std::clamp(static_cast<int>(c.key), 0, 127));
-    ctx.curDetune = c.detune; /* ±99 cents */
-    /* Apply pitch via voice-level generators (per-voice, not per-channel). */
-    applyVoicePitch(ctx);
-    if (c.msSwitch)
-      delay = c.ticksOrMs;
-    else
-      delay = static_cast<unsigned int>(c.ticksOrMs * 1000.0 / ctx.ticksPerSec);
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::AddNote: {
-    auto& c = static_cast<const SoundMacro::CmdAddNote&>(cmd);
-    /* MusyX mcmdAddKey: when originalKey (orgKey) is set (default),
-     * the note is reset to orgNote + add rather than accumulated.
-     * Detune always replaces (never accumulates). */
-    int newKey;
-    if (c.originalKey) {
-      newKey = static_cast<int>(ctx.initKey) + c.add;
-    } else {
-      newKey = static_cast<int>(ctx.midiKey) + c.add;
-    }
-    ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
-    ctx.curDetune = c.detune;
-    applyVoicePitch(ctx);
-    if (c.msSwitch)
-      delay = c.ticksOrMs;
-    else
-      delay = static_cast<unsigned int>(c.ticksOrMs * 1000.0 / ctx.ticksPerSec);
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::LastNote: {
-    auto& c = static_cast<const SoundMacro::CmdLastNote&>(cmd);
-    /* MusyX mcmdLastKey: uses the per-MIDI-channel "last note" (svoice->lastNote),
-     * which falls back to orgNote if no previous note exists on the channel.
-     * We use initKey as approximation since we don't track per-channel lastNote. */
-    int newKey = static_cast<int>(ctx.initKey) + c.add;
-    ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
-    ctx.curDetune = c.detune;
-    applyVoicePitch(ctx);
-    if (c.msSwitch)
-      delay = c.ticksOrMs;
-    else
-      delay = static_cast<unsigned int>(c.ticksOrMs * 1000.0 / ctx.ticksPerSec);
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::RndNote: {
-    auto& c = static_cast<const SoundMacro::CmdRndNote&>(cmd);
-    int lo = c.noteLo;
-    int hi = c.noteHi;
-
-    /* absRel mode: range is relative to current note (curNote in MusyX). */
-    if (c.absRel) {
-      lo = static_cast<int>(ctx.midiKey) - c.noteLo;
-      hi = static_cast<int>(ctx.midiKey) + c.noteHi;
-    }
-
-    if (lo > hi)
-      std::swap(lo, hi);
-    std::uniform_int_distribution<int> dist(lo, hi);
-    int note = dist(rng);
-    /* MusyX mcmdRandomKey: the note is always set absolutely (via mcmdSetKey),
-     * never added to current. fixedFree controls whether detune is randomized. */
-    ctx.midiKey = static_cast<uint8_t>(std::clamp(note, 0, 127));
-    if (c.fixedFree) {
-      /* Free mode: random detune (+/- 100 cents = +/- 1 semitone) for continuous pitch */
-      std::uniform_int_distribution<int> detuneDist(-100, 100);
-      ctx.curDetune = detuneDist(rng);
-    } else {
-      /* Key step mode: use explicit detune parameter */
-      ctx.curDetune = c.detune;
-    }
-    applyVoicePitch(ctx);
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Pitch control ── */
-  case SoundMacro::CmdOp::SetPitch: {
-    /* SetPitch sets an absolute frequency (hz + fine/65536 Hz).
-     * Convert to MIDI note + cent offset, then apply via voice generators. */
-    auto& c = static_cast<const SoundMacro::CmdSetPitch&>(cmd);
-    double freq = static_cast<double>(c.hz) + c.fine / 65536.0;
-    if (freq > 0.0) {
-      double midiNote = 69.0 + 12.0 * std::log2(freq / 440.0);
-      int noteInt = static_cast<int>(std::round(midiNote));
-      noteInt = std::clamp(noteInt, 0, 127);
-      double centFrac = (midiNote - noteInt) * 100.0;
-      ctx.midiKey = static_cast<uint8_t>(noteInt);
-      ctx.curDetune = static_cast<int>(std::round(centFrac));
-      applyVoicePitch(ctx);
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::PitchWheelR: {
-    auto& c = static_cast<const SoundMacro::CmdPitchWheelR&>(cmd);
-    if (c.rangeUp != c.rangeDown) {
-      fmt::print(stderr,
-              "fluidsyX: warning: PitchWheelR has asymmetric range "
-              "(up={}, down={}); FluidSynth only supports symmetric "
-              "pitch bend range, using rangeUp={}\n",
-              static_cast<int>(c.rangeUp), static_cast<int>(c.rangeDown),
-              static_cast<int>(c.rangeUp));
-    }
-    fluid_event_pitch_wheelsens(evt.get(), ctx.channel, c.rangeUp);
-    fluid_sequencer_send_now(sequencer.get(), evt.get());
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Volume / Envelope ── */
-  case SoundMacro::CmdOp::ScaleVolume: {
-    auto& c = static_cast<const SoundMacro::CmdScaleVolume&>(cmd);
-    int vol = (ctx.midiVel * (c.scale + 128)) / 256 + c.add;
-    vol = std::clamp(vol, 0, 127);
-    /* GEN_ATTENUATION in centibels: 0=full volume, 1440=silence.
-     * Convert MIDI velocity-scaled volume to centibel attenuation. */
-    float attn = (vol > 0)
-        ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
-        : 1440.0f;
-    attn = std::clamp(attn, 0.0f, 1440.0f);
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
-      fluid_voice_update_param(v, GEN_ATTENUATION);
-    } else {
-      ctx.pendingAttnGen = attn;
-      ctx.hasPendingAttn = true;
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::ScaleVolumeDLS: {
-    auto& c = static_cast<const SoundMacro::CmdScaleVolumeDLS&>(cmd);
-    int vol = (ctx.midiVel * (c.scale + 32768)) / 65536;
-    vol = std::clamp(vol, 0, 127);
-    float attn = (vol > 0)
-        ? static_cast<float>(-200.0 * std::log10(vol / 127.0))
-        : 1440.0f;
-    attn = std::clamp(attn, 0.0f, 1440.0f);
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      fluid_voice_gen_set(v, GEN_ATTENUATION, attn);
-      fluid_voice_update_param(v, GEN_ATTENUATION);
-    } else {
-      ctx.pendingAttnGen = attn;
-      ctx.hasPendingAttn = true;
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::SetAdsrCtrl: {
-    auto& c = static_cast<const SoundMacro::CmdSetAdsrCtrl&>(cmd);
-    ctx.useAdsrControllers = true;
-    ctx.midiAttack  = c.attack;
-    ctx.midiDecay   = c.decay;
-    ctx.midiSustain = c.sustain;
-    ctx.midiRelease = c.release;
-
-    /* Bootstrap ADSR defaults on first encounter, matching the amuse
-     * convention in SoundMacroState.cpp. */
-    if (!ctx.adsrBootstrapped) {
-      ctx.adsrBootstrapped = true;
-      ctx.ctrlVals[ctx.midiAttack]  = 10;
-      ctx.ctrlVals[ctx.midiSustain] = 127;
-      ctx.ctrlVals[ctx.midiRelease] = 10;
-
-      /* Also bootstrap into channel-level CC state so that future macros
-       * on this channel inherit the defaults. */
-      channelCtrlVals[ctx.channel][ctx.midiAttack]  = 10;
-      channelCtrlVals[ctx.channel][ctx.midiSustain] = 127;
-      channelCtrlVals[ctx.channel][ctx.midiRelease] = 10;
-    }
-
-    /* Record the CC→ADSR mapping at channel level so that incoming SNG CC
-     * events can be intercepted and converted to NRPN generator changes. */
-    if (ctx.channel < 16) {
-      auto& m = channelAdsrMap[ctx.channel];
-      m.active    = true;
-      m.attackCC  = c.attack;
-      m.decayCC   = c.decay;
-      m.sustainCC = c.sustain;
-      m.releaseCC = c.release;
-    }
-
-    /* Apply ADSR immediately.  If the voice is already playing, use
-     * voice-level generators; otherwise defer to StartSample. */
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      applyAdsrToVoice(v, ctx, /*started=*/true);
-    }
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Panning ── */
-  case SoundMacro::CmdOp::Panning: {
-    auto& c = static_cast<const SoundMacro::CmdPanning&>(cmd);
-    if (c.panPosition == -128) {
-      /* -128 = surround-channel only; no-op in FluidSynth */
-    } else {
-      /* GEN_PAN: -500..+500 (0.1% units).  panPosition is -127..+127 */
-      float panGen = (c.panPosition / 127.0f) * 500.0f;
-      if (auto* v = getActiveVoice(synth.get(), ctx)) {
-        fluid_voice_gen_set(v, GEN_PAN, panGen);
-        fluid_voice_update_param(v, GEN_PAN);
-      } else {
-        ctx.pendingPanGen = panGen;
-        ctx.hasPendingPan = true;
-      }
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::PianoPan: {
-    auto& c = static_cast<const SoundMacro::CmdPianoPan&>(cmd);
-    /* Original amuse uses m_initKey (the original trigger key), not the
-     * current midiKey which may have been changed by SetNote/AddNote. */
-    int diff = ctx.initKey - c.centerKey;
-    int panPos = c.centerPan + diff * c.scale / 127;
-    panPos = std::clamp(panPos, -127, 127);
-    float panGen = (panPos / 127.0f) * 500.0f;
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      fluid_voice_gen_set(v, GEN_PAN, panGen);
-      fluid_voice_update_param(v, GEN_PAN);
-    } else {
-      ctx.pendingPanGen = panGen;
-      ctx.hasPendingPan = true;
-    }
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Sample commands ── */
-  case SoundMacro::CmdOp::StartSample: {
-    auto& c = static_cast<const SoundMacro::CmdStartSample&>(cmd);
-    /* Look up the specific sample referenced by this command.
-     * Route voice creation through fluid_synth_start() so the voice receives
-     * a unique user-controlled ID (fluid_synth_alloc_voice() alone leaves ID=0).
-     * This allows fluid_synth_stop(synth, id) to properly stop the voice. */
-    fluid_sample_t* flSamp = nullptr;
-    bool looped = false;
-    if (musyxSfData) {
-      auto sIt = musyxSfData->sampleIndex.find(c.sample.id.id);
-      if (sIt != musyxSfData->sampleIndex.end()) {
-        auto& ds = musyxSfData->samples[sIt->second];
-        flSamp = ds.flSample;
-        looped = ds.looped;
-      }
-    }
-    if (flSamp && dummyPreset) {
-      /* Populate the pending voice start context for the noteon callback */
-      pendingVoiceStart.flSamp        = flSamp;
-      pendingVoiceStart.looped        = looped;
-      pendingVoiceStart.macroContext = &ctx;
-
-      /* Allocate a unique non-zero ID */
-      unsigned int id = nextVoiceId++;
-      if (id == 0) id = nextVoiceId++;
-
-      /* fluid_synth_start() sets synth->noteid = id before calling noteon,
-       * so the voice allocated inside dummy_preset_noteon gets our custom ID. */
-      if (fluid_synth_start(synth.get(), id, dummyPreset, 0, ctx.channel,
-                             ctx.midiKey, ctx.midiVel) == FLUID_OK) {
-        ctx.voiceId  = id;
-        ctx.allocKey = ctx.midiKey;
-        ctx.hasPendingPan  = false;
-        ctx.hasPendingAttn = false;
-      } else {
-        fmt::print(stderr, "fluidsyX: warning: voice start failed for "
-                        "sample {} on ch {} key {}\n",
-                c.sample.id.id, ctx.channel, ctx.midiKey);
-      }
-      pendingVoiceStart.flSamp = nullptr; /* prevent accidental reuse */
-    } else {
-      fmt::print(stderr, "fluidsyX: note on event for sample {} on ch {} key {} (sample not found, using preset fallback)\n",
-              c.sample.id.id, ctx.channel, ctx.midiKey);
-      /* Fallback: send note-on to trigger preset (wrong sample possible) */
-      fluid_event_noteon(evt.get(), ctx.channel, ctx.midiKey, ctx.midiVel);
-      fluid_sequencer_send_now(sequencer.get(), evt.get());
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::StopSample: {
-    /* Original amuse: vox.stopSample() = m_curSample.reset() – immediate stop.
-     * In FluidSynth we kill the voice outright (no release phase). */
-    killVoice(synth.get(), ctx);
-    fmt::print(stderr, "fluidsyX: OFFing voice ID {} on ch {}\n", ctx.voiceId, ctx.channel);
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::KeyOff: {
-    /* Original amuse: vox._macroKeyOff() triggers ADSR release phase.
-     * The voice continues fading out; the macro continues executing.
-     * fluid_synth_stop() sends a note-off triggering the release envelope. */
-    releaseVoice(synth.get(), ctx);
-    ctx.keyoffReceived = true;
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::SendKeyOff: {
-    /* Original amuse: sends key-off to another voice (last started or by var).
-     * Simplified: if we have a last-played child macro, release its voice. */
-    auto& c = static_cast<const SoundMacro::CmdSendKeyOff&>(cmd);
-    int targetMacroId = -1;
-    if (c.lastStarted) {
-      targetMacroId = ctx.lastPlayMacroId;
-    } else {
-      targetMacroId = ctx.vars[c.variable & 0x1f];
-    }
-    if (targetMacroId >= 0) {
-      auto childIt = activeMacros.find(targetMacroId);
-      if (childIt != activeMacros.end() && !childIt->second.ended) {
-        fmt::print(stderr, "fluidsyX: sending key off to foreign macro ID {} on ch {} (lastStarted={}, var={})\n",
-                targetMacroId, ctx.channel, c.lastStarted, c.variable & 0x1f);
-        releaseVoice(synth.get(), childIt->second);
-        childIt->second.keyoffReceived = true;
-      }
-      else {
-        fmt::print(stderr, "fluidsyX: warning: SendKeyOff target macro ID {} not found or already ended (lastStarted={}, var={})\n",
-                targetMacroId, c.lastStarted, c.variable & 0x1f);
-      }
-    }
-    else
-      fmt::print(stderr, "fluidsyX: warning: SendKeyOff with no valid target (lastStarted={}, var={})\n",
-              c.lastStarted, c.variable & 0x1f);
-    ctx.pc++;
-    break;
-  }
-
-  /* ── PlayMacro (spawn child macro) ── */
-  case SoundMacro::CmdOp::PlayMacro: {
-    auto& c = static_cast<const SoundMacro::CmdPlayMacro&>(cmd);
-    if (activePool && c.macro.id.id != 0xffff) {
-      const SoundMacro* child = activePool->soundMacro(c.macro.id);
-      if (child) {
-        /* Original amuse: startChildMacro uses m_initKey + addNote */
-        int childKey = std::clamp(static_cast<int>(ctx.initKey) + c.addNote, 0, 127);
-        int childId = enqueueSoundMacro(child, c.macroStep.step, ctx.channel,
-                          static_cast<uint8_t>(childKey), ctx.midiVel,
-                          curTick);
-        ctx.lastPlayMacroId = childId;
-        fmt::print(stderr, "fluidsyX: started child macro ID {} on ch {} with key {}\n", childId, ctx.channel, childKey);
-      }
-      else {
-        fmt::print(stderr, "fluidsyX: warning: PlayMacro target macro ID {} not found\n", c.macro.id.id);
-      }
-    }
-    else {
-      fmt::print(stderr, "fluidsyX: warning: PlayMacro with no valid target (macro ID {})\n", c.macro.id.id);
-    }
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Split / Branch ── */
-  case SoundMacro::CmdOp::SplitKey: {
-    auto& c = static_cast<const SoundMacro::CmdSplitKey&>(cmd);
-    /* Original amuse uses m_initKey for the comparison, not the current key */
-    if (ctx.initKey >= static_cast<uint8_t>(c.key)) {
-      if (c.macro.id.id != 0xffff && c.macro.id.id != 0 && activePool) {
-        const SoundMacro* target = activePool->soundMacro(c.macro.id);
-        if (target) {
-          ctx.macro = target;
-          ctx.pc = c.macroStep.step;
-          break;
-        }
-      }
-      ctx.pc = c.macroStep.step;
-    } else {
-      ctx.pc++;
-    }
-    break;
-  }
-  case SoundMacro::CmdOp::SplitVel: {
-    auto& c = static_cast<const SoundMacro::CmdSplitVel&>(cmd);
-    if (ctx.midiVel >= static_cast<uint8_t>(c.velocity)) {
-      if (c.macro.id.id != 0xffff && c.macro.id.id != 0 && activePool) {
-        const SoundMacro* target = activePool->soundMacro(c.macro.id);
-        if (target) {
-          ctx.macro = target;
-          ctx.pc = c.macroStep.step;
-          break;
-        }
-      }
-      ctx.pc = c.macroStep.step;
-    } else {
-      ctx.pc++;
-    }
-    break;
-  }
-  case SoundMacro::CmdOp::SplitRnd: {
-    auto& c = static_cast<const SoundMacro::CmdSplitRnd&>(cmd);
-    std::uniform_int_distribution<int> dist(0, 255);
-    if (dist(rng) >= c.rnd) {
-      if (c.macro.id.id != 0xffff && c.macro.id.id != 0 && activePool) {
-        const SoundMacro* target = activePool->soundMacro(c.macro.id);
-        if (target) {
-          ctx.macro = target;
-          ctx.pc = c.macroStep.step;
-          break;
-        }
-      }
-      ctx.pc = c.macroStep.step;
-    } else {
-      ctx.pc++;
-    }
-    break;
-  }
-
-  /* ── Vibrato / Tremolo / Portamento ── */
-
-  case SoundMacro::CmdOp::Mod2Vibrange:
-  {
-    auto& c = static_cast<const SoundMacro::CmdMod2Vibrange&>(cmd);
-
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      fluid_mod_t *mod2vibrange_mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
-      /* MOD2VIBRANGE [0x22]: CC1 adds an offset to vibrato depth */
-      fluid_mod_set_source1(mod2vibrange_mod, 1, FLUID_MOD_CC | FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
-      fluid_mod_set_source2(mod2vibrange_mod, 0, 0);
-      fluid_mod_set_dest   (mod2vibrange_mod, GEN_VIBLFOTOPITCH);
-      fluid_mod_set_amount (mod2vibrange_mod, c.keys * 100 + c.cents); /* cents */
-      fluid_voice_add_mod  (v, mod2vibrange_mod, FLUID_VOICE_ADD); // << The ADD makes the difference!
-    } else {
-      fmt::print(stderr, "fluidsyX: warning: Mod2Vibrange command with no active voice on ch {}\n", ctx.channel);
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::Vibrato: {
-    auto& c = static_cast<const SoundMacro::CmdVibrato&>(cmd);
-
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      fluid_mod_t *vib_mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
-
-      uint8_t modSrc;
-      uint8_t modFlag = FLUID_MOD_LINEAR | FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE;
-      // Taken from DolphinMacrodef.mxd:
-      //   If the modulation flag is set to 1 the values from the modulation wheel will be used to scale the vibrato;
-      //   if it is set to 2 the aftertouch information will be used instead. 0 disables any scaling by controllers.
-      // Note that this contradicts to the documentation of the modwheel flag bytes a few lines below, which only mention values 0 and 1.
-      double vibDepthCents = c.levelNote * 100.0 + c.levelFine;
-      uint8_t modwheelFlag = static_cast<uint8_t>(c.modwheelFlag);
-      switch(modwheelFlag)
-      {
-        default:
-        case 0:
-          modSrc = FLUID_MOD_NONE;
-          modFlag |= FLUID_MOD_GC;
-          break;
-        case 1:
-          modSrc = 1; /* CC1 / modwheel MSB */
-          modFlag |= FLUID_MOD_CC;
-          break;
-        case 2:
-          modSrc = FLUID_MOD_CHANNELPRESSURE;
-          modFlag |= FLUID_MOD_GC;
-          break;
-      }
-
-      fluid_mod_set_source2(vib_mod, FLUID_MOD_NONE, 0);
-      fluid_mod_set_dest   (vib_mod, GEN_VIBLFOTOPITCH);
-      if(modwheelFlag == 1 || modwheelFlag == 2)
-      {
-        // VIBRATO [0x1c] modwheel flag => set up modulator
-        fluid_mod_set_source1(vib_mod, modSrc, modFlag);
-        fluid_mod_set_amount (vib_mod, vibDepthCents);
-        fluid_voice_add_mod  (v, vib_mod, FLUID_VOICE_OVERWRITE);
-      }
-      else if(modwheelFlag == 0)
-      {
-        // setting up a modulator in this case would technically work, but cause fluidsynth to print a warning, because modSrc1 is none.
-          fluid_voice_gen_set(v, GEN_VIBLFOTOPITCH, vibDepthCents);
-          fluid_voice_update_param(v, GEN_VIBLFOTOPITCH);
-      }
-      else
-      {
-          fmt::print(stderr, "fluidsyX: warning: unknown modwheelFlag value {} in Vibrato command; treating as modwheelFlag==0\n", c.modwheelFlag);
-          break;
-      }
-
-      if(modwheelFlag == 0 || modwheelFlag == 2)
-      {
-        // we now need to disable the default ModWheel2Vibrato modulator
-        modFlag &= ~FLUID_MOD_GC;
-        modFlag |= FLUID_MOD_CC;
-        fluid_mod_set_source1(vib_mod, 1, modFlag);
-        fluid_mod_set_amount(vib_mod, 0);
-        fluid_voice_add_mod(v, vib_mod, FLUID_VOICE_OVERWRITE);
-      }
-
-      /* GEN_VIBLFOFREQ: vibrato frequency in absolute cents from 8.176 Hz */
-      if (c.ticksOrMs > 0) {
-        float q = c.msSwitch ? 1000.0f : static_cast<float>(ctx.ticksPerSec);
-        float periodSec = c.ticksOrMs / q;
-        if (periodSec > 0.0f) {
-          float freqHz = 1.0f / periodSec;
-          float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
-          fluid_voice_gen_set(v, GEN_VIBLFOFREQ, freqCents);
-          fluid_voice_update_param(v, GEN_VIBLFOFREQ);
-        }
-        // Technically, the sign of c.levelNote decides whether the LFO start phase is 0 or period / 2, but FluidSynth doesn't support that.
-      }
-    } else {
-      fmt::print(stderr, "fluidsyX: warning: Vibrato command with no active voice on ch {}\n", ctx.channel);
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::Portamento: {
-    auto& c = static_cast<const SoundMacro::CmdPortamento&>(cmd);
-    bool enable = (c.portState != SoundMacro::CmdPortamento::PortState::Disable);
-
-    /* CC 65 = portamento on/off */
-    fluid_event_control_change(evt.get(), ctx.channel, 65, enable ? 127 : 0);
-    fluid_sequencer_send_now(sequencer.get(), evt.get());
-
-    if (enable) {
-      /* Convert time value to milliseconds */
-      uint16_t timeVal = c.ticksOrMs;
-      double timeMs;
-      if (c.msSwitch) {
-        timeMs = static_cast<double>(timeVal);
-      } else {
-        timeMs = timeVal * 1000.0 / ctx.ticksPerSec;
-      }
-      // CC5 * 128 + CC37 = millisec
-      fluid_event_control_change(evt.get(), ctx.channel, 5, static_cast<int>(timeMs) / 128);
-      fluid_sequencer_send_now(sequencer.get(), evt.get());
-      fluid_event_control_change(evt.get(), ctx.channel, 37, static_cast<int>(timeMs) % 128);
-      fluid_sequencer_send_now(sequencer.get(), evt.get());
-
-      /* Set portamento mode based on MusyX PortType.
-       * LastPressed → legato-only mode, Always → each-note mode. */
-      if (c.portType == SoundMacro::CmdPortamento::PortType::LastPressed)
-        fluid_synth_set_portamento_mode(synth.get(), ctx.channel,
-                                        FLUID_CHANNEL_PORTAMENTO_MODE_LEGATO_ONLY);
-      else
-        fluid_synth_set_portamento_mode(synth.get(), ctx.channel,
-                                        FLUID_CHANNEL_PORTAMENTO_MODE_EACH_NOTE);
-      fmt::print(stderr, "fluidsyX: PORTAMENTO ON!!! for ch {} with time {} ms (mode {})\n",
-              ctx.channel, timeMs, (c.portType == SoundMacro::CmdPortamento::PortType::LastPressed) ? "legato-only" : "each-note");
-    }
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Variable operations ── */
-  case SoundMacro::CmdOp::SetVar: {
-    auto& c = static_cast<const SoundMacro::CmdSetVar&>(cmd);
-    int idx = static_cast<int>(c.a);
-    if (idx >= 0 && idx < 32)
-      ctx.vars[idx] = c.imm;
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::AddVars: {
-    auto& c = static_cast<const SoundMacro::CmdAddVars&>(cmd);
-    int a = static_cast<int>(c.a);
-    int b = static_cast<int>(c.b);
-    if (a >= 0 && a < 32 && b >= 0 && b < 32)
-      ctx.vars[a] += ctx.vars[b];
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::SubVars: {
-    auto& c = static_cast<const SoundMacro::CmdSubVars&>(cmd);
-    int a = static_cast<int>(c.a);
-    int b = static_cast<int>(c.b);
-    if (a >= 0 && a < 32 && b >= 0 && b < 32)
-      ctx.vars[a] -= ctx.vars[b];
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::MulVars: {
-    auto& c = static_cast<const SoundMacro::CmdMulVars&>(cmd);
-    int a = static_cast<int>(c.a);
-    int b = static_cast<int>(c.b);
-    if (a >= 0 && a < 32 && b >= 0 && b < 32)
-      ctx.vars[a] *= ctx.vars[b];
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::DivVars: {
-    auto& c = static_cast<const SoundMacro::CmdDivVars&>(cmd);
-    int a = static_cast<int>(c.a);
-    int b = static_cast<int>(c.b);
-    if (a >= 0 && a < 32 && b >= 0 && b < 32 && ctx.vars[b] != 0)
-      ctx.vars[a] /= ctx.vars[b];
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::AddIVars: {
-    auto& c = static_cast<const SoundMacro::CmdAddIVars&>(cmd);
-    int a = static_cast<int>(c.a);
-    if (a >= 0 && a < 32)
-      ctx.vars[a] += c.imm;
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::IfEqual: {
-    auto& c = static_cast<const SoundMacro::CmdIfEqual&>(cmd);
-    int a = static_cast<int>(c.a);
-    int b = static_cast<int>(c.b);
-    bool cond = false;
-    if (a >= 0 && a < 32 && b >= 0 && b < 32)
-      cond = (ctx.vars[a] == ctx.vars[b]);
-    if (cond) {
-      if (!c.notEq)
-        ctx.pc = c.macroStep.step;
-      else
-        ctx.pc++;
-    } else {
-      if (c.notEq)
-        ctx.pc = c.macroStep.step;
-      else
-        ctx.pc++;
-    }
-    break;
-  }
-  case SoundMacro::CmdOp::IfLess: {
-    auto& c = static_cast<const SoundMacro::CmdIfLess&>(cmd);
-    int a = static_cast<int>(c.a);
-    int b = static_cast<int>(c.b);
-    bool cond = false;
-    if (a >= 0 && a < 32 && b >= 0 && b < 32)
-      cond = (ctx.vars[a] < ctx.vars[b]);
-    if (cond) {
-      if (!c.notLt)
-        ctx.pc = c.macroStep.step;
-      else
-        ctx.pc++;
-    } else {
-      if (c.notLt)
-        ctx.pc = c.macroStep.step;
-      else
-        ctx.pc++;
-    }
-    break;
-  }
-
-  /* ── Event trapping (TRAP_EVENT / UNTRAP_EVENT) ── */
-  case SoundMacro::CmdOp::TrapEvent: {
-    auto& c = static_cast<const SoundMacro::CmdTrapEvent&>(cmd);
-    MacroExecContext::EventTrap trap;
-    trap.macroId = static_cast<uint16_t>(c.macro.id.id);
-    trap.macroStep = static_cast<uint16_t>(c.macroStep.step);
-    switch (c.event) {
-    case SoundMacro::CmdTrapEvent::EventType::KeyOff:
-      ctx.keyoffTrap = trap;
-      break;
-    case SoundMacro::CmdTrapEvent::EventType::SampleEnd:
-      ctx.sampleEndTrap = trap;
-      break;
-    case SoundMacro::CmdTrapEvent::EventType::MessageRecv:
-      ctx.messageTrap = trap;
-      break;
-    default: break;
-    }
-    ctx.pc++;
-    break;
-  }
-
-  case SoundMacro::CmdOp::UntrapEvent: {
-    auto& c = static_cast<const SoundMacro::CmdUntrapEvent&>(cmd);
-    switch (c.event) {
-    case SoundMacro::CmdTrapEvent::EventType::KeyOff:
-      ctx.keyoffTrap.clear();
-      break;
-    case SoundMacro::CmdTrapEvent::EventType::SampleEnd:
-      ctx.sampleEndTrap.clear();
-      break;
-    case SoundMacro::CmdTrapEvent::EventType::MessageRecv:
-      ctx.messageTrap.clear();
-      break;
-    default: break;
-    }
-    ctx.pc++;
-    break;
-  }
-
-  /* ── Selector evaluators (controller → parameter mapping) ── */
-  case SoundMacro::CmdOp::SpanSelect:      /* surround panning – no-op (FluidSynth limitation) */
-  case SoundMacro::CmdOp::DopplerSelect:   /* surround doppler – no-op (FluidSynth limitation) */
-  case SoundMacro::CmdOp::TremoloSelect:
-  case SoundMacro::CmdOp::ReverbSelect: // this should set up a modulator from CC "c.midiControl" to GEN_REVERBSEND - but it doesn't seem to be widely used, the default reverb CC91 is preferred by most tunes
-  case SoundMacro::CmdOp::ModWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_VIBLFOTOPITCH
-  case SoundMacro::CmdOp::PitchWheelSelect: // this should set up a modulator from CC "c.midiControl" to GEN_FINETUNE, similar to default_pitch_bend_mod in FluidSynth
-  case SoundMacro::CmdOp::PedalSelect: // this is a hard one - fluidsynth relies on CC64 for sustain pedal, but MusyX tunes use this selector to bind sustain to an arbitrary CC; one would need to track the bound CC and translate incoming CC events back to 64, which would affect the entire MIDI channel, rather than just the single voice...
-  case SoundMacro::CmdOp::PortamentoSelect: // this is another tricky one - it defines a custom CC for portamento usage, but fluidsynth only supports the standard CC65 for portamento on/off and CC5/37 for portamento time, so supporting this would require tracking the bound CC and translating incoming CC events back to the standard ones, which would affect the entire MIDI channel rather than just the single voice...
-  case SoundMacro::CmdOp::PanSelect: // this should set up a modulator from CC "c.midiControl" to GEN_PAN
-  /* Advanced controller routing – skip for now */
-  case SoundMacro::CmdOp::VolSelect: // this should set up a modulator from CC "c.midiControl" to GEN_ATTENUATION
-  case SoundMacro::CmdOp::PreASelect:
-  case SoundMacro::CmdOp::PreBSelect:
-  case SoundMacro::CmdOp::PostBSelect:
-  case SoundMacro::CmdOp::AuxAFXSelect:
-  case SoundMacro::CmdOp::AuxBFXSelect:
-  /* ── Messages ── */
-  case SoundMacro::CmdOp::SendMessage:
-  case SoundMacro::CmdOp::GetMessage:
-  case SoundMacro::CmdOp::GetVid:
-  case SoundMacro::CmdOp::FadeIn: // Timer-driven envelope
-  /* Timer-driven modulation effects */
-  case SoundMacro::CmdOp::SetupTremolo:
-  case SoundMacro::CmdOp::PitchSweep1: // Timer-driven pitch sweep
-  case SoundMacro::CmdOp::PitchSweep2:
-  case SoundMacro::CmdOp::SetPitchAdsr:  // Timer-driven pitch ADSR
-  /* ── Miscellaneous ── */
-  case SoundMacro::CmdOp::SetAdsr: // ADSR table lookup for envelope shape
-  if(op == SoundMacro::CmdOp::SetAdsr)
-  {
-      auto& c = static_cast<const SoundMacro::CmdSetAdsr&>(cmd);
-      ctx.adsrTableId = std::make_optional(std::make_tuple(uint16_t(c.table.id.id), c.dlsMode));
-      ctx.pc++;
-      break;
-  }
-  [[fallthrough]];
-  case SoundMacro::CmdOp::ModeSelect:
-  if(op == SoundMacro::CmdOp::ModeSelect)
-  {
-    auto& c = static_cast<const SoundMacro::CmdModeSelect&>(cmd);
-    if(c.dlsVol == true && c.itd == false)
-    {
-      // This pretty much matches fluidsynth's default curve, so we can just ignore it
-      ctx.pc++;
-      break;
-    }
-  }
-  [[fallthrough]];
-  case SoundMacro::CmdOp::Spanning: // Controls surround panning, which FluidSynth does not currently support
-  case SoundMacro::CmdOp::Envelope:
-  case SoundMacro::CmdOp::SplitMod: // Skip for now (no modulation tracking in this simple version)
-  case SoundMacro::CmdOp::SendFlag:
-  case SoundMacro::CmdOp::AgeCntSpeed:
-  case SoundMacro::CmdOp::AgeCntVel:
-  case SoundMacro::CmdOp::AddAgeCount:
-  case SoundMacro::CmdOp::SetAgeCount:
-  case SoundMacro::CmdOp::WiiUnknown:
-  case SoundMacro::CmdOp::WiiUnknown2:
-  default: /* Unknown op – always log */
-    if (!verbose)
-    {
-      fmt::print(stderr, "fluidsyX: [ch{} pc{}] UNIMPLEMENTED {}\n", ctx.channel, ctx.pc, formatMacroCmd(cmd, curTick));
-    }
-    [[fallthrough]];
-  /* ── deliberately unimplemented ── */
-  case SoundMacro::CmdOp::SRCmodeSelect:
-  if(op == SoundMacro::CmdOp::SRCmodeSelect)
-  {
-      auto& c = static_cast<const SoundMacro::CmdSRCmodeSelect&>(cmd);
-      if(c.type0SrcFilter != 0 || c.srcType != 1)
-      {
-        fmt::print(stderr, "fluidsyX: ignoring SRCmodeSelect with srcType={} type0SrcFilter={}\n", c.srcType, c.type0SrcFilter);
-      }
-  }
-    // ignore – this is for sample rate conversion mode, which Fluidsynth only supports as global setting
-    [[fallthrough]];
-  case SoundMacro::CmdOp::AddPriority:
-  case SoundMacro::CmdOp::SetPriority:
-    // ignore - this is only relevant if we would run out of polyphony, which we won't because fluidsynth has enough
-    ctx.pc++;
-    break;
-  case SoundMacro::CmdOp::SetKeygroup: {
-    auto& c = static_cast<const SoundMacro::CmdSetKeygroup&>(cmd);
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      fluid_voice_gen_set(v, GEN_EXCLUSIVECLASS, c.group);
-    }
-    else {
-      ctx.pendingExclusiveClass = c;
-    }
-    ctx.pc++;
-    break;
-  }
-  case SoundMacro::CmdOp::SetupLFO: {
-    auto& c = static_cast<const SoundMacro::CmdSetupLFO&>(cmd);
-    if (auto* v = getActiveVoice(synth.get(), ctx)) {
-      c.fluid(v);
-    }
-    else {
-      ctx.pendingSetupLFO = c;
-    }
-    ctx.pc++;
-    break;
-  }
-  }
-
-  return delay;
+  fluid_voice_t* v = getActiveVoice(synth.get(), ctx);
+  return cmd.DoFluid(ctx, v);
 }
+
 
 /* ── Resolve note → SoundMacro via SongGroupIndex pages ── */
 
@@ -2879,6 +2705,7 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
    * and ADSR controllers see the current MIDI setup. */
   if (channel >= 0 && channel < 16)
     ctx.ctrlVals = channelCtrlVals[channel];
+  ctx.appData = this;
 
   /* Walk through commands that execute instantly (no delay).
    * When a command introduces a delay, schedule a timer event and stop. */
