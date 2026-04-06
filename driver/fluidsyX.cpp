@@ -1019,10 +1019,6 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
     fluid_voice_gen_set(voice, GEN_FINETUNE, ctx.curDetune);
   if (ctx.pendingExclusiveClass.has_value())
   {
-    if(ctx.pendingExclusiveClass->killNow == false)
-    {
-      fmt::print(stderr, "fluidsyX warning: killNow=false is not supported before starting a new voice. Matching voices will be killed!");
-    }
     fluid_voice_gen_set(voice, GEN_EXCLUSIVECLASS, ctx.pendingExclusiveClass->group);
     ctx.pendingExclusiveClass = std::nullopt;
   }
@@ -2775,11 +2771,6 @@ unsigned int FluidsyXApp::processMacroCmd(MacroExecContext& ctx,
     auto& c = static_cast<const SoundMacro::CmdSetKeygroup&>(cmd);
     if (auto* v = getActiveVoice(synth.get(), ctx)) {
       fluid_voice_gen_set(v, GEN_EXCLUSIVECLASS, c.group);
-
-      if(ctx.pendingExclusiveClass->killNow == true)
-        fmt::print(stderr, "fluidsyX warning: killNow=true is not supported when setting the group for an already existing voice, ignoring");
-      else if (verbose)
-        fmt::print(stderr, "fluidsyX: set exclusive class {} for voice ID {} on ch {}\n", c.group, ctx.voiceId, ctx.channel);
     }
     else {
       ctx.pendingExclusiveClass = c;
