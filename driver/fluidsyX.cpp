@@ -1845,18 +1845,32 @@ unsigned int SoundMacro::CmdSetNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   return delay;
 }
 
-unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
   unsigned int delay = 0;
-  int newKey;
-  if (originalKey) {
-    newKey = static_cast<int>(ctx.initKey) + add;
-  } else {
-    newKey = static_cast<int>(ctx.midiKey) + add;
+  if(v)
+  {
+    int newKey;
+    if (originalKey) {
+      //fluid_voice_gen_set(v, GEN_OVERRIDEROOTKEY, ctx.initKey);
+      //fluid_voice_gen_set(v, GEN_SCALETUNE, 0);
+      fluid_voice_gen_set(v, GEN_COARSETUNE, add);
+      //fluid_voice_update_param(v, GEN_OVERRIDEROOTKEY);
+      //fluid_voice_update_param(v, GEN_SCALETUNE);
+      fluid_voice_update_param(v, GEN_COARSETUNE);
+    } else {
+      // The intent is: shift the currently playing pitch up/down by add semitones. In SF2, set coarseTune = accumulated offset value.
+      fluid_voice_gen_set(v, GEN_COARSETUNE, add);
+      newKey = static_cast<int>(ctx.midiKey) + add;
+    }
+      fluid_voice_gen_set(v, GEN_FINETUNE, detune);
   }
-  ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
-  ctx.curDetune = detune;
-  app->applyVoicePitch(ctx);
+  else
+  {
+    ctx.curDetune = detune;
+    ctx.pendingCmds.push_back(this);
+  }
+
   if (msSwitch)
     delay = ticksOrMs;
   else
