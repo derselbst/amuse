@@ -980,7 +980,8 @@ struct FluidsyXApp {
   void applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx, bool started);
 
   /** Apply pitch offset (GEN_COARSETUNE + GEN_FINETUNE) to the macro's voice.
-   *  Computes the offset from allocKey and curDetune. */
+   *  Computes the offset from curNote (MusyX: curNote) relative to allocKey,
+   *  plus the accumulated curDetune in cents. */
   void applyVoicePitch(MacroExecContext& ctx);
 
   /** Execute an event trap: redirect macro execution to the trap target.
@@ -1690,14 +1691,14 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 }
 
 void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
-  int offsetCents = (ctx.midiKey - ctx.allocKey) * 100 + ctx.curDetune;
+  int offsetCents = (ctx.curNote - ctx.allocKey) * 100 + ctx.curDetune;
   int coarse = offsetCents / 100;
   int fine   = offsetCents % 100;
   fluid_voice_t* v = getActiveVoice(synth.get(), ctx);
   if (!v)
   {
     fmt::print(stderr, "Warning: unable to find active voice for pitch change (key {}, coarse {}, fine {})\n",
-               ctx.midiKey, coarse, fine);
+               ctx.curNote, coarse, fine);
     return;
   }
   fluid_voice_gen_set(v, GEN_COARSETUNE, static_cast<float>(coarse));
@@ -1834,7 +1835,7 @@ unsigned int SoundMacro::CmdGoSub::DoFluid(MacroExecContext& ctx, fluid_voice_t*
 unsigned int SoundMacro::CmdSetNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
   unsigned int delay = 0;
-  ctx.midiKey = static_cast<uint8_t>(std::clamp(static_cast<int>(key), 0, 127));
+  ctx.curNote = static_cast<uint8_t>(std::clamp(static_cast<int>(key), 0, 127));
   ctx.curDetune = detune;
   app->applyVoicePitch(ctx);
   if (msSwitch)
@@ -1852,7 +1853,7 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   {
     int newKey;
     if (originalKey) {
-      //fluid_voice_gen_set(v, GEN_OVERRIDEROOTKEY, ctx.initKey);
+      //fluid_voice_gen_set(v, GEN_OVERRIDEROOTKEY, ctx.orgNote);
       //fluid_voice_gen_set(v, GEN_SCALETUNE, 0);
       fluid_voice_gen_set(v, GEN_COARSETUNE, add);
       //fluid_voice_update_param(v, GEN_OVERRIDEROOTKEY);
@@ -1861,7 +1862,7 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
     } else {
       // The intent is: shift the currently playing pitch up/down by add semitones. In SF2, set coarseTune = accumulated offset value.
       fluid_voice_gen_set(v, GEN_COARSETUNE, add);
-      newKey = static_cast<int>(ctx.midiKey) + add;
+      newKey = static_cast<int>(ctx.curNote) + add;
     }
       fluid_voice_gen_set(v, GEN_FINETUNE, detune);
   }
@@ -1882,8 +1883,8 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
 unsigned int SoundMacro::CmdLastNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
   unsigned int delay = 0;
-  int newKey = static_cast<int>(ctx.initKey) + add;
-  ctx.midiKey = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
+  int newKey = static_cast<int>(ctx.orgNote) + add;
+  ctx.curNote = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
   ctx.curDetune = detune;
   app->applyVoicePitch(ctx);
   if (msSwitch)
@@ -1899,14 +1900,14 @@ unsigned int SoundMacro::CmdRndNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   int lo = noteLo;
   int hi = noteHi;
   if (absRel) {
-    lo = static_cast<int>(ctx.midiKey) - noteLo;
-    hi = static_cast<int>(ctx.midiKey) + noteHi;
+    lo = static_cast<int>(ctx.curNote) - noteLo;
+    hi = static_cast<int>(ctx.curNote) + noteHi;
   }
   if (lo > hi)
     std::swap(lo, hi);
   std::uniform_int_distribution<int> dist(lo, hi);
   int note = dist(app->rng);
-  ctx.midiKey = static_cast<uint8_t>(std::clamp(note, 0, 127));
+  ctx.curNote = static_cast<uint8_t>(std::clamp(note, 0, 127));
   if (fixedFree) {
     std::uniform_int_distribution<int> detuneDist(-100, 100);
     ctx.curDetune = detuneDist(app->rng);
@@ -1926,7 +1927,7 @@ unsigned int SoundMacro::CmdSetPitch::DoFluid(MacroExecContext& ctx, fluid_voice
     int noteInt = static_cast<int>(std::round(midiNote));
     noteInt = std::clamp(noteInt, 0, 127);
     double centFrac = (midiNote - noteInt) * 100.0;
-    ctx.midiKey = static_cast<uint8_t>(noteInt);
+    ctx.curNote = static_cast<uint8_t>(noteInt);
     ctx.curDetune = static_cast<int>(std::round(centFrac));
     app->applyVoicePitch(ctx);
   }
@@ -2035,7 +2036,7 @@ unsigned int SoundMacro::CmdPanning::DoFluid(MacroExecContext& ctx, fluid_voice_
 }
 
 unsigned int SoundMacro::CmdPianoPan::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
-  int diff = ctx.initKey - centerKey;
+  int diff = ctx.orgNote - centerKey;
   int panPos = centerPan + diff * scale / 127;
   panPos = std::clamp(panPos, -127, 127);
   float panGen = (panPos / 127.0f) * 500.0f;
@@ -2068,13 +2069,13 @@ unsigned int SoundMacro::CmdStartSample::DoFluid(MacroExecContext& ctx, fluid_vo
     unsigned int id = app->nextVoiceId++;
     if (id == 0) id = app->nextVoiceId++;
     if (fluid_synth_start(app->synth.get(), id, app->dummyPreset, 0, ctx.channel,
-                           ctx.midiKey, ctx.midiVel) == FLUID_OK) {
+                           ctx.curNote, ctx.midiVel) == FLUID_OK) {
       ctx.voiceId  = id;
-      ctx.allocKey = ctx.midiKey;
+      ctx.allocKey = ctx.curNote;
     } else {
       fmt::print(stderr, "fluidsyX: warning: voice start failed for "
                       "sample {} on ch {} key {}\n",
-              sample.id.id, ctx.channel, ctx.midiKey);
+              sample.id.id, ctx.channel, ctx.curNote);
     }
     app->pendingVoiceStart.flSamp = nullptr;
   } else {
@@ -2082,8 +2083,8 @@ unsigned int SoundMacro::CmdStartSample::DoFluid(MacroExecContext& ctx, fluid_vo
     fluid_event_set_source(evt.get(), app->callbackSeqId);
     fluid_event_set_dest(evt.get(), app->synthSeqId);
     fmt::print(stderr, "fluidsyX: note on event for sample {} on ch {} key {} (sample not found, using preset fallback)\n",
-            sample.id.id, ctx.channel, ctx.midiKey);
-    fluid_event_noteon(evt.get(), ctx.channel, ctx.midiKey, ctx.midiVel);
+            sample.id.id, ctx.channel, ctx.curNote);
+    fluid_event_noteon(evt.get(), ctx.channel, ctx.curNote, ctx.midiVel);
     fluid_sequencer_send_now(app->sequencer.get(), evt.get());
   }
   ctx.pc++;
@@ -2138,7 +2139,7 @@ unsigned int SoundMacro::CmdPlayMacro::DoFluid(MacroExecContext& ctx, fluid_voic
   if (app->activePool && macro.id.id != 0xffff) {
     const SoundMacro* child = app->activePool->soundMacro(macro.id);
     if (child) {
-      int childKey = std::clamp(static_cast<int>(ctx.initKey) + addNote, 0, 127);
+      int childKey = std::clamp(static_cast<int>(ctx.orgNote) + addNote, 0, 127);
       unsigned int curTick = fluid_sequencer_get_tick(app->sequencer.get());
       int childId = app->enqueueSoundMacro(child, macroStep.step, ctx.channel,
                         static_cast<uint8_t>(childKey), ctx.midiVel,
@@ -2157,7 +2158,7 @@ unsigned int SoundMacro::CmdPlayMacro::DoFluid(MacroExecContext& ctx, fluid_voic
 
 unsigned int SoundMacro::CmdSplitKey::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
-  if (ctx.initKey >= static_cast<uint8_t>(key)) {
+  if (ctx.orgNote >= static_cast<uint8_t>(key)) {
     if (macro.id.id != 0xffff && macro.id.id != 0 && app->activePool) {
       const SoundMacro* target = app->activePool->soundMacro(macro.id);
       if (target) {
@@ -2708,8 +2709,8 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   ctx.macro = sm;
   ctx.pc = step;
   ctx.channel = channel;
-  ctx.midiKey = key;
-  ctx.initKey = key;
+  ctx.curNote = key;
+  ctx.orgNote = key;
   ctx.midiVel = vel;
   /* triggerNote = the original SNG note (before keymap/layer transpose).
    * Used to match note-off events.  If not supplied, defaults to key. */

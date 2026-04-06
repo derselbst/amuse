@@ -13,9 +13,9 @@ namespace amuse {
 struct MacroExecContext {
   const SoundMacro* macro = nullptr;
   int pc = 0; /* program counter (command index) */
-  uint8_t midiKey = 60;
+  uint8_t curNote = 60;  /**< Current note (MusyX: SYNTH_VOICE::curNote). Modified by SetNote/AddNote/etc. */
   uint8_t midiVel = 100;
-  uint8_t initKey = 60;  /**< Original trigger key (never modified by SetNote etc.) */
+  uint8_t orgNote = 60;  /**< Original trigger note (MusyX: SYNTH_VOICE::orgNote). Set once at voice start, never modified. */
   int channel = 0;
   double ticksPerSec = 1000.0; /* default: 1 tick = 1 ms */
   int loopCountdown = -1;
