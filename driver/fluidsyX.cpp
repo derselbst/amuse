@@ -1997,9 +1997,6 @@ unsigned int SoundMacro::CmdSetAdsrCtrl::DoFluid(MacroExecContext& ctx, fluid_vo
   ctx.midiRelease = release;
   if (!ctx.adsrBootstrapped) {
     ctx.adsrBootstrapped = true;
-    ctx.ctrlVals[ctx.midiAttack]  = 10;
-    ctx.ctrlVals[ctx.midiSustain] = 127;
-    ctx.ctrlVals[ctx.midiRelease] = 10;
     app->channelCtrlVals[ctx.channel][ctx.midiAttack]  = 10;
     app->channelCtrlVals[ctx.channel][ctx.midiSustain] = 127;
     app->channelCtrlVals[ctx.channel][ctx.midiRelease] = 10;
@@ -2715,11 +2712,6 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   /* triggerNote = the original SNG note (before keymap/layer transpose).
    * Used to match note-off events.  If not supplied, defaults to key. */
   ctx.triggerNote = (triggerNote == 0xff) ? key : triggerNote;
-
-  /* Initialize controller values from channel state so that selectors
-   * and ADSR controllers see the current MIDI setup. */
-  if (channel >= 0 && channel < 16)
-    ctx.ctrlVals = channelCtrlVals[channel];
   ctx.appData = this;
 
   /* Walk through commands that execute instantly (no delay).
@@ -2845,13 +2837,6 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       /* Update global CC state */
       if (ch < 16 && cc < 128)
         app->channelCtrlVals[ch][cc] = static_cast<int8_t>(val);
-
-      /* Also propagate to any active macro contexts on this channel so
-       * that ADSR controllers see the updated value. */
-      for (auto& [id, mctx] : app->activeMacros) {
-        if (mctx.channel == ch && !mctx.ended)
-          mctx.ctrlVals[cc] = static_cast<int8_t>(val);
-      }
 
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth.get(), ch, cc, val);

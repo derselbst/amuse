@@ -64,8 +64,6 @@ struct MacroExecContext {
   uint8_t midiRelease = 0;
 
   std::optional<std::tuple<uint16_t, bool>> adsrTableId{}; // Id of the ADSR table to use for this voice, if any (from CmdSetAdsr)
-  /* Controller value storage (0-127 for standard MIDI CCs) */
-  std::array<int8_t, 128> ctrlVals = {};
 
   /* Accumulated fine-tune in cents, from SoundMacro detune commands.
    * MusyX samples do not carry per-sample sub-semitone fine-tuning;
