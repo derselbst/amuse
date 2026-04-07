@@ -1050,6 +1050,26 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
                               static_cast<float>(static_cast<int32_t>(adsr->decay) * kFixedPoint16_16Divisor));
           fluid_voice_update_param(voice, GEN_VOLENVDECAY);
         }
+        /* Key-to-decay: 16.16 fixed-point timecents-per-key */
+        if (adsr->keyToDecay != 0x80000000) {
+          float keynumToVolEnvDecay = static_cast<float>(static_cast<int32_t>(adsr->keyToDecay) * (-1 / (128 * 65536.0)));
+          fluid_voice_gen_set(voice, GEN_KEYTOVOLENVDECAY, keynumToVolEnvDecay);
+          fluid_voice_update_param(voice, GEN_KEYTOVOLENVDECAY);
+
+          // musyx adds (key * (dscale / 8388608)) to decay time (anchored at key=0).
+          // SF2 adds ((60 - key) * keynumToVolEnvDecay) (anchored at key=60).
+          // Compensate the SF2 base decay for the anchor-point mismatch.
+          // SF2 applies:   total = GEN_VOLENVDECAY + (60 - key) * keynumToVolEnvDecay
+          // musyx applies: total = base_dtime_TC + key * (dscale / 8388608)
+          // Equating the key-independent parts:
+          // GEN_VOLENVDECAY = base_dtime_TC - 60 * keynumToVolEnvDecay
+          // Where base_dtime_TC = adsr->decay / 65536
+          auto decayTc = fluid_voice_gen_get(voice, GEN_VOLENVDECAY);
+          auto compensateDecay = std::round(decayTc - 60 * keynumToVolEnvDecay);
+          fluid_voice_gen_set(voice, GEN_VOLENVDECAY, compensateDecay);
+          fluid_voice_update_param(voice, GEN_VOLENVDECAY);
+        }
+
         /* Sustain: 0x1000 == 100% linear → centibels */
         fluid_voice_gen_set(voice, GEN_VOLENVSUSTAIN,
                             sustainToCentibels(adsr->getSustain()));
@@ -1058,12 +1078,7 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
         fluid_voice_gen_set(voice, GEN_VOLENVRELEASE,
                             static_cast<float>(secondsToTimecents(adsr->getRelease())));
         fluid_voice_update_param(voice, GEN_VOLENVRELEASE);
-        /* Key-to-decay: 16.16 fixed-point timecents-per-key */
-        if (adsr->keyToDecay != 0x80000000) {
-          fluid_voice_gen_set(voice, GEN_KEYTOVOLENVDECAY,
-                              static_cast<float>(static_cast<int32_t>(adsr->keyToDecay) * kFixedPoint16_16Divisor));
-          fluid_voice_update_param(voice, GEN_KEYTOVOLENVDECAY);
-        }
+
         /* Velocity-to-attack: add a modulator so that velocity scales
          * the attack time in timecent space, mirroring the MusyX
          * formula: attack_tc += (vel/128) * velToAttack_tc */
