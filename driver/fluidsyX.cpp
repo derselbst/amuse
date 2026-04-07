@@ -879,11 +879,6 @@ struct FluidsyXApp {
    *  so that voices receive a proper unique ID (set via nextVoiceId). */
   fluid_preset_t* dummyPreset = nullptr;
 
-  /* Per-channel CC state tracking (propagated to new MacroExecContexts).
-   * Updated when MIDI setup is applied and when CC-manipulating commands
-   * modify values. */
-  std::array<std::array<int8_t, 128>, 16> channelCtrlVals = {};
-
   /* RNG */
   std::mt19937 rng{std::random_device{}()};
 
@@ -1997,9 +1992,6 @@ unsigned int SoundMacro::CmdSetAdsrCtrl::DoFluid(MacroExecContext& ctx, fluid_vo
   ctx.midiRelease = release;
   if (!ctx.adsrBootstrapped) {
     ctx.adsrBootstrapped = true;
-    app->channelCtrlVals[ctx.channel][ctx.midiAttack]  = 10;
-    app->channelCtrlVals[ctx.channel][ctx.midiSustain] = 127;
-    app->channelCtrlVals[ctx.channel][ctx.midiRelease] = 10;
   }
   if (ctx.channel < 16) {
     auto& m = app->channelAdsrMap[ctx.channel];
@@ -2834,10 +2826,6 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       uint8_t cc  = sngEvt.note;     /* note field = CC number */
       uint8_t val = sngEvt.velocity; /* velocity field = CC value */
 
-      /* Update global CC state */
-      if (ch < 16 && cc < 128)
-        app->channelCtrlVals[ch][cc] = static_cast<int8_t>(val);
-
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
       fluid_synth_cc(app->synth.get(), ch, cc, val);
       break;
@@ -3114,11 +3102,6 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
       fluid_synth_cc(synth.get(), ch, 10, midiSetup[ch].panning);
       fluid_synth_cc(synth.get(), ch, 91, midiSetup[ch].reverb);
       fluid_synth_cc(synth.get(), ch, 93, midiSetup[ch].chorus);
-
-      channelCtrlVals[ch][7]  = static_cast<int8_t>(midiSetup[ch].volume);
-      channelCtrlVals[ch][10] = static_cast<int8_t>(midiSetup[ch].panning);
-      channelCtrlVals[ch][91] = static_cast<int8_t>(midiSetup[ch].reverb);
-      channelCtrlVals[ch][93] = static_cast<int8_t>(midiSetup[ch].chorus);
     }
   }
 
