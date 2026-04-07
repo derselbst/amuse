@@ -42,7 +42,9 @@ struct MacroExecContext {
 
   /* ── Pending SoundMacro commands ──
    * Commands executed before CmdStartSample creates the voice are stored
-   * here.  Once the voice is allocated in dummy_preset_noteon(), all pending
+   * here. We cannot allocate the voice earlier (e.g. in FluidsyXApp::enqueueSoundMacro()), because fluidsynth wants to know
+   * about the sample we're going to use for that voice, which we will only know once CmdStartSample arrived.
+   * Once the voice is allocated in dummy_preset_noteon(), all pending
    * commands are replayed against the new voice. */
   std::vector<const SoundMacro::ICmd*> pendingCmds;
 
