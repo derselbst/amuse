@@ -57,7 +57,6 @@ struct MacroExecContext {
    * NOTE: In MusyX, ADSR is per-voice (bound to the SoundMacro).
    * With voice-level generators this is now per-voice in FluidSynth too. */
   bool useAdsrControllers = false;
-  bool adsrBootstrapped = false;
   uint8_t midiAttack  = 0;
   uint8_t midiDecay   = 0;
   uint8_t midiSustain = 0;

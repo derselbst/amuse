@@ -1990,9 +1990,6 @@ unsigned int SoundMacro::CmdSetAdsrCtrl::DoFluid(MacroExecContext& ctx, fluid_vo
   ctx.midiDecay   = decay;
   ctx.midiSustain = sustain;
   ctx.midiRelease = release;
-  if (!ctx.adsrBootstrapped) {
-    ctx.adsrBootstrapped = true;
-  }
   if (ctx.channel < 16) {
     auto& m = app->channelAdsrMap[ctx.channel];
     m.active    = true;
