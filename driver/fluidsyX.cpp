@@ -1859,7 +1859,6 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
       fluid_voice_gen_set(v, GEN_COARSETUNE, add);
       newKey = static_cast<int>(ctx.curNote) + add;
     }
-      fluid_voice_gen_set(v, GEN_FINETUNE, detune);
   }
   else
   {
