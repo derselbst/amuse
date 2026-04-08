@@ -1146,7 +1146,7 @@ bool FluidsyXApp::initFluidSynth() {
 
   // Processing soundMacros via callback can be too expensive for the default period-size of 64 samples
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
-  fluid_settings_setint(settings.get(), "synth.verbose", 1);
+  fluid_settings_setint(settings.get(), "synth.verbose", 0);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
   fluid_settings_setnum(settings.get(), "synth.reverb.level", 0.8);
   fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
@@ -2871,7 +2871,9 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       uint8_t val = sngEvt.velocity; /* velocity field = CC value */
 
       /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
-      fluid_synth_cc(app->synth.get(), ch, cc, val);
+      if(fluid_synth_cc(app->synth.get(), ch, cc, val) != FLUID_OK) {
+        fmt::print(stderr, "fluidsyX: failed to send CC event to FluidSynth (ch {}, cc {}, val {})\n", ch, cc, val);
+      }
       break;
     }
     }
