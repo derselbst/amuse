@@ -1734,49 +1734,81 @@ unsigned int SoundMacro::CmdStop::DoFluid(MacroExecContext& ctx, fluid_voice_t*)
   return 0;
 }
 
-unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+// Does the wait time precede the conditions, or can conditions wake up early?
+// Conditions can wake up early — time and conditions are ORed. The wakeup paths are fully independent:
+//     Timer expiry (macHandle, line 1682): on every audio tick, all voices in the time queue whose wait ≤ macRealTime are moved to the active list. This happens regardless of keyoff/sampleend state.
+//     Keyoff (macSetExternalKeyoff, line 1713): when a keyoff arrives, if the "wake on keyoff" flag (cFlags & 4) is set, macMakeActive is called immediately. This calls UnYieldMacro, which removes the voice from the time queue, resets wait = 0, and clears both 0x40000 and 0x4 flags. The voice resumes before its timer fires.
+//     Sampleend (macSampleEndNotify, line 1701): exactly the same mechanism via macMakeActive when the DSP signals sample completion.
+// So whichever event (timer, keyoff, sampleend) happens first wakes the macro. The other pending conditions are simply cancelled when UnYieldMacro clears the flags.
+unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   unsigned int delay = 0;
-  if (keyOff)
-    ctx.waitingKeyoff = true;
-  if (sampleEnd)
-    ctx.waitingSampleEnd = true;
-  if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
-      (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
-    ctx.waitingKeyoff = false;
-    ctx.waitingSampleEnd = false;
-  } else {
+  // Step 0 – Zero time → skip entirely (synthmacros.c:75) ms = (u16)(cstep->para[1] >> 0x10)
+  if(ticksOrMs != 0)
+  {
+    // Step 1 – Keyoff pre-check (synthmacros.c:76-86): If the Keyoff flag is set and if a keyoff has already been received and if the sustain pedal is not held: return 0
+    if(v)
+    {
+        if (ctx.waitingKeyoff && ctx.keyoffReceived && !fluid_voice_is_sustained(v) && !fluid_voice_is_sostenuto(v)) {
+        ctx.waitingKeyoff = false;
+        return 0;
+      }
+    }
+    // If the Keyoff flag is not set: the "wake on keyoff" flag is cleared (cFlags &= ~4).
+    ctx.waitingKeyoff = keyOff;
+
+    // Step 2 – Sampleend pre-check (synthmacros.c:88-95)
+    if (ctx.waitingSampleEnd && ctx.sampleEndReceived) {
+      ctx.waitingKeyoff = false;
+      ctx.waitingSampleEnd = false;
+      return 0;
+    }
+    // If the Sampleend flag is not set: the "wake on sampleend" flag is cleared (cFlags &= ~0x40000).
+    ctx.waitingSampleEnd = sampleEnd;
+
     uint16_t ticks = ticksOrMs;
-    if (ticks == std::numeric_limits<uint16_t>::max()) {
+    // Step 3 – Random (synthmacros.c:97–99)
+    if(random)
+    {
+      std::uniform_int_distribution<int> dist(0, ticks-1);
+      ticks = dist(static_cast<FluidsyXApp*>(ctx.appData)->rng);
+    }
+    // Step 4 – Endless wait (synthmacros.c:101,126–128)
+    else if (ticks == std::numeric_limits<uint16_t>::max()) {
       ctx.inIndefiniteWait = true;
-    } else if (msSwitch) {
+    }
+    // Step 5 – Deadline calculation (synthmacros.c:101–120)
+    if (msSwitch) {
       delay = ticks;
     } else {
       delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
     }
+    if(absolute)
+    {
+      fmt::print(stderr, "Warning: absolute time is not implemented for CmdWaitTicks. Ignoring absolute flag.\n");
+    }
+
+    // Step 6 – Already-elapsed deadline check (lines 122–125) After computing svoice->wait, if the deadline is not in the future (!(svoice->wait > macRealTime)): the wait is cancelled (svoice->wait = 0, svoice->waitTime = svoice->wait). The voice is not suspended; execution continues to the next instruction.
+
+    // Step 7 – Suspension (lines 130–136) If svoice->wait != 0 (a real wait was established):
+
+    // For finite waits: the voice is inserted into the sorted macTimeQueueRoot linked list by deadline.
+    // For endless waits (wait == -1): it is skipped from the time queue entirely.
+    // macMakeInactive(svoice, MAC_STATE_YIELDED) suspends execution. Returns 1.
+
   }
   ctx.pc++;
   return delay;
 }
 
-unsigned int SoundMacro::CmdWaitMs::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
-  unsigned int delay = 0;
-  if (keyOff)
-    ctx.waitingKeyoff = true;
-  if (sampleEnd)
-    ctx.waitingSampleEnd = true;
-  if ((ctx.waitingKeyoff && ctx.keyoffReceived) ||
-      (ctx.waitingSampleEnd && ctx.sampleEndReceived)) {
-    ctx.waitingKeyoff = false;
-    ctx.waitingSampleEnd = false;
-  } else {
-    if (ms == std::numeric_limits<uint16_t>::max()) {
-      ctx.inIndefiniteWait = true;
-    } else {
-      delay = ms;
-    }
-  }
-  ctx.pc++;
-  return delay;
+unsigned int SoundMacro::CmdWaitMs::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  SoundMacro::CmdWaitTicks waitCmd;
+  waitCmd.keyOff = this->keyOff;
+  waitCmd.random = this->random;
+  waitCmd.sampleEnd = this->sampleEnd;
+  waitCmd.absolute = this->absolute;
+  waitCmd.msSwitch = true;
+  waitCmd.ticksOrMs = this->ms;
+  return waitCmd.DoFluid(ctx, v);
 }
 
 unsigned int SoundMacro::CmdGoto::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
