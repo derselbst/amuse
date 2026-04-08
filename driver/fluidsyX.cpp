@@ -1081,14 +1081,15 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
 
         /* Velocity-to-attack: add a modulator so that velocity scales
          * the attack time in timecent space, mirroring the MusyX
-         * formula: attack_tc += (vel/128) * velToAttack_tc */
-#if FLUID_VERSION_AT_LEAST(2,5,0)
+         * formula: attack_tc += (vel/128) * velToAttack */
+        // musyx adds vel * velToAttack / (128 * 65536) TC, starting from 0 at vel=0.
+        // SF2 applies (vel / 128) * modulator_amount TC, also starting from 0 at vel=0.
+        // Both are anchored at velocity 0, so the base attackVolEnv generator is unaffected and needs no offset.
         if (adsr->velToAttack != 0x80000000 && app->modBlueprintVelToAttack) {
           fluid_mod_set_amount(app->modBlueprintVelToAttack.get(),
                                static_cast<int32_t>(adsr->velToAttack) * kFixedPoint16_16Divisor);
           fluid_voice_add_mod(voice, app->modBlueprintVelToAttack.get(), FLUID_VOICE_OVERWRITE);
         }
-#endif
       }
     } else {
       /* ── Standard ADSR mode ── */
