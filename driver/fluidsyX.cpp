@@ -298,7 +298,7 @@ struct SngEvent {
   Type     type;
   uint32_t absTick;
   uint8_t  channel;
-  uint8_t  data1;   /* note / ctrl / program */
+  uint16_t data1;   /* note / ctrl / program  (uint16 to hold MusyX extended CC 128-133) */
   uint8_t  data2;   /* velocity / value */
   int      pitchBend14; /* 14-bit pitch bend (only for PitchBend type) */
   double   tempoScale;  /* ticks/sec (only for Tempo type) */
@@ -439,17 +439,33 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
 
           uint32_t evTick = regStart + static_cast<uint32_t>(waitCountdown);
 
-          if ((data[0] & 0x80) != 0 && (data[1] & 0x80) != 0) {
-            /* Control change */
-            uint8_t val  = data[0] & 0x7f;
-            uint8_t ctrl = data[1] & 0x7f;
-            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
-            data += 2;
-          } else if ((data[0] & 0x80) != 0) {
-            /* Program change */
-            uint8_t prog = data[0] & 0x7f;
-            outEvents.push_back({SngEvent::Program, evTick, midiChan,
-                                 prog, 0, 0, 0.0, i});
+          if ((data[0] & 0x80) != 0) {
+            /* Special event: key byte has bit 7 set.
+             * Match the original MusyX SDK HandleEvent (seq.c) encoding:
+             *   velocity == 0:       Program change  (prog = key & 0x7f)
+             *   velocity == 1:       CC 0x82 (130)   (val  = key & 0x7f)
+             *   velocity & 0x80:     CC              (ctrl = velocity & 0x7f, val = key & 0x7f)
+             *   velocity 2..127:     ignored / internal meta-command
+             */
+            uint8_t key = data[0];
+            uint8_t vel = data[1];
+            if (vel == 0) {
+              /* Program change */
+              uint8_t prog = key & 0x7f;
+              outEvents.push_back({SngEvent::Program, evTick, midiChan,
+                                   prog, 0, 0, 0.0, i});
+            } else if (vel == 1) {
+              /* MusyX extended CC 0x82 (130) */
+              uint8_t val = key & 0x7f;
+              outEvents.push_back({SngEvent::CC, evTick, midiChan,
+                                   static_cast<uint16_t>(0x82), val, 0, 0.0, i});
+            } else if ((vel & 0x80) != 0) {
+              /* Standard CC: ctrl = vel & 0x7f, val = key & 0x7f */
+              uint16_t ctrl = vel & 0x7f;
+              uint8_t val  = key & 0x7f;
+              outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
+            }
+            /* else: velocity 2..127 → ignored (internal MusyX meta-commands) */
             data += 2;
           } else {
             /* Note */
@@ -487,8 +503,8 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
 
           uint32_t evTick = regStart + static_cast<uint32_t>(waitCountdown);
 
-          if ((data[2] & 0x80) != 0x80) {
-            /* Note */
+          if ((data[2] & 0x80) == 0) {
+            /* Note: key byte has bit 7 clear */
             uint16_t length = bigEndian
                 ? SBig(*reinterpret_cast<const uint16_t*>(data))
                 : *reinterpret_cast<const uint16_t*>(data);
@@ -504,16 +520,33 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
                                    evTick + length, midiChan,
                                    note, 0, 0, 0.0, i});
             }
-          } else if ((data[2] & 0x80) != 0 && (data[3] & 0x80) != 0) {
-            /* Control change */
-            uint8_t val  = data[2] & 0x7f;
-            uint8_t ctrl = data[3] & 0x7f;
-            outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
-          } else if ((data[2] & 0x80) != 0) {
-            /* Program change */
-            uint8_t prog = data[2] & 0x7f;
-            outEvents.push_back({SngEvent::Program, evTick, midiChan,
-                                 prog, 0, 0, 0.0, i});
+          } else {
+            /* Special event: key byte has bit 7 set.
+             * Match the original MusyX SDK HandleEvent (seq.c) encoding:
+             *   velocity == 0:       Program change  (prog = key & 0x7f)
+             *   velocity == 1:       CC 0x82 (130)   (val  = key & 0x7f)
+             *   velocity & 0x80:     CC              (ctrl = velocity & 0x7f, val = key & 0x7f)
+             *   velocity 2..127:     ignored / internal meta-command
+             */
+            uint8_t key = data[2];
+            uint8_t vel = data[3];
+            if (vel == 0) {
+              /* Program change */
+              uint8_t prog = key & 0x7f;
+              outEvents.push_back({SngEvent::Program, evTick, midiChan,
+                                   prog, 0, 0, 0.0, i});
+            } else if (vel == 1) {
+              /* MusyX extended CC 0x82 (130) */
+              uint8_t val = key & 0x7f;
+              outEvents.push_back({SngEvent::CC, evTick, midiChan,
+                                   static_cast<uint16_t>(0x82), val, 0, 0.0, i});
+            } else if ((vel & 0x80) != 0) {
+              /* Standard CC: ctrl = vel & 0x7f, val = key & 0x7f */
+              uint16_t ctrl = vel & 0x7f;
+              uint8_t val  = key & 0x7f;
+              outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
+            }
+            /* else: velocity 2..127 → ignored (internal MusyX meta-commands) */
           }
           data += 4;
 
@@ -920,10 +953,10 @@ struct FluidsyXApp {
    * Timer data encodes a negative index into this vector: data = -(1 + idx). */
   struct PendingSngNoteEvent {
     enum Type { NoteOn, NoteOff, ProgramChange, CC };
-    Type    type;
-    uint8_t channel;
-    uint8_t note;     /* also: CC number for Type::CC */
-    uint8_t velocity; /* also: CC value for Type::CC */
+    Type     type;
+    uint8_t  channel;
+    uint16_t note;     /* also: CC number for Type::CC  (uint16 for MusyX extended CC) */
+    uint8_t  velocity; /* also: CC value for Type::CC */
   };
   std::vector<PendingSngNoteEvent> pendingSngEvents;
 
@@ -2866,11 +2899,13 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       break;
 
     case PendingSngNoteEvent::CC: {
-      uint8_t ch  = sngEvt.channel;
-      uint8_t cc  = sngEvt.note;     /* note field = CC number */
-      uint8_t val = sngEvt.velocity; /* velocity field = CC value */
+      uint8_t  ch  = sngEvt.channel;
+      uint16_t cc  = sngEvt.note;     /* note field = CC number (may be > 127 for MusyX extended CCs) */
+      uint8_t  val = sngEvt.velocity; /* velocity field = CC value */
 
-      /* Forward the raw CC to FluidSynth (for non-ADSR uses) */
+      /* Forward the raw CC to FluidSynth (for non-ADSR uses).
+       * MusyX extended CCs (>= 128) will be rejected by FluidSynth since it only
+       * supports the standard MIDI CC range 0-127. */
       if(fluid_synth_cc(app->synth.get(), ch, cc, val) != FLUID_OK) {
         fmt::print(stderr, "fluidsyX: failed to send CC event to FluidSynth (ch {}, cc {}, val {})\n", ch, cc, val);
       }
@@ -2976,7 +3011,8 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
     case SngEvent::Program: {
       /* Route through timer callback */
       PendingSngNoteEvent::Type t;
-      uint8_t d1 = e.data1, d2 = e.data2;
+      uint16_t d1 = e.data1;
+      uint8_t  d2 = e.data2;
       switch (e.type) {
       case SngEvent::NoteOn:  t = PendingSngNoteEvent::NoteOn; break;
       case SngEvent::NoteOff: t = PendingSngNoteEvent::NoteOff; d2 = 0; break;

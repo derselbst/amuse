@@ -57,7 +57,7 @@ class Sequencer : public Entity {
     std::unordered_map<uint8_t, ObjToken<Voice>> m_chanVoxs;
     std::unordered_set<ObjToken<Voice>> m_keyoffVoxs;
     ObjToken<Voice> m_lastVoice;
-    std::array<int8_t, 128> m_ctrlVals{}; /**< MIDI controller values */
+    std::array<int8_t, 134> m_ctrlVals{}; /**< MIDI controller values (134 to match MusyX extended CCs) */
     float m_curPitchWheel = 0.f;          /**< MIDI pitch-wheel */
     int8_t m_pitchWheelRange = -1;        /**< Pitch wheel range settable by RPN 0 */
     int8_t m_curProgram = 0;              /**< MIDI program number */
@@ -70,7 +70,7 @@ class Sequencer : public Entity {
     size_t getVoiceCount() const;
     ObjToken<Voice> keyOn(uint8_t note, uint8_t velocity);
     void keyOff(uint8_t note, uint8_t velocity);
-    void setCtrlValue(uint8_t ctrl, int8_t val);
+    void setCtrlValue(uint16_t ctrl, int8_t val);
     bool programChange(int8_t prog);
     void nextProgram();
     void prevProgram();
@@ -113,7 +113,7 @@ public:
   void keyOff(uint8_t chan, uint8_t note, uint8_t velocity);
 
   /** Set MIDI control value [0,127] for all voices */
-  void setCtrlValue(uint8_t chan, uint8_t ctrl, int8_t val);
+  void setCtrlValue(uint8_t chan, uint16_t ctrl, int8_t val);
 
   /** Set pitchwheel value for use with voice controllers */
   void setPitchWheel(uint8_t chan, float pitchWheel);

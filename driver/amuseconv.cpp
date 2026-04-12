@@ -1,7 +1,5 @@
 #include "amuse/amuse.hpp"
-#include "athena/FileReader.hpp"
-#include "athena/DNAYaml.hpp"
-#include "logvisor/logvisor.hpp"
+#include <fmt/format.h>
 #include <cstdio>
 #include <cstring>
 
@@ -9,21 +7,19 @@
 #include <nowide/args.hpp>
 #endif
 
-static logvisor::Module Log("amuseconv");
-
 enum ConvType { ConvN64, ConvGCN, ConvPC };
 
 static void ReportConvType(ConvType tp) {
   switch (tp) {
   case ConvN64:
-    Log.report(logvisor::Info, FMT_STRING("using N64 format"));
+    fmt::print("amuseconv: using N64 format\n");
     break;
   case ConvPC:
-    Log.report(logvisor::Info, FMT_STRING("using PC format"));
+    fmt::print("amuseconv: using PC format\n");
     break;
   case ConvGCN:
   default:
-    Log.report(logvisor::Info, FMT_STRING("using GameCube format"));
+    fmt::print("amuseconv: using GameCube format\n");
     break;
   }
 }
@@ -35,13 +31,13 @@ static bool ExtractAudioGroup(std::string_view inPath, std::string_view targetPa
   auto groups = amuse::ContainerRegistry::LoadContainer(inPath.data(), type);
 
   if (groups.size()) {
-    Log.report(logvisor::Info, FMT_STRING("Found '{}'"), amuse::ContainerRegistry::TypeToName(type));
+    fmt::print("amuseconv: Found '{}'\n", amuse::ContainerRegistry::TypeToName(type));
 
     amuse::Mkdir(targetPath.data(), 0755);
-    Log.report(logvisor::Info, FMT_STRING("Established directory at {}"), targetPath);
+    fmt::print("amuseconv: Established directory at {}\n", targetPath);
 
     for (auto& group : groups) {
-      Log.report(logvisor::Info, FMT_STRING("Extracting {}"), group.first);
+      fmt::print("amuseconv: Extracting {}\n", group.first);
     }
   }
 
@@ -58,7 +54,7 @@ static bool ExtractAudioGroup(std::string_view inPath, std::string_view targetPa
     std::string songPath = songsDir + '/' + pair.first + ".mid";
     FILE* fp = amuse::FOpen(songPath.c_str(), "wb");
     if (fp) {
-      Log.report(logvisor::Info, FMT_STRING("Extracting {}"), pair.first);
+      fmt::print("amuseconv: Extracting {}\n", pair.first);
       int extractedVersion;
       bool isBig;
       std::vector<uint8_t> mid = amuse::SongConverter::SongToMIDI(pair.second.m_data.get(), extractedVersion, isBig);
@@ -123,8 +119,6 @@ int main(int argc, char** argv) {
   nowide::args _(argc, argv);
 #endif
 
-  logvisor::RegisterConsoleLogger();
-
   if (argc < 3) {
     fmt::print(FMT_STRING("Usage: amuseconv <in-file> <out-file> [n64|pc|gcn]\n"));
     return 0;
@@ -139,7 +133,7 @@ int main(int argc, char** argv) {
     else if (!amuse::CompareCaseInsensitive(argv[3], "pc"))
       type = ConvPC;
     else {
-      Log.report(logvisor::Error, FMT_STRING("unrecognized format: {}"), argv[3]);
+      fmt::print(stderr, "amuseconv: unrecognized format: {}\n", argv[3]);
       return 1;
     }
   }
@@ -178,7 +172,7 @@ int main(int argc, char** argv) {
   }
 
   if (!good) {
-    Log.report(logvisor::Error, FMT_STRING("unable to convert {} to {}"), argv[1], argv[2]);
+    fmt::print(stderr, "amuseconv: unable to convert {} to {}\n", argv[1], argv[2]);
     return 1;
   }
 

@@ -140,7 +140,7 @@ class MainWindow : public QMainWindow {
   amuse::ObjToken<amuse::Sequencer> m_interactiveSeq;
   int m_velocity = 90;
   float m_pitch = 0.f;
-  int8_t m_ctrlVals[128] = {};
+  int8_t m_ctrlVals[134] = {};
   float m_auxAVol = 0.f;
   float m_auxBVol = 0.f;
   bool m_uiDisabled = false;

@@ -42,6 +42,7 @@ add_library(amuse
   lib/SongConverter.cpp
   lib/SongState.cpp
   lib/SoundMacroState.cpp
+  lib/SoundMacroFluidStubs.cpp
   lib/Studio.cpp
   lib/Submix.cpp
   lib/Voice.cpp
@@ -152,15 +153,11 @@ if(TARGET boo AND NOT WINDOWS_STORE AND NOT NX)
   # VST Target
   add_subdirectory(VST)
 
-  # Multi-platform CLI tools
+  # Multi-platform CLI tools (require boo)
 
   # Player
   add_executable(amuseplay WIN32 driver/amuseplay.cpp)
   target_link_libraries(amuseplay amuse logvisor)
-
-  # Converter
-  add_executable(amuseconv driver/amuseconv.cpp)
-  target_link_libraries(amuseconv amuse logvisor)
 
   # Renderer
   add_executable(amuserender driver/amuserender.cpp)
@@ -168,7 +165,6 @@ if(TARGET boo AND NOT WINDOWS_STORE AND NOT NX)
 
   if(COMMAND add_sanitizers)
     add_sanitizers(amuseplay)
-    add_sanitizers(amuseconv)
     add_sanitizers(amuserender)
   endif()
 
@@ -184,6 +180,13 @@ if(TARGET boo AND NOT WINDOWS_STORE AND NOT NX)
       message(STATUS "Qt6 not found, amuse-gui will not be built")
     endif()
   endif()
+endif()
+
+# Converter – standalone tool, does not depend on boo or logvisor
+add_executable(amuseconv driver/amuseconv.cpp)
+target_link_libraries(amuseconv amuse fmt)
+if(COMMAND add_sanitizers)
+  add_sanitizers(amuseconv)
 endif()
 
 # fluidsyX – MusyX player using FluidSynth (does not depend on Boo)

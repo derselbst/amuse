@@ -158,7 +158,7 @@ std::unique_ptr<int8_t[]>& Voice::_ensureCtrlVals() {
     return m_ctrlValsSelf;
   }
 
-  m_ctrlValsSelf = std::make_unique<int8_t[]>(128);
+  m_ctrlValsSelf = std::make_unique<int8_t[]>(134);
   return m_ctrlValsSelf;
 }
 
@@ -1272,7 +1272,7 @@ bool Voice::doPortamento(uint8_t newNote) {
   return true;
 }
 
-void Voice::_notifyCtrlChange(uint8_t ctrl, int8_t val) {
+void Voice::_notifyCtrlChange(uint16_t ctrl, int8_t val) {
   if (ctrl == 0x40) {
     setPedal(val >= 0x40);
   } else if (ctrl == 0x5b) {

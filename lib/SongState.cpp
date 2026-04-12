@@ -518,16 +518,31 @@ bool SongState::Track::advance(Sequencer& seq, double dt) {
           m_data = nullptr;
           break;
         }
-        if ((m_data[0] & 0x80) != 0u && (m_data[1] & 0x80) != 0u) {
-          /* Control change */
-          uint8_t val = m_data[0] & 0x7f;
-          uint8_t ctrl = m_data[1] & 0x7f;
-          seq.setCtrlValue(m_midiChan, ctrl, static_cast<int8_t>(val));
-          m_data += 2;
-        } else if ((m_data[0] & 0x80) != 0u) {
-          /* Program change */
-          uint8_t prog = m_data[0] & 0x7f;
-          seq.setChanProgram(static_cast<int8_t>(m_midiChan), static_cast<int8_t>(prog));
+        if ((m_data[0] & 0x80) != 0u) {
+          /* Special event: key byte has bit 7 set.
+           * Match the original MusyX SDK HandleEvent (seq.c) encoding:
+           *   velocity == 0:       Program change  (prog = key & 0x7f)
+           *   velocity == 1:       CC 0x82 (130)   (val  = key & 0x7f)
+           *   velocity & 0x80:     CC              (ctrl = velocity & 0x7f, val = key & 0x7f)
+           *   velocity 2..127:     ignored / internal meta-command
+           */
+          uint8_t key = m_data[0];
+          uint8_t vel = m_data[1];
+          if (vel == 0) {
+            /* Program change */
+            uint8_t prog = key & 0x7f;
+            seq.setChanProgram(static_cast<int8_t>(m_midiChan), static_cast<int8_t>(prog));
+          } else if (vel == 1) {
+            /* MusyX extended CC 0x82 (130) */
+            uint8_t val = key & 0x7f;
+            seq.setCtrlValue(m_midiChan, 0x82, static_cast<int8_t>(val));
+          } else if ((vel & 0x80) != 0) {
+            /* Standard CC: ctrl = vel & 0x7f, val = key & 0x7f */
+            uint8_t ctrl = vel & 0x7f;
+            uint8_t val  = key & 0x7f;
+            seq.setCtrlValue(m_midiChan, ctrl, static_cast<int8_t>(val));
+          }
+          /* else: velocity 2..127 → ignored (internal MusyX meta-commands) */
           m_data += 2;
         } else {
           /* Note */
@@ -564,8 +579,8 @@ bool SongState::Track::advance(Sequencer& seq, double dt) {
           m_data = nullptr;
           break;
         }
-        if ((m_data[2] & 0x80) != 0x80) {
-          /* Note */
+        if ((m_data[2] & 0x80) == 0) {
+          /* Note: key byte has bit 7 clear */
           uint16_t length = (m_parent->m_bigEndian ? SBig(*reinterpret_cast<const uint16_t*>(m_data))
                                                    : *reinterpret_cast<const uint16_t*>(m_data));
           uint8_t note = m_data[2] & 0x7f;
@@ -575,15 +590,31 @@ bool SongState::Track::advance(Sequencer& seq, double dt) {
             seq.keyOff(m_midiChan, note, 0);
           }
           m_remNoteLengths[note] = length;
-        } else if ((m_data[2] & 0x80) != 0u && (m_data[3] & 0x80) != 0u) {
-          /* Control change */
-          uint8_t val = m_data[2] & 0x7f;
-          uint8_t ctrl = m_data[3] & 0x7f;
-          seq.setCtrlValue(m_midiChan, ctrl, static_cast<int8_t>(val));
-        } else if ((m_data[2] & 0x80) != 0u) {
-          /* Program change */
-          uint8_t prog = m_data[2] & 0x7f;
-          seq.setChanProgram(static_cast<int8_t>(m_midiChan), static_cast<int8_t>(prog));
+        } else {
+          /* Special event: key byte has bit 7 set.
+           * Match the original MusyX SDK HandleEvent (seq.c) encoding:
+           *   velocity == 0:       Program change  (prog = key & 0x7f)
+           *   velocity == 1:       CC 0x82 (130)   (val  = key & 0x7f)
+           *   velocity & 0x80:     CC              (ctrl = velocity & 0x7f, val = key & 0x7f)
+           *   velocity 2..127:     ignored / internal meta-command
+           */
+          uint8_t key = m_data[2];
+          uint8_t vel = m_data[3];
+          if (vel == 0) {
+            /* Program change */
+            uint8_t prog = key & 0x7f;
+            seq.setChanProgram(static_cast<int8_t>(m_midiChan), static_cast<int8_t>(prog));
+          } else if (vel == 1) {
+            /* MusyX extended CC 0x82 (130) */
+            uint8_t val = key & 0x7f;
+            seq.setCtrlValue(m_midiChan, 0x82, static_cast<int8_t>(val));
+          } else if ((vel & 0x80) != 0) {
+            /* Standard CC: ctrl = vel & 0x7f, val = key & 0x7f */
+            uint8_t ctrl = vel & 0x7f;
+            uint8_t val  = key & 0x7f;
+            seq.setCtrlValue(m_midiChan, ctrl, static_cast<int8_t>(val));
+          }
+          /* else: velocity 2..127 → ignored (internal MusyX meta-commands) */
         }
         m_data += 4;
 

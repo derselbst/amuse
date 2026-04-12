@@ -276,7 +276,9 @@ void Sequencer::keyOff(uint8_t chan, uint8_t note, uint8_t velocity) {
   m_chanStates[chan].keyOff(note, velocity);
 }
 
-void Sequencer::ChannelState::setCtrlValue(uint8_t ctrl, int8_t val) {
+void Sequencer::ChannelState::setCtrlValue(uint16_t ctrl, int8_t val) {
+  if (ctrl >= m_ctrlVals.size())
+    return;
   m_ctrlVals[ctrl] = val;
   for (const auto& vox : m_chanVoxs)
     vox.second->_notifyCtrlChange(ctrl, val);
@@ -352,7 +354,7 @@ void Sequencer::ChannelState::prevProgram() {
       break;
 }
 
-void Sequencer::setCtrlValue(uint8_t chan, uint8_t ctrl, int8_t val) {
+void Sequencer::setCtrlValue(uint8_t chan, uint16_t ctrl, int8_t val) {
   if (chan >= m_chanStates.size()) {
     return;
   }

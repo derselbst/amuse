@@ -198,7 +198,7 @@ class Voice : public Entity {
   void _setSurroundPan(float span);
   void _setChannelCoefs(const std::array<float, 8>& coefs);
   void _setPitchWheel(float pitchWheel);
-  void _notifyCtrlChange(uint8_t ctrl, int8_t val);
+  void _notifyCtrlChange(uint16_t ctrl, int8_t val);
 
 public:
   ~Voice() override;
@@ -346,17 +346,21 @@ public:
   bool doPortamento(uint8_t newNote);
 
   /** Get MIDI Controller value on voice */
-  int8_t getCtrlValue(uint8_t ctrl) const {
+  int8_t getCtrlValue(uint16_t ctrl) const {
     if (!m_extCtrlVals) {
-      if (m_ctrlValsSelf)
+      if (m_ctrlValsSelf && ctrl < 134)
         return m_ctrlValsSelf[ctrl];
       return 0;
     }
-    return m_extCtrlVals[ctrl];
+    if (ctrl < 134)
+      return m_extCtrlVals[ctrl];
+    return 0;
   }
 
   /** Set MIDI Controller value on voice */
-  void setCtrlValue(uint8_t ctrl, int8_t val) {
+  void setCtrlValue(uint16_t ctrl, int8_t val) {
+    if (ctrl >= 134)
+      return;
     if (!m_extCtrlVals) {
       std::unique_ptr<int8_t[]>& vals = _ensureCtrlVals();
       vals[ctrl] = val;
