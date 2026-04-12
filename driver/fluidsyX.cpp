@@ -2598,6 +2598,184 @@ unsigned int SoundMacro::CmdSetupLFO::DoFluid(MacroExecContext& ctx, fluid_voice
   return 0;
 }
 
+/* ── CmdSetupTremolo ──
+ * MusyX: treScale / treModAddScale configure tremolo depth and mod‑wheel scaling.
+ * SF2 mapping: GEN_MODLFOTOVOL controls the mod‑LFO → volume depth (centibels).
+ * The mod‑LFO frequency is set separately by CmdSetupLFO(0).
+ *
+ * modwAddScale controls how much the mod wheel (CC 1) adds to the tremolo depth.
+ * MusyX formula:
+ *   mscale = 1 − Modulation × (4096 − treModAddScale) / 8192²
+ *   effectiveScale = treScale × mscale / 4096
+ *   voiceVol *= 1 − lfo × (1 − effectiveScale)
+ *
+ * treModAddScale = 4096 → mod wheel has no effect (mscale always 1).
+ * treModAddScale = 0    → mod wheel maximally deepens the tremolo. */
+unsigned int SoundMacro::CmdSetupTremolo::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  ctx.treScale = scale;
+  ctx.treModAddScale = modwAddScale;
+
+  if (v) {
+    /* Convert MusyX linear depth [0…1] to centibels.
+     * depth = (4096 − |scale|) / 4096   (0 = no tremolo, 1 = max)
+     * In MusyX the LFO swings volume by ±depth/2; the attenuation side is
+     * deeper in dB so we match that: cB = −200·log10(1 − depth/2). */
+    float depth = (4096.0f - std::abs(static_cast<float>(scale))) / 4096.0f;
+    float depthCb = 0.0f;
+    if (depth > 0.001f) {
+      float minLin = std::max(1.0f - depth * 0.5f, 0.01f);
+      depthCb = -200.0f * std::log10(minLin);
+    }
+    fluid_voice_gen_set(v, GEN_MODLFOTOVOL, depthCb);
+    fluid_voice_update_param(v, GEN_MODLFOTOVOL);
+
+    /* Add CC 1 (mod wheel) modulator for the modwAddScale contribution.
+     * When modwAddScale < 4096 the mod wheel deepens the tremolo. */
+    if (modwAddScale < 4096) {
+      fluid_mod_t* mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+      fluid_mod_set_source1(mod, 1 /* CC 1 */,
+                            FLUID_MOD_CC | FLUID_MOD_LINEAR |
+                            FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+      fluid_mod_set_source2(mod, FLUID_MOD_NONE, 0);
+      fluid_mod_set_dest(mod, GEN_MODLFOTOVOL);
+      float extraDepth = (4096.0f - modwAddScale) / 4096.0f;
+      float extraMinLin = std::max(1.0f - extraDepth * 0.5f, 0.01f);
+      float extraCb = -200.0f * std::log10(extraMinLin);
+      fluid_mod_set_amount(mod, extraCb);
+      fluid_voice_add_mod(v, mod, FLUID_VOICE_ADD);
+    }
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+/* ── CmdTremoloSelect ──
+ * MusyX: SelectSource(svoice, &svoice->inpTremolo, cstep, …)
+ * Configures which MIDI source feeds the tremolo evaluator.
+ *
+ * CC 130 = LFO 1 output.  FluidSynth has no CC 130 — the mod‑LFO is an
+ * internal oscillator.  When midiControl == 130 we map it directly to
+ * GEN_MODLFOTOVOL (the SF2 mod‑LFO → volume path), which is the exact
+ * semantic equivalent of MusyX's "use LFO1 for tremolo".
+ *
+ * For standard MIDI CCs (0‑119) we create a modulator CC → GEN_MODLFOTOVOL
+ * so FluidSynth evaluates it continuously. */
+unsigned int SoundMacro::CmdTremoloSelect::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  float scaleFactor = (scalingPercentage + fineScaling / 100.0f) / 100.0f;
+
+  if (v) {
+    if (midiControl == 130) {
+      /* CC 130 = LFO 1: the mod‑LFO is the source.  GEN_MODLFOTOVOL is set
+       * by CmdSetupTremolo; here we scale it by scaleFactor.
+       * Recompute depth from ctx.treScale (set by CmdSetupTremolo). */
+      float depth = (4096.0f - std::abs(static_cast<float>(ctx.treScale))) / 4096.0f;
+      float depthCb = 0.0f;
+      if (depth > 0.001f) {
+        float minLin = std::max(1.0f - depth * 0.5f, 0.01f);
+        depthCb = -200.0f * std::log10(minLin);
+      }
+      fluid_voice_gen_set(v, GEN_MODLFOTOVOL, depthCb * scaleFactor);
+      fluid_voice_update_param(v, GEN_MODLFOTOVOL);
+    } else if (midiControl < 120) {
+      /* Standard MIDI CC: create a modulator CC → GEN_MODLFOTOVOL */
+      fluid_mod_t* mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+      fluid_mod_set_source1(mod, midiControl,
+                            FLUID_MOD_CC | FLUID_MOD_LINEAR |
+                            FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+      fluid_mod_set_source2(mod, FLUID_MOD_NONE, 0);
+      fluid_mod_set_dest(mod, GEN_MODLFOTOVOL);
+      /* 60 cB ≈ 6 dB as a reasonable max tremolo depth for a CC source */
+      fluid_mod_set_amount(mod, 60.0f * scaleFactor);
+      int mode = (combine == Combine::Set) ? FLUID_VOICE_OVERWRITE : FLUID_VOICE_ADD;
+      fluid_voice_add_mod(v, mod, mode);
+    } else {
+      /* CC 128 (pitchbend), 129 (aftertouch), 131 (LFO2), 132+ (surround etc.)
+       * — not directly mappable to SF2 modulators; log a warning. */
+      fmt::print(stderr, "fluidsyX: TremoloSelect: unsupported midiControl {} — ignoring\n",
+                 static_cast<int>(midiControl));
+    }
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+/* ── CmdWiiUnknown (opCode 0x5E) = FilterParameterSelect ──
+ * MusyX: SelectSource(svoice, &svoice->inpFilterParameter, cstep, 0x800, 0x4000)
+ * Configures a CC → filter cutoff frequency modulation.
+ * SF2 mapping: modulator CC → GEN_FILTERFC (filter cutoff in cents). */
+unsigned int SoundMacro::CmdWiiUnknown::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  float scaleFactor = (scalingPercentage + fineScaling / 100.0f) / 100.0f;
+
+  if (v) {
+    if (midiControl < 120) {
+      fluid_mod_t* mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+      fluid_mod_set_source1(mod, midiControl,
+                            FLUID_MOD_CC | FLUID_MOD_LINEAR |
+                            FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+      fluid_mod_set_source2(mod, FLUID_MOD_NONE, 0);
+      fluid_mod_set_dest(mod, GEN_FILTERFC);
+      /* Scale to a reasonable filter cutoff range in cents.
+       * SF2 filter cutoff is in absolute cents (8.176 Hz = 0 cents).
+       * A full CC sweep of ~6000 cents ≈ 4 octaves is reasonable. */
+      fluid_mod_set_amount(mod, 6000.0f * scaleFactor);
+      int mode = (combine == Combine::Set) ? FLUID_VOICE_OVERWRITE : FLUID_VOICE_ADD;
+      fluid_voice_add_mod(v, mod, mode);
+    } else if (midiControl == 130 || midiControl == 131) {
+      /* CC 130/131 = LFO: route mod‑LFO or vib‑LFO to filter cutoff */
+      int gen = (midiControl == 130) ? GEN_MODLFOTOFILTERFC : GEN_MODENVTOFILTERFC;
+      fluid_voice_gen_set(v, gen, 6000.0f * scaleFactor);
+      fluid_voice_update_param(v, gen);
+    } else {
+      fmt::print(stderr, "fluidsyX: FilterParameterSelect: unsupported midiControl {} — ignoring\n",
+                 static_cast<int>(midiControl));
+    }
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
+/* ── CmdWiiUnknown2 (opCode 0x5F) = FilterSwitchSelect ──
+ * MusyX: SelectSource(svoice, &svoice->inpFilterSwitch, cstep, 0x40, 0x2000)
+ * Controls whether the filter is active.  In SF2 there is no discrete
+ * filter on/off; instead we use a CC modulator that pushes the cutoff
+ * to maximum (effectively bypassing the filter) when the CC is low. */
+unsigned int SoundMacro::CmdWiiUnknown2::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  float scaleFactor = (scalingPercentage + fineScaling / 100.0f) / 100.0f;
+
+  if (v) {
+    if (midiControl < 120) {
+      /* Use a NEGATIVE modulator: when CC is 0 the filter cutoff is pushed
+       * high (filter open / bypassed); when CC is 127 the cutoff moves down
+       * (filter engaged). */
+      fluid_mod_t* mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
+      fluid_mod_set_source1(mod, midiControl,
+                            FLUID_MOD_CC | FLUID_MOD_LINEAR |
+                            FLUID_MOD_UNIPOLAR | FLUID_MOD_NEGATIVE);
+      fluid_mod_set_source2(mod, FLUID_MOD_NONE, 0);
+      fluid_mod_set_dest(mod, GEN_FILTERFC);
+      /* Positive amount: when source is at max (CC 127 → after NEGATIVE → 0)
+       * the offset is 0; when source is at min (CC 0 → after NEGATIVE → 1)
+       * the offset opens the filter fully. */
+      fluid_mod_set_amount(mod, 13500.0f * scaleFactor);
+      int mode = (combine == Combine::Set) ? FLUID_VOICE_OVERWRITE : FLUID_VOICE_ADD;
+      fluid_voice_add_mod(v, mod, mode);
+    } else {
+      fmt::print(stderr, "fluidsyX: FilterSwitchSelect: unsupported midiControl {} — ignoring\n",
+                 static_cast<int>(midiControl));
+    }
+  } else {
+    ctx.pendingCmds.push_back(this);
+  }
+  ctx.pc++;
+  return 0;
+}
+
 /* ═══════════════════ SoundMacro → FluidSynth translation ═══════════════════ */
 
 /** Format a SoundMacro command using its CmdIntrospection metadata.

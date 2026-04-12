@@ -540,6 +540,7 @@ struct SoundMacro {
     Seek<1, athena::SeekOrigin::Current> seek;
     Value<int16_t> modwAddScale;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const override;
     CmdOp Isa() const override { return CmdOp::SetupTremolo; }
   };
   struct CmdReturn : ICmd {
@@ -777,6 +778,7 @@ struct SoundMacro {
     Value<bool> isVar;
     Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const override;
     CmdOp Isa() const override { return CmdOp::TremoloSelect; }
   };
   struct CmdPreASelect : ICmd {
@@ -876,15 +878,25 @@ struct SoundMacro {
   struct CmdWiiUnknown : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<bool> flag;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
+    Value<Combine> combine;
+    Value<bool> isVar;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const override;
     CmdOp Isa() const override { return CmdOp::WiiUnknown; }
   };
   struct CmdWiiUnknown2 : ICmd {
     AT_DECL_DNA_YAMLV
     static const CmdIntrospection Introspective;
-    Value<bool> flag;
+    Value<uint8_t> midiControl;
+    Value<int16_t> scalingPercentage;
+    Value<Combine> combine;
+    Value<bool> isVar;
+    Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const override;
     CmdOp Isa() const override { return CmdOp::WiiUnknown2; }
   };
   struct CmdAddVars : ICmd {

@@ -72,6 +72,13 @@ struct MacroExecContext {
    * and SetPitch (absolute Hz + 1/65536 Hz fine). */
   int curDetune = 0;
 
+  /* ── Tremolo state (CmdSetupTremolo) ──
+   * MusyX SYNTH_VOICE::treScale / treModAddScale.
+   * Stored here so that CmdTremoloSelect can reference the depth when
+   * building SF2 modulators.  treScale=4096 ⇒ no tremolo, 0 ⇒ max. */
+  int16_t treScale = 4096;
+  int16_t treModAddScale = 4096;
+
   /* ── Event traps (TRAP_EVENT / UNTRAP_EVENT) ──
    * A trap registers a "when event X fires, redirect execution to macro M
    * step S" entry.  In amuse, traps are stored on the Voice struct and
