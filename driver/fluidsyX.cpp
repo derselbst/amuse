@@ -459,13 +459,40 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
               uint8_t val = key & 0x7f;
               outEvents.push_back({SngEvent::CC, evTick, midiChan,
                                    static_cast<uint16_t>(0x82), val, 0, 0.0, i});
-            } else if ((vel & 0x80) != 0) {
-              /* Standard CC: ctrl = vel & 0x7f, val = key & 0x7f */
-              uint16_t ctrl = vel & 0x7f;
-              uint8_t val  = key & 0x7f;
-              outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
             }
-            /* else: velocity 2..127 → ignored (internal MusyX meta-commands) */
+            else
+            {
+              switch (vel & 0x7f) {
+              case 0x68:
+                // Cross-fade command - ignore
+                break;
+              case 0x69:
+                // priority command - ignore
+                // seqMIDIPriority[curSeqId][midi] = key & 0x7f;
+                break;
+              case 0x6a:
+                // priority command - ignore
+                // seqMIDIPriority[curSeqId][midi] = (key & 0x7f) + 0x80;
+                break;
+              case 0x79:
+                // calls inpResetMidiCtrl(midi, curSeqId, FALSE) and effectively repopulates all CCs with inpWarmMIDIDefaults
+                // finally invalidates the last Note with inpSetMidiLastNote(ch, set, 0xFF);
+                fmt::print(stderr, "0x79 inpResetMidiCtrl() not yet implemented, channel {}, track {}\n", midiChan, i);
+                break;
+              case 0x7b:
+                // calls KeyOffNotes(), i.e. effectively all notes off
+                fmt::print(stderr, "0x7b KeyOffNotes() not yet implemented, channel {}, track {}\n", midiChan, i);
+                break;
+              default:
+              {
+                /* Standard CC: ctrl = vel & 0x7f, val = key & 0x7f */
+                uint16_t ctrl = vel & 0x7f;
+                uint8_t val  = key & 0x7f;
+                outEvents.push_back({SngEvent::CC, evTick, midiChan, ctrl, val, 0, 0.0, i});
+              }
+                break;
+              }
+            }
             data += 2;
           } else {
             /* Note */
