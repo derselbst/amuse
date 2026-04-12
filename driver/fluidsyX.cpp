@@ -267,7 +267,7 @@ struct SngTrackHeader {
 static uint16_t sngDecodeUnsignedValue(const unsigned char*& data) {
   uint16_t ret = 0;
   if ((data[0] & 0x80) != 0) {
-    ret = data[1] | ((data[0] & 0x7f) << 8);
+    ret = static_cast<int16_t>(((uint16_t(data[0]) & 0x7f) << 8) | data[1]);
     data += 2;
   } else {
     ret = data[0];
@@ -279,11 +279,12 @@ static uint16_t sngDecodeUnsignedValue(const unsigned char*& data) {
 static int16_t sngDecodeSignedValue(const unsigned char*& data) {
   int16_t ret = 0;
   if ((data[0] & 0x80) != 0) {
-    ret = static_cast<int16_t>(data[1] | ((data[0] & 0x7f) << 8));
-    ret |= ((ret << 1) & 0x8000);
+    ret = static_cast<int16_t>(((uint16_t(data[0]) & 0x7f) << 8) | data[1]);
+    ret |= (ret & 0x4000) << 1;
     data += 2;
   } else {
-    ret = static_cast<int16_t>(data[0] | ((data[0] << 1) & 0x80));
+    // Must cast to int8_t first to get sign-extension from bit 7
+    ret = static_cast<int8_t>(data[0] | ((data[0] << 1) & 0x80));
     data += 1;
   }
   return ret;
