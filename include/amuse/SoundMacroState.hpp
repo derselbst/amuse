@@ -96,6 +96,8 @@ struct SoundMacroState {
   Evaluator m_spanSel;
   Evaluator m_dopplerSel;
   Evaluator m_tremoloSel;
+  Evaluator m_filterParamSel;
+  Evaluator m_filterSwitchSel;
 
   int32_t m_variables[32]; /**< 32-bit variables set with relevant commands */
 

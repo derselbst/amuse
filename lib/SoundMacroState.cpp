@@ -924,7 +924,7 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdSetupTremolo::Introspective = 
     {{{FIELD_HEAD(SoundMacro::CmdSetupTremolo, scale), "Scale"sv, 0, 16383, 8192},
      {FIELD_HEAD(SoundMacro::CmdSetupTremolo, modwAddScale), "Modw. add scale"sv, 0, 16383, 0}}}};
 bool SoundMacro::CmdSetupTremolo::Do(SoundMacroState& st, Voice& vox) const {
-  vox.setTremolo(scale / 4096.f, scale / 4096.f);
+  vox.setTremolo(scale / 4096.f, modwAddScale / 4096.f);
   return false;
 }
 
@@ -1406,12 +1406,36 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdSRCmodeSelect::Introspective =
 bool SoundMacro::CmdSRCmodeSelect::Do(SoundMacroState& st, Voice& vox) const { return false; }
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdWiiUnknown::Introspective = {
-    CmdType::Setup, "Wii Unknown"sv, "????"sv, {{{FIELD_HEAD(SoundMacro::CmdWiiUnknown, flag), "?"sv, 0, 1, 0}}}};
-bool SoundMacro::CmdWiiUnknown::Do(SoundMacroState& st, Voice& vox) const { return false; }
+    CmdType::Setup,
+    "Filter Parameter Select"sv,
+    "Appends an evaluator component for computing the voice's filter cutoff parameter."sv,
+    {{{FIELD_HEAD(SoundMacro::CmdWiiUnknown, midiControl), "MIDI Control"sv, 0, 132, 1},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown, scalingPercentage), "Scale Percentage"sv, -10000, 10000, 100},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown, combine), "Combine Mode"sv, 0, 2, 0, {"Set"sv, "Add"sv, "Mult"sv}},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown, isVar), "Is Var"sv, 0, 1, 0},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
+bool SoundMacro::CmdWiiUnknown::Do(SoundMacroState& st, Voice& vox) const {
+  st.m_filterParamSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
+                                   SoundMacroState::Evaluator::Combine(combine),
+                                   SoundMacroState::Evaluator::VarType(isVar));
+  return false;
+}
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdWiiUnknown2::Introspective = {
-    CmdType::Setup, "Wii Unknown 2"sv, "????"sv, {{{FIELD_HEAD(SoundMacro::CmdWiiUnknown2, flag), "?"sv, 0, 1, 0}}}};
-bool SoundMacro::CmdWiiUnknown2::Do(SoundMacroState& st, Voice& vox) const { return false; }
+    CmdType::Setup,
+    "Filter Switch Select"sv,
+    "Appends an evaluator component for computing the voice's filter on/off switch."sv,
+    {{{FIELD_HEAD(SoundMacro::CmdWiiUnknown2, midiControl), "MIDI Control"sv, 0, 132, 1},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown2, scalingPercentage), "Scale Percentage"sv, -10000, 10000, 100},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown2, combine), "Combine Mode"sv, 0, 2, 0, {"Set"sv, "Add"sv, "Mult"sv}},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown2, isVar), "Is Var"sv, 0, 1, 0},
+     {FIELD_HEAD(SoundMacro::CmdWiiUnknown2, fineScaling), "Fine Scaling"sv, -100, 100, 0}}}};
+bool SoundMacro::CmdWiiUnknown2::Do(SoundMacroState& st, Voice& vox) const {
+  st.m_filterSwitchSel.addComponent(midiControl, (scalingPercentage + fineScaling / 100.f) / 100.f,
+                                    SoundMacroState::Evaluator::Combine(combine),
+                                    SoundMacroState::Evaluator::VarType(isVar));
+  return false;
+}
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdAddVars::Introspective = {
     CmdType::Special,

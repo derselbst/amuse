@@ -909,29 +909,9 @@ IMPL_YAMLV(SoundMacro::CmdSRCmodeSelect)
 std::string_view SoundMacro::CmdSRCmodeSelect::DNAType() { return "amuse::SoundMacro::CmdSRCmodeSelect"; }
 
 // WiiUnknown: flag(1)
-template <> void SoundMacro::CmdWiiUnknown::Enumerate<DNAOpRead>(IStreamReader& r) {
-    flag = r.readBool();
-}
-template <> void SoundMacro::CmdWiiUnknown::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeBool(flag);
-}
-template <> void SoundMacro::CmdWiiUnknown::Enumerate<DNAOpBinarySize>(size_t& s) { s += 1; }
-template <> void SoundMacro::CmdWiiUnknown::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void SoundMacro::CmdWiiUnknown::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-IMPL_YAMLV(SoundMacro::CmdWiiUnknown)
-std::string_view SoundMacro::CmdWiiUnknown::DNAType() { return "amuse::SoundMacro::CmdWiiUnknown"; }
+SELECT_CMD_IMPL(CmdWiiUnknown)
 
-template <> void SoundMacro::CmdWiiUnknown2::Enumerate<DNAOpRead>(IStreamReader& r) {
-    flag = r.readBool();
-}
-template <> void SoundMacro::CmdWiiUnknown2::Enumerate<DNAOpWrite>(IStreamWriter& w) {
-    w.writeBool(flag);
-}
-template <> void SoundMacro::CmdWiiUnknown2::Enumerate<DNAOpBinarySize>(size_t& s) { s += 1; }
-template <> void SoundMacro::CmdWiiUnknown2::Enumerate<DNAOpReadYaml>(YAMLDocReader&) {}
-template <> void SoundMacro::CmdWiiUnknown2::Enumerate<DNAOpWriteYaml>(YAMLDocWriter&) {}
-IMPL_YAMLV(SoundMacro::CmdWiiUnknown2)
-std::string_view SoundMacro::CmdWiiUnknown2::DNAType() { return "amuse::SoundMacro::CmdWiiUnknown2"; }
+SELECT_CMD_IMPL(CmdWiiUnknown2)
 
 // AddVars: varCtrlA(1) a(1) varCtrlB(1) b(1) varCtrlC(1) c(1)
 template <> void SoundMacro::CmdAddVars::Enumerate<DNAOpRead>(IStreamReader& r) {

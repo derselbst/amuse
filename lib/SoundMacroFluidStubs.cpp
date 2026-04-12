@@ -70,6 +70,10 @@ STUB(CmdModeSelect)
 STUB(CmdSRCmodeSelect)
 STUB(CmdSetKeygroup)
 STUB(CmdSetupLFO)
+STUB(CmdSetupTremolo)
+STUB(CmdTremoloSelect)
+STUB(CmdWiiUnknown)
+STUB(CmdWiiUnknown2)
 
 #undef STUB
 
