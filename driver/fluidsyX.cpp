@@ -3247,9 +3247,33 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
 
     // Init all CCs to their default "cold" values
     for (int cc = 0; cc < 128; ++cc)
-      for (int ch = 0; ch < 16; ++ch) {
+    {
+      // skip CCs that fluidsynth is alergic to, or that are not allowed to modulate either per SF2 spec
+      switch(cc)
       {
-        fluid_synth_cc(synth.get(), ch, cc, inpColdMIDIDefaults[cc]);
+            case 0x7C: // OMNI_OFF
+            case 0x7D: // OMNI_ON
+            case 0x7E: // POLY_OFF
+            case 0x7F: // POLY_ON
+            case 0x60: // DATA_ENTRY_INC
+            case 0x61: // DATA_ENTRY_DEC
+            case 0x62: // NRPN_LSB
+            case 0x63: // NRPN_MSB
+            case 0x64: // RPN_LSB
+            case 0x65: // RPN_MSB
+            case 0x26: // DATA_ENTRY_LSB
+            case 0x06: // DATA_ENTRY_MSB
+              continue;
+      }
+      if(inpColdMIDIDefaults[cc] == 0xFF)
+      {
+        // leave the CC unchanged per MusyX behavior
+        continue;
+      }
+        for (int ch = 0; ch < 16; ++ch) {
+        {
+          fluid_synth_cc(synth.get(), ch, cc, inpColdMIDIDefaults[cc]);
+        }
       }
     }
 
