@@ -17,6 +17,7 @@ struct MacroExecContext {
   uint8_t midiVel = 100;
   uint8_t orgNote = 60;  /**< Original trigger note (MusyX: SYNTH_VOICE::orgNote). Set once at voice start, never modified. */
   int channel = 0;
+  unsigned int macStartTime = 0; // time in ticks when the macro started, used for relative timed commands/events
   double ticksPerSec = 1000.0; /* default: 1 tick = 1 ms */
   int loopCountdown = -1;
   int loopStep = 0;
