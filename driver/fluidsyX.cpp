@@ -1238,7 +1238,7 @@ bool FluidsyXApp::initFluidSynth() {
   fluid_settings_setnum(settings.get(), "synth.reverb.level", 0.8);
   fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
   fluid_settings_setnum(settings.get(), "synth.reverb.width", 1);
-  fluid_settings_setnum(settings.get(), "synth.reverb.damping", 0);
+  fluid_settings_setnum(settings.get(), "synth.reverb.damp", 0);
   // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
 
