@@ -122,4 +122,93 @@ public:
    */
   bool advance(Sequencer& seq, double dt);
 };
+
+
+/* ── SNG variable-length decode helpers ── */
+
+static inline uint16_t DecodeUnsignedValue(const unsigned char*& data) {
+  uint16_t ret;
+  if (data[0] & 0x80) {
+    ret = data[1] | ((data[0] & 0x7f) << 8);
+    data += 2;
+  } else {
+    ret = data[0];
+    data += 1;
+  }
+  return ret;
+}
+
+static inline void EncodeUnsignedValue(std::vector<uint8_t>& vecOut, uint16_t val) {
+  if (val >= 128) {
+    vecOut.push_back(0x80 | ((val >> 8) & 0x7f));
+    vecOut.push_back(val & 0xff);
+  } else {
+    vecOut.push_back(val & 0x7f);
+  }
+}
+
+static inline int16_t DecodeSignedValue(const unsigned char*& data) {
+  int16_t ret;
+  if (data[0] & 0x80) {
+    ret = data[1] | ((data[0] & 0x7f) << 8);
+    ret |= (ret & 0x4000) << 1;
+    data += 2;
+  } else {
+    // Must cast to int8_t first to get sign-extension from bit 7
+    ret = int8_t(data[0] | ((data[0] << 1) & 0x80));
+    data += 1;
+  }
+  return ret;
+}
+
+static inline void EncodeSignedValue(std::vector<uint8_t>& vecOut, int16_t val) {
+  if (val >= 64 || val < -64) {
+    vecOut.push_back(0x80 | ((val >> 8) & 0x7f));
+    vecOut.push_back(val & 0xff);
+  } else {
+    vecOut.push_back(val & 0x7f);
+  }
+}
+
+static inline std::pair<uint32_t, int32_t> DecodeDelta(const unsigned char*& data) {
+  std::pair<uint32_t, int32_t> ret = {};
+  do {
+    if (data[0] == 0x80 && data[1] == 0x00)
+      break;
+    ret.first += DecodeUnsignedValue(data);
+    ret.second = DecodeSignedValue(data);
+  } while (ret.second == 0);
+  return ret;
+}
+
+static inline void EncodeDelta(std::vector<uint8_t>& vecOut, uint32_t deltaTime, int32_t val) {
+  while (deltaTime > 32767) {
+    EncodeUnsignedValue(vecOut, 32767);
+    EncodeSignedValue(vecOut, 0);
+    deltaTime -= 32767;
+  }
+  EncodeUnsignedValue(vecOut, deltaTime);
+  EncodeSignedValue(vecOut, val);
+}
+
+static inline uint32_t DecodeTime(const unsigned char*& data) {
+  uint32_t ret = 0;
+
+  while (true) {
+    uint16_t thisPart = SBig(*reinterpret_cast<const uint16_t*>(data));
+    uint16_t nextPart = *reinterpret_cast<const uint16_t*>(data + 2);
+    if (nextPart == 0) {
+      // Automatically consume no-op command as continued time
+      ret += thisPart;
+      data += 4;
+      continue;
+    }
+
+    ret += thisPart;
+    data += 2;
+    break;
+  }
+
+  return ret;
+}
 } // namespace amuse

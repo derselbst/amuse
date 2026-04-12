@@ -262,63 +262,6 @@ struct SngTrackHeader {
   }
 };
 
-/* ── SNG variable-length decode helpers (same logic as SongState.cpp) ── */
-
-static uint16_t sngDecodeUnsignedValue(const unsigned char*& data) {
-  uint16_t ret = 0;
-  if ((data[0] & 0x80) != 0) {
-    ret = static_cast<int16_t>(((uint16_t(data[0]) & 0x7f) << 8) | data[1]);
-    data += 2;
-  } else {
-    ret = data[0];
-    data += 1;
-  }
-  return ret;
-}
-
-static int16_t sngDecodeSignedValue(const unsigned char*& data) {
-  int16_t ret = 0;
-  if ((data[0] & 0x80) != 0) {
-    ret = static_cast<int16_t>(((uint16_t(data[0]) & 0x7f) << 8) | data[1]);
-    ret |= (ret & 0x4000) << 1;
-    data += 2;
-  } else {
-    // Must cast to int8_t first to get sign-extension from bit 7
-    ret = static_cast<int8_t>(data[0] | ((data[0] << 1) & 0x80));
-    data += 1;
-  }
-  return ret;
-}
-
-static std::pair<uint32_t, int32_t> sngDecodeDelta(const unsigned char*& data) {
-  std::pair<uint32_t, int32_t> ret = {};
-  do {
-    if (data[0] == 0x80 && data[1] == 0x00)
-      break;
-    ret.first += sngDecodeUnsignedValue(data);
-    ret.second = sngDecodeSignedValue(data);
-  } while (ret.second == 0);
-  return ret;
-}
-
-/** Decode a delta-time value in SNG revision (v1) format. */
-static uint32_t sngDecodeTime(const unsigned char*& data) {
-  uint32_t ret = 0;
-  while (true) {
-    uint16_t thisPart = SBig(*reinterpret_cast<const uint16_t*>(data));
-    uint16_t nextPart = *reinterpret_cast<const uint16_t*>(data + 2);
-    if (nextPart == 0) {
-      ret += thisPart;
-      data += 4;
-      continue;
-    }
-    ret += thisPart;
-    data += 2;
-    break;
-  }
-  return ret;
-}
-
 /* ── Collected SNG event for scheduling ── */
 
 struct SngEvent {
@@ -432,7 +375,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
         int32_t pitchVal = 0;
         uint32_t pitchTick = 0;
         while (pdata[0] != 0x80 || pdata[1] != 0x00) {
-          auto delta = sngDecodeDelta(pdata);
+          auto delta = DecodeDelta(pdata);
           pitchTick += delta.first;
           pitchVal  += delta.second;
           int bend14 = std::clamp(pitchVal + kPitchBendCenter, 0, kPitchBendMax);
@@ -447,7 +390,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
         int32_t modVal = 0;
         uint32_t modTick = 0;
         while (mdata[0] != 0x80 || mdata[1] != 0x00) {
-          auto delta = sngDecodeDelta(mdata);
+          auto delta = DecodeDelta(mdata);
           modTick += delta.first;
           modVal  += delta.second;
           uint8_t ccVal = static_cast<uint8_t>(
@@ -460,7 +403,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
       /* --- Note / CC / Program commands --- */
       if (sngVersion == 1) {
         /* Revision format */
-        int32_t waitCountdown = static_cast<int32_t>(sngDecodeTime(data));
+        int32_t waitCountdown = static_cast<int32_t>(DecodeTime(data));
         while (true) {
           if (*reinterpret_cast<const uint16_t*>(data) == 0xffff)
             break;
@@ -541,7 +484,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
             }
             data += 4;
           }
-          waitCountdown += static_cast<int32_t>(sngDecodeTime(data));
+          waitCountdown += static_cast<int32_t>(DecodeTime(data));
         }
       } else {
         /* Legacy (N64) format */

@@ -7,63 +7,6 @@
 
 namespace amuse {
 
-static uint16_t DecodeUnsignedValue(const unsigned char*& data) {
-  uint16_t ret = 0;
-  if ((data[0] & 0x80) != 0) {
-    ret = data[1] | ((data[0] & 0x7f) << 8);
-    data += 2;
-  } else {
-    ret = data[0];
-    data += 1;
-  }
-  return ret;
-}
-
-static int16_t DecodeSignedValue(const unsigned char*& data) {
-  int16_t ret = 0;
-  if ((data[0] & 0x80) != 0) {
-    ret = static_cast<int16_t>(data[1] | ((data[0] & 0x7f) << 8));
-    ret |= ((ret << 1) & 0x8000);
-    data += 2;
-  } else {
-    ret = static_cast<int16_t>(data[0] | ((data[0] << 1) & 0x80));
-    data += 1;
-  }
-  return ret;
-}
-
-static std::pair<uint32_t, int32_t> DecodeDelta(const unsigned char*& data) {
-  std::pair<uint32_t, int32_t> ret = {};
-  do {
-    if (data[0] == 0x80 && data[1] == 0x00)
-      break;
-    ret.first += DecodeUnsignedValue(data);
-    ret.second = DecodeSignedValue(data);
-  } while (ret.second == 0);
-  return ret;
-}
-
-static uint32_t DecodeTime(const unsigned char*& data) {
-  uint32_t ret = 0;
-
-  while (true) {
-    uint16_t thisPart = SBig(*reinterpret_cast<const uint16_t*>(data));
-    uint16_t nextPart = *reinterpret_cast<const uint16_t*>(data + 2);
-    if (nextPart == 0) {
-      // Automatically consume no-op command as continued time
-      ret += thisPart;
-      data += 4;
-      continue;
-    }
-
-    ret += thisPart;
-    data += 2;
-    break;
-  }
-
-  return ret;
-}
-
 void SongState::Header::swapFromBig() {
   m_trackIdxOff = SBig(m_trackIdxOff);
   m_regionIdxOff = SBig(m_regionIdxOff);
