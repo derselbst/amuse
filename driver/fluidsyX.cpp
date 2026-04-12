@@ -2572,7 +2572,25 @@ unsigned int SoundMacro::CmdSetKeygroup::DoFluid(MacroExecContext& ctx, fluid_vo
 
 unsigned int SoundMacro::CmdSetupLFO::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   if (v) {
-    this->fluid(v);
+    switch(this->lfoNumber)
+    {
+      case 0: {
+      fluid_voice_gen_set(v, GEN_MODLFODELAY, -12000);
+      float freqHz = 1000.0f / this->periodInMs;
+      float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
+      fluid_voice_gen_set(v, GEN_MODLFOFREQ, freqCents);
+      }
+      break;
+      case 1: {
+      fluid_voice_gen_set(v, GEN_VIBLFODELAY, -12000);
+      float freqHz = 1000.0f / this->periodInMs;
+      float freqCents = 1200.0f * std::log2(freqHz / 8.176f);
+      fluid_voice_gen_set(v, GEN_VIBLFOFREQ, freqCents);
+      }
+      break;
+      default:
+      break;
+    }
   } else {
     ctx.pendingCmds.push_back(this);
   }
