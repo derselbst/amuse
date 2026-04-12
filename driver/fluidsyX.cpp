@@ -3383,7 +3383,7 @@ void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
           unsigned int now = fluid_sequencer_get_tick(sequencer.get());
           enqueueSoundMacro(macro, 0, 0, entry.defKey, entry.defVel, now);
         } else {
-          fluid_synth_noteon(synth.get(), 0, entry.defKey, entry.defVel);
+          fmt::print(stderr, "fluidsyX: failed to resolve SoundMacro for SFX {}\n", sfxId);
         }
         isPlaying = true;
       }
