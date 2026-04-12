@@ -2660,34 +2660,49 @@ unsigned int SoundMacro::CmdSetupTremolo::DoFluid(MacroExecContext& ctx, fluid_v
  * GEN_MODLFOTOVOL (the SF2 mod‑LFO → volume path), which is the exact
  * semantic equivalent of MusyX's "use LFO1 for tremolo".
  *
- * For standard MIDI CCs (0‑119) we create a modulator CC → GEN_MODLFOTOVOL
- * so FluidSynth evaluates it continuously. */
+ * For standard MIDI CCs (0‑119) the CC value IS the oscillating tremolo
+ * signal (bipolar around center, like an external LFO).  We create a
+ * bipolar modulator CC → GEN_ATTENUATION whose depth is derived from
+ * ctx.treScale (set by CmdSetupTremolo).
+ *
+ * MusyX tremolo depth formula:
+ *   depth = 1 − treScale/4096
+ *   volume swings ±(depth × 0.5) in linear space
+ *   At max depth (treScale=0): min volume = 0.5 → −6 dB ≈ 60 cB */
 unsigned int SoundMacro::CmdTremoloSelect::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   float scaleFactor = (scalingPercentage + fineScaling / 100.0f) / 100.0f;
 
   if (v) {
+    /* Compute tremolo depth in centibels from ctx.treScale.
+     * Match the attenuation side of the MusyX linear swing:
+     *   depthCb = −200·log10(1 − depth/2)
+     * where depth = (4096 − |treScale|) / 4096.  At max depth ≈ 60 cB. */
+    float depth = (4096.0f - std::abs(static_cast<float>(ctx.treScale))) / 4096.0f;
+    float depthCb = 0.0f;
+    if (depth > 0.001f) {
+      float minLin = std::max(1.0f - depth * 0.5f, 0.01f);
+      depthCb = -200.0f * std::log10(minLin);
+    }
+
     if (midiControl == 130) {
-      /* CC 130 = LFO 1: the mod‑LFO is the source.  GEN_MODLFOTOVOL is set
-       * by CmdSetupTremolo; here we scale it by scaleFactor.
-       * Recompute depth from ctx.treScale (set by CmdSetupTremolo). */
-      float depth = (4096.0f - std::abs(static_cast<float>(ctx.treScale))) / 4096.0f;
-      float depthCb = 0.0f;
-      if (depth > 0.001f) {
-        float minLin = std::max(1.0f - depth * 0.5f, 0.01f);
-        depthCb = -200.0f * std::log10(minLin);
-      }
+      /* CC 130 = LFO 1: the mod‑LFO is the source.  GEN_MODLFOTOVOL is the
+       * SF2 mod‑LFO → volume path; scale by scaleFactor. */
       fluid_voice_gen_set(v, GEN_MODLFOTOVOL, depthCb * scaleFactor);
       fluid_voice_update_param(v, GEN_MODLFOTOVOL);
     } else if (midiControl < 120) {
-      /* Standard MIDI CC: create a modulator CC → GEN_MODLFOTOVOL */
+      /* Standard MIDI CC: the CC value IS the bipolar tremolo signal
+       * (like an external LFO oscillating around CC 64 = center).
+       * Route CC → GEN_ATTENUATION with BIPOLAR mapping so that:
+       *   CC  0 → −depthCb cB (louder)
+       *   CC 64 →   0      cB (no change)
+       *   CC 127 → +depthCb cB (quieter) */
       fluid_mod_t* mod = static_cast<fluid_mod_t*>(alloca(fluid_mod_sizeof()));
       fluid_mod_set_source1(mod, midiControl,
                             FLUID_MOD_CC | FLUID_MOD_LINEAR |
-                            FLUID_MOD_UNIPOLAR | FLUID_MOD_POSITIVE);
+                            FLUID_MOD_BIPOLAR | FLUID_MOD_POSITIVE);
       fluid_mod_set_source2(mod, FLUID_MOD_NONE, 0);
-      fluid_mod_set_dest(mod, GEN_MODLFOTOVOL);
-      /* 60 cB ≈ 6 dB as a reasonable max tremolo depth for a CC source */
-      fluid_mod_set_amount(mod, 60.0f * scaleFactor);
+      fluid_mod_set_dest(mod, GEN_ATTENUATION);
+      fluid_mod_set_amount(mod, depthCb * scaleFactor);
       int mode = (combine == Combine::Set) ? FLUID_VOICE_OVERWRITE : FLUID_VOICE_ADD;
       fluid_voice_add_mod(v, mod, mode);
     } else {
