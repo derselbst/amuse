@@ -1785,6 +1785,7 @@ unsigned int SoundMacro::CmdStop::DoFluid(MacroExecContext& ctx, fluid_voice_t*)
 //     Sampleend (macSampleEndNotify, line 1701): exactly the same mechanism via macMakeActive when the DSP signals sample completion.
 // So whichever event (timer, keyoff, sampleend) happens first wakes the macro. The other pending conditions are simply cancelled when UnYieldMacro clears the flags.
 unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
+  auto *app = static_cast<FluidsyXApp*>(ctx.appData);
   unsigned int delay = 0;
   // Step 0 – Zero time → skip entirely (synthmacros.c:75) ms = (u16)(cstep->para[1] >> 0x10)
   if(ticksOrMs != 0)
@@ -1814,21 +1815,33 @@ unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voic
     if(random)
     {
       std::uniform_int_distribution<int> dist(0, ticks-1);
-      ticks = dist(static_cast<FluidsyXApp*>(ctx.appData)->rng);
+      ticks = dist(app->rng);
     }
     // Step 4 – Endless wait (synthmacros.c:101,126–128)
     else if (ticks == std::numeric_limits<uint16_t>::max()) {
       ctx.inIndefiniteWait = true;
     }
     // Step 5 – Deadline calculation (synthmacros.c:101–120)
-    if (msSwitch) {
-      delay = ticks;
-    } else {
-      delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
-    }
     if(absolute)
     {
-      fmt::print(stderr, "Warning: absolute time is not implemented for CmdWaitTicks. Ignoring absolute flag.\n");
+      if (msSwitch) {
+        unsigned int now = fluid_sequencer_get_tick(app->sequencer.get());
+        unsigned int scheduledTicks = ctx.macStartTime + ticks;
+        int ticksUntil = static_cast<int>(scheduledTicks) - static_cast<int>(now);
+        delay = static_cast<unsigned int>(std::max(0, ticksUntil));
+      } else {
+        // Note: technically, this is not correct. It should be svoice->waitTime + ms
+        // i.e. relative to the end of the previous wait
+        delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
+      }
+    }
+    else
+    {
+      if (msSwitch) {
+        delay = ticks;
+      } else {
+        delay = static_cast<unsigned int>(ticks * 1000.0 / ctx.ticksPerSec);
+      }
     }
 
     // Step 6 – Already-elapsed deadline check (lines 122–125) After computing svoice->wait, if the deadline is not in the future (!(svoice->wait > macRealTime)): the wait is cancelled (svoice->wait = 0, svoice->waitTime = svoice->wait). The voice is not suspended; execution continues to the next instruction.
@@ -2793,6 +2806,7 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
    * Used to match note-off events.  If not supplied, defaults to key. */
   ctx.triggerNote = (triggerNote == 0xff) ? key : triggerNote;
   ctx.appData = this;
+  ctx.macStartTime = startTick;
 
   /* Walk through commands that execute instantly (no delay).
    * When a command introduces a delay, schedule a timer event and stop. */
