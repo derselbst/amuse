@@ -1208,9 +1208,9 @@ void Voice::_setPitchWheel(float pitchWheel) {
     return;
 
   if (pitchWheel > 0.f)
-    m_pitchWheelVal = m_pitchWheelUp * m_curPitchWheel;
+    m_pitchWheelVal = m_pitchWheelUp * pitchWheel;
   else if (pitchWheel < 0.f)
-    m_pitchWheelVal = m_pitchWheelDown * m_curPitchWheel;
+    m_pitchWheelVal = m_pitchWheelDown * pitchWheel;
   else
     m_pitchWheelVal = 0;
   m_pitchDirty = true;

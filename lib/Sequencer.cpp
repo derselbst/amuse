@@ -292,12 +292,12 @@ void Sequencer::ChannelState::setCtrlValue(uint16_t ctrl, int8_t val) {
   case 10:
     setPan(val / 64.f - 1.f);
     break;
-  case 98:
+  case 100:
     // RPN LSB
     m_rpn &= ~0x7f;
     m_rpn |= val;
     break;
-  case 99:
+  case 101:
     // RPN MSB
     m_rpn &= ~0x3f80;
     m_rpn |= val << 7;

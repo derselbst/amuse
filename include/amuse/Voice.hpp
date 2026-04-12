@@ -157,7 +157,7 @@ class Voice : public Entity {
   std::unique_ptr<int8_t[]> m_ctrlValsSelf; /**< Self-owned MIDI Controller values */
   int8_t* m_extCtrlVals = nullptr;          /**< MIDI Controller values (external storage) */
 
-  uint16_t m_rpn = 0; /**< Current RPN (only pitch-range 0x0000 supported) */
+  uint16_t m_rpn = 0x3FFF; /**< Current RPN; 0x3FFF = null (no parameter selected, matching MusyX cold defaults) */
 
   void _destroy();
   bool _checkSamplePos(bool& looped);

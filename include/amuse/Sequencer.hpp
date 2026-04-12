@@ -63,7 +63,7 @@ class Sequencer : public Entity {
     int8_t m_curProgram = 0;              /**< MIDI program number */
     float m_curVol = 1.f;                 /**< Current volume of channel */
     float m_curPan = 0.f;                 /**< Current panning of channel */
-    uint16_t m_rpn = 0;                   /**< Current RPN (only pitch-range 0x0000 supported) */
+    uint16_t m_rpn = 0x3FFF;              /**< Current RPN; 0x3FFF = null (no parameter selected, matching MusyX cold defaults) */
     double m_ticksPerSec = 1000.0;        /**< Current ticks per second (tempo) for channel */
 
     void _bringOutYourDead();

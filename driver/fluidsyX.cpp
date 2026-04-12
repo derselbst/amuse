@@ -434,7 +434,7 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
           auto delta = sngDecodeDelta(pdata);
           pitchTick += delta.first;
           pitchVal  += delta.second;
-          int bend14 = std::clamp(pitchVal, 0, kPitchBendMax);
+          int bend14 = std::clamp(pitchVal + kPitchBendCenter, 0, kPitchBendMax);
           outEvents.push_back({SngEvent::PitchBend, regStart + pitchTick,
                                midiChan, 0, 0, bend14, 0.0, i});
         }
