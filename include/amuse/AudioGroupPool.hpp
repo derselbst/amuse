@@ -168,6 +168,7 @@ struct SoundMacro {
     virtual CmdOp Isa() const = 0;
     /** Execute this command for fluidsyX.  Returns delay in ms (0 = continue immediately). */
     virtual unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const;
+    std::string formatMacroCmd(unsigned int curTick) const;
   };
   struct CmdEnd : ICmd {
     AT_DECL_DNA_YAMLV
@@ -642,6 +643,7 @@ struct SoundMacro {
     static const CmdIntrospection Introspective;
     Value<uint8_t> prio;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* fvox) const override;
     CmdOp Isa() const override { return CmdOp::SetPriority; }
   };
   struct CmdAddPriority : ICmd {
@@ -650,6 +652,7 @@ struct SoundMacro {
     Seek<1, athena::SeekOrigin::Current> seek;
     Value<int16_t> prio;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* fvox) const override;
     CmdOp Isa() const override { return CmdOp::AddPriority; }
   };
   struct CmdAgeCntSpeed : ICmd {

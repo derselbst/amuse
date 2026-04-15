@@ -15,8 +15,135 @@
 using namespace std::literals;
 
 namespace amuse {
+
+/** Format a SoundMacro command using its CmdIntrospection metadata.
+ *  Produces a string like: "SetNote(Key=60, Detune=0, Use Millisec=1, Ticks/Millisec=0)"
+ *  If no introspection is available, falls back to the numeric CmdOp value. */
+std::string SoundMacro::ICmd::formatMacroCmd(unsigned int curTick) const
+{
+  using Field = SoundMacro::CmdIntrospection::Field;
+  const SoundMacro::CmdOp op = this->Isa();
+  const auto* intro = SoundMacro::GetCmdIntrospection(op);
+
+  std::string result;
+  if(curTick > 0)
+  {
+    result = fmt::format("{}", curTick);
+    result += ", ";
+  }
+  if (intro) {
+    result += std::string(intro->m_name);
+  } else {
+    result += fmt::format("CmdOp({})", static_cast<int>(op));
+  }
+
+  if (!intro)
+    return result;
+
+  /* Collect formatted fields */
+  std::string fields;
+  for (const auto& f : intro->m_fields) {
+    if (f.m_name.empty())
+      continue;
+
+    const auto* base = reinterpret_cast<const char*>(this);
+    std::string val;
+
+    switch (f.m_tp) {
+    case Field::Type::Bool: {
+      bool v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = v ? "true" : "false";
+      break;
+    }
+    case Field::Type::Int8: {
+      int8_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", static_cast<int>(v));
+      break;
+    }
+    case Field::Type::UInt8: {
+      uint8_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", static_cast<unsigned>(v));
+      break;
+    }
+    case Field::Type::Int16: {
+      int16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::UInt16: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::Int32: {
+      int32_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::UInt32: {
+      uint32_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("{}", v);
+      break;
+    }
+    case Field::Type::SoundMacroId: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("macro:{}", v);
+      break;
+    }
+    case Field::Type::SoundMacroStep: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("step:{}", v);
+      break;
+    }
+    case Field::Type::TableId: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("table:{}", v);
+      break;
+    }
+    case Field::Type::SampleId: {
+      uint16_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      val = fmt::format("sample:{}", v);
+      break;
+    }
+    case Field::Type::Choice: {
+      uint8_t v{};
+      std::memcpy(&v, base + f.m_offset, sizeof(v));
+      if (v < f.m_choices.size() && !f.m_choices[v].empty())
+        val = fmt::format("{}({})", std::string_view(f.m_choices[v]),
+                          static_cast<unsigned>(v));
+      else
+        val = fmt::format("{}", static_cast<unsigned>(v));
+      break;
+    }
+    default:
+      val = "?";
+      break;
+    }
+
+    if (!fields.empty())
+      fields += ", ";
+    fields += fmt::format("{}={}", std::string_view(f.m_name), val);
+  }
+
+  if (!fields.empty())
+    result += fmt::format("({})", fields);
+  return result;
+}
+
 /* Default DoFluid implementation: prints unimplemented warning and advances PC. */
 unsigned int SoundMacro::ICmd::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+  fmt::print("UNIMPLEMENTED {}\n", this->formatMacroCmd(0));
   ctx.pc++;
   return 0;
 }
@@ -1098,6 +1225,12 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdSetPriority::Introspective = {
     "Sets the priority of the current voice."sv,
     {{{FIELD_HEAD(SoundMacro::CmdSetPriority, prio), "Priority"sv, 0, 254, 50}}}};
 bool SoundMacro::CmdSetPriority::Do(SoundMacroState& st, Voice& vox) const { return false; }
+unsigned int SoundMacro::CmdSetPriority::DoFluid(MacroExecContext& ctx, fluid_voice_t* fvox) const
+{
+  // per-voice priority is not supported by fluidsynth
+  ctx.pc++;
+  return 0;
+}
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdAddPriority::Introspective = {
     CmdType::Special,
@@ -1105,6 +1238,12 @@ const SoundMacro::CmdIntrospection SoundMacro::CmdAddPriority::Introspective = {
     "Adds to the priority of the current voice."sv,
     {{{FIELD_HEAD(SoundMacro::CmdAddPriority, prio), "Priority"sv, -255, 255, 1}}}};
 bool SoundMacro::CmdAddPriority::Do(SoundMacroState& st, Voice& vox) const { return false; }
+unsigned int SoundMacro::CmdAddPriority::DoFluid(MacroExecContext& ctx, fluid_voice_t* fvox) const
+{
+  // per-voice priority is not supported by fluidsynth
+  ctx.pc++;
+  return 0;
+}
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdAgeCntSpeed::Introspective = {
     CmdType::Special,
