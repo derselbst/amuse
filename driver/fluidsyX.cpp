@@ -3316,33 +3316,32 @@ void FluidsyXApp::initCCDefault(const std::array<uint8_t, 134>& defaults)
     }
 }
 
-/* ═══════════════════ Song Console UI ═══════════════════ */
+/* ═══════════════════ Console UI ═══════════════════ */
 
 /**
- * Dedicated console UI for interactive song playback.
+ * Shared console UI for interactive Song and SFX playback.
  *
- * Handles keyboard input during songLoop(), keeps display state, and
- * delegates synth operations back to FluidsyXApp.  Designed to keep the
- * interactive logic out of FluidsyXApp itself.
+ * Handles keyboard input, keeps display state, and delegates synth
+ * operations back to FluidsyXApp.  The caller provides a sorted list of
+ * entry IDs and a label so the same class works for both Song and SFX modes.
  */
-class SongConsoleUI {
+class ConsoleUI {
 public:
-  explicit SongConsoleUI(FluidsyXApp& app,
-                         const SongGroupIndex& index)
+  /**
+   * @param app       The owning FluidsyXApp.
+   * @param ids       Sorted list of entry IDs (SongIDs or SFXIds).
+   * @param currentId Initial entry ID to select.
+   * @param label     Display label ("Song" or "SFX").
+   */
+  ConsoleUI(FluidsyXApp& app, std::vector<int> ids, int currentId,
+            const char* label)
       : app_(app)
-      , index_(index)
+      , ids_(std::move(ids))
+      , label_(label)
   {
-    /* Build a sorted list of SongIDs from the MIDI-setup map so that
-     * left/right arrow cycling has a deterministic order. */
-    for (const auto& [sid, setup] : index_.m_midiSetups)
-      songIds_.push_back(sid);
-    std::sort(songIds_.begin(), songIds_.end(),
-              [](SongId a, SongId b) { return a.id < b.id; });
-
-    /* Find the current setupId in the list */
-    for (size_t i = 0; i < songIds_.size(); ++i) {
-      if (songIds_[i].id == static_cast<uint16_t>(app_.setupId)) {
-        songIdx_ = static_cast<int>(i);
+    for (size_t i = 0; i < ids_.size(); ++i) {
+      if (ids_[i] == currentId) {
+        idx_ = static_cast<int>(i);
         break;
       }
     }
@@ -3350,9 +3349,10 @@ public:
 
   /** Result of a single UI poll iteration. */
   enum class Action {
-    Continue,  /**< keep playing */
-    Quit,      /**< user pressed Q or Ctrl-C */
-    ChangeSong /**< user switched to a different SongID */
+    Continue,     /**< keep going */
+    Quit,         /**< user pressed Q or Ctrl-C */
+    ChangeEntry,  /**< user switched to a different entry via LEFT/RIGHT */
+    Space         /**< user pressed SPACE (caller decides semantics) */
   };
 
   /** Non-blocking poll: reads keyboard, updates display, returns action. */
@@ -3363,12 +3363,9 @@ public:
       return Action::Continue;
     }
 
-    /* ESC sequence → arrow keys (POSIX) or Windows extended keys */
-    if (key == 27) {
+    if (key == 27)
       return handleEscapeSequence(elapsed, totalTicks);
-    }
 
-    /* Ctrl-C (raw mode delivers it as ASCII 3) */
     if (key == 3)
       return Action::Quit;
 
@@ -3377,9 +3374,8 @@ public:
       return Action::Quit;
 
     if (key == ' ') {
-      panicAllNotesOff();
       updateDisplay(elapsed, totalTicks);
-      return Action::Continue;
+      return Action::Space;
     }
 
     if (lower == 'c') {
@@ -3398,27 +3394,29 @@ public:
     return Action::Continue;
   }
 
-  /** The currently selected SongID (as an int, for use as setupId). */
-  int currentSetupId() const {
-    if (songIdx_ >= 0 && songIdx_ < static_cast<int>(songIds_.size()))
-      return songIds_[songIdx_].id;
-    return app_.setupId;
+  /** The currently selected entry ID. */
+  int currentId() const {
+    if (idx_ >= 0 && idx_ < static_cast<int>(ids_.size()))
+      return ids_[idx_];
+    return -1;
+  }
+
+  /** The active MIDI channel (-1 = all). */
+  int activeChannel() const { return activeChannel_; }
+
+  /** Force a display refresh. */
+  void refresh(unsigned int elapsed, unsigned int totalTicks) {
+    updateDisplay(elapsed, totalTicks);
   }
 
 private:
   FluidsyXApp& app_;
-  const SongGroupIndex& index_;
-
-  std::vector<SongId> songIds_;    /**< sorted SongIDs */
-  int songIdx_ = 0;               /**< index into songIds_ */
-  int activeChannel_ = -1;        /**< -1 = all channels */
+  std::vector<int> ids_;        /**< sorted entry IDs */
+  int idx_ = 0;                 /**< index into ids_ */
+  int activeChannel_ = -1;     /**< -1 = all channels */
+  const char* label_;           /**< "Song" or "SFX" */
 
   /* ── helpers ── */
-
-  void panicAllNotesOff() {
-    for (int c = 0; c < 16; ++c)
-      fluid_synth_all_notes_off(app_.synth.get(), c);
-  }
 
   /** Handle an escape sequence (arrow keys). */
   Action handleEscapeSequence(unsigned int elapsed, unsigned int totalTicks) {
@@ -3437,18 +3435,18 @@ private:
       app_.volume = std::clamp(app_.volume - 0.1f, 0.f, 2.f);
       fluid_synth_set_gain(app_.synth.get(), app_.volume);
       break;
-    case 'D': /* Left – previous SongID */
-      if (songIdx_ > 0) {
-        --songIdx_;
+    case 'D': /* Left – previous entry */
+      if (idx_ > 0) {
+        --idx_;
         updateDisplay(elapsed, totalTicks);
-        return Action::ChangeSong;
+        return Action::ChangeEntry;
       }
       break;
-    case 'C': /* Right – next SongID */
-      if (songIdx_ + 1 < static_cast<int>(songIds_.size())) {
-        ++songIdx_;
+    case 'C': /* Right – next entry */
+      if (idx_ + 1 < static_cast<int>(ids_.size())) {
+        ++idx_;
         updateDisplay(elapsed, totalTicks);
-        return Action::ChangeSong;
+        return Action::ChangeEntry;
       }
       break;
     default:
@@ -3497,7 +3495,7 @@ private:
     fflush(stdout);
 
     auto input = readLineRaw();
-    if (!input) return;  /* ESC pressed */
+    if (!input) return;
 
     char* end = nullptr;
     long val = strtol(input->c_str(), &end, 10);
@@ -3515,7 +3513,7 @@ private:
     fflush(stdout);
 
     auto input = readLineRaw();
-    if (!input) return;  /* ESC pressed */
+    if (!input) return;
 
     char* end = nullptr;
     long val = strtol(input->c_str(), &end, 10);
@@ -3526,7 +3524,6 @@ private:
 
     int ccVal = static_cast<int>(val);
     if (activeChannel_ < 0) {
-      /* All channels */
       for (int c = 0; c < 16; ++c)
         fluid_synth_cc(app_.synth.get(), c, 19, ccVal);
     } else {
@@ -3538,15 +3535,13 @@ private:
   void updateDisplay(unsigned int elapsed, unsigned int totalTicks) {
     if (app_.verbose) return;
 
-    /* Format channel display */
     std::string chStr = (activeChannel_ < 0) ? "all" : std::to_string(activeChannel_);
-
     int volumePct = static_cast<int>(std::round(app_.volume * 100));
 
     fmt::print("\r                                                                                \r"
-               "  tick {}/{} | Song {} | VOL {}% | CH {}",
+               "  tick {}/{} | {} {} | VOL {}% | CH {}",
                elapsed, totalTicks,
-               currentSetupId(), volumePct, chStr);
+               label_, currentId(), volumePct, chStr);
     fflush(stdout);
   }
 };
@@ -3560,7 +3555,13 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
 
   enableRawMode();
 
-  SongConsoleUI ui(*this, index);
+  /* Build sorted SongID list for the ConsoleUI */
+  std::vector<int> songIds;
+  for (const auto& [sid, setup] : index.m_midiSetups)
+    songIds.push_back(sid.id);
+  std::sort(songIds.begin(), songIds.end());
+
+  ConsoleUI ui(*this, std::move(songIds), setupId, "Song");
   bool firstRun = true;
 
   while (g_running.load()) {
@@ -3569,7 +3570,7 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
       m = {};
 
     /* Apply the MIDI setup for the selected song to FluidSynth channels */
-    setupId = ui.currentSetupId();
+    setupId = ui.currentId();
     std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
         index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
 
@@ -3625,18 +3626,23 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
       unsigned int elapsed = (now > startTick) ? (now - startTick) : 0;
 
       auto action = ui.poll(elapsed, static_cast<unsigned int>(totalTicks));
-      if (action == SongConsoleUI::Action::Quit) {
+      if (action == ConsoleUI::Action::Quit) {
         songFinished = true;
         g_running.store(false);
         break;
       }
-      if (action == SongConsoleUI::Action::ChangeSong) {
+      if (action == ConsoleUI::Action::Space) {
+        /* Panic: all notes off on all channels */
+        for (int c = 0; c < 16; ++c)
+          fluid_synth_all_notes_off(synth.get(), c);
+      }
+      if (action == ConsoleUI::Action::ChangeEntry) {
         /* Stop current playback and restart with new song */
         for (int c = 0; c < 16; ++c)
           fluid_synth_all_notes_off(synth.get(), c);
         activeMacros.clear();
         pendingSngEvents.clear();
-        setupId = ui.currentSetupId();
+        setupId = ui.currentId();
         songFinished = false;
         break;
       }
@@ -3663,111 +3669,74 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
 /* ═══════════════════ SFX playback loop ═══════════════════ */
 
 void FluidsyXApp::sfxLoop(const SFXGroupIndex& index) {
-  fmt::print("<space>: keyon/keyoff, <left/right>: cycle SFX, "
-         "<up/down>: volume, <Q>: quit\n");
+  fmt::print("  SPACE=keyon/keyoff  LEFT/RIGHT=SFX  UP/DOWN=vol  C=channel  S=CC19  Q=quit\n");
 
+  /* Build sorted SFX ID list for the ConsoleUI */
   std::map<SFXId, SFXGroupIndex::SFXEntry> sortEntries(
       index.m_sfxEntries.cbegin(), index.m_sfxEntries.cend());
 
-  auto sfxIt = sortEntries.cbegin();
-  int sfxId = -1;
-  bool isPlaying = false;
+  std::vector<int> sfxIds;
+  for (const auto& [sid, entry] : sortEntries)
+    sfxIds.push_back(sid.id);
 
-  if (sfxIt != sortEntries.cend()) {
-    sfxId = sfxIt->first.id;
-    fmt::print("  SFX {}, VOL {}%\n", sfxId,
-           static_cast<int>(std::round(volume * 100)));
-  }
+  int initialId = sfxIds.empty() ? -1 : sfxIds.front();
+  bool isPlaying = false;
 
   enableRawMode();
 
+  ConsoleUI ui(*this, std::move(sfxIds), initialId, "SFX");
+  ui.refresh(0, 0);
+
   while (g_running.load()) {
-    int key = readKey();
-    if (key < 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      continue;
-    }
+    auto action = ui.poll(0, 0);
 
-    int ch = tolower(key);
-    bool updateDisp = false;
+    switch (action) {
+    case ConsoleUI::Action::Quit:
+      goto done;
 
-    if (ch == 'q')
-      break;
-
-    switch (ch) {
-    case ' ': {
+    case ConsoleUI::Action::Space: {
+      int curId = ui.currentId();
       if (isPlaying) {
         /* Key off */
         fluid_synth_all_notes_off(synth.get(), 0);
         activeMacros.clear();
         isPlaying = false;
-      } else if (sfxIt != sortEntries.cend()) {
+      } else if (curId >= 0) {
         /* Key on */
-        const SFXGroupIndex::SFXEntry& entry = sfxIt->second;
-        const SoundMacro* macro =
-            activePool ? activePool->soundMacro(entry.objId) : nullptr;
-        if (macro) {
-          unsigned int now = fluid_sequencer_get_tick(sequencer.get());
-          enqueueSoundMacro(macro, 0, 0, entry.defKey, entry.defVel, now);
-        } else {
-          fmt::print(stderr, "fluidsyX: failed to resolve SoundMacro for SFX {}\n", sfxId);
-        }
-        isPlaying = true;
-      }
-      updateDisp = true;
-      break;
-    }
-    case 27: {
-      int next1 = readKey();
-      if (next1 == '[') {
-        int next2 = readKey();
-        switch (next2) {
-        case 'D': /* Left – prev SFX */
-          if (sfxIt != sortEntries.cbegin()) {
-            --sfxIt;
-            sfxId = sfxIt->first.id;
-            updateDisp = true;
+        auto sfxIt = sortEntries.find(curId);
+        if (sfxIt != sortEntries.end()) {
+          const SFXGroupIndex::SFXEntry& entry = sfxIt->second;
+          const SoundMacro* macro =
+              activePool ? activePool->soundMacro(entry.objId) : nullptr;
+          if (macro) {
+            unsigned int now = fluid_sequencer_get_tick(sequencer.get());
+            enqueueSoundMacro(macro, 0, 0, entry.defKey, entry.defVel, now);
+          } else {
+            fmt::print(stderr, "fluidsyX: failed to resolve SoundMacro for SFX {}\n", curId);
           }
-          break;
-        case 'C': { /* Right – next SFX */
-          auto nextIt = sfxIt;
-          ++nextIt;
-          if (nextIt != sortEntries.cend()) {
-            sfxIt = nextIt;
-            sfxId = sfxIt->first.id;
-            updateDisp = true;
-          }
-          break;
-        }
-        case 'A': /* Up – volume up */
-          volume = std::clamp(volume + 0.05f, 0.f, 1.f);
-          fluid_synth_set_gain(synth.get(), volume);
-          updateDisp = true;
-          break;
-        case 'B': /* Down – volume down */
-          volume = std::clamp(volume - 0.05f, 0.f, 1.f);
-          fluid_synth_set_gain(synth.get(), volume);
-          updateDisp = true;
-          break;
-        default:
-          break;
+          isPlaying = true;
         }
       }
-      break;
-    }
-    default:
+      ui.refresh(0, 0);
       break;
     }
 
-    if (updateDisp) {
-      fmt::print("\r                                                                "
-             "                \r  {} SFX {}, VOL {}%",
-             isPlaying ? '>' : ' ', sfxId,
-             static_cast<int>(std::round(volume * 100)));
-      fflush(stdout);
+    case ConsoleUI::Action::ChangeEntry:
+      /* Stop current sound when switching SFX */
+      if (isPlaying) {
+        fluid_synth_all_notes_off(synth.get(), 0);
+        activeMacros.clear();
+        isPlaying = false;
+      }
+      break;
+
+    case ConsoleUI::Action::Continue:
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      break;
     }
   }
 
+done:
   fluid_synth_all_notes_off(synth.get(), 0);
   activeMacros.clear();
   fmt::print("\n");
