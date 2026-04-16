@@ -3316,95 +3316,339 @@ void FluidsyXApp::initCCDefault(const std::array<uint8_t, 134>& defaults)
     }
 }
 
+/* ═══════════════════ Song Console UI ═══════════════════ */
+
+/**
+ * Dedicated console UI for interactive song playback.
+ *
+ * Handles keyboard input during songLoop(), keeps display state, and
+ * delegates synth operations back to FluidsyXApp.  Designed to keep the
+ * interactive logic out of FluidsyXApp itself.
+ */
+class SongConsoleUI {
+public:
+  explicit SongConsoleUI(FluidsyXApp& app,
+                         const SongGroupIndex& index)
+      : app_(app)
+      , index_(index)
+  {
+    /* Build a sorted list of SongIDs from the MIDI-setup map so that
+     * left/right arrow cycling has a deterministic order. */
+    for (const auto& [sid, setup] : index_.m_midiSetups)
+      songIds_.push_back(sid);
+    std::sort(songIds_.begin(), songIds_.end(),
+              [](SongId a, SongId b) { return a.id < b.id; });
+
+    /* Find the current setupId in the list */
+    for (size_t i = 0; i < songIds_.size(); ++i) {
+      if (songIds_[i].id == static_cast<uint16_t>(app_.setupId)) {
+        songIdx_ = static_cast<int>(i);
+        break;
+      }
+    }
+  }
+
+  /** Result of a single UI poll iteration. */
+  enum class Action {
+    Continue,  /**< keep playing */
+    Quit,      /**< user pressed Q or Ctrl-C */
+    ChangeSong /**< user switched to a different SongID */
+  };
+
+  /** Non-blocking poll: reads keyboard, updates display, returns action. */
+  Action poll(unsigned int elapsed, unsigned int totalTicks) {
+    int key = readKey();
+    if (key < 0) {
+      updateDisplay(elapsed, totalTicks);
+      return Action::Continue;
+    }
+
+    /* ESC sequence → arrow keys (POSIX) or Windows extended keys */
+    if (key == 27) {
+      return handleEscapeSequence(elapsed, totalTicks);
+    }
+
+    /* Ctrl-C (raw mode delivers it as ASCII 3) */
+    if (key == 3)
+      return Action::Quit;
+
+    int lower = tolower(key);
+    if (lower == 'q')
+      return Action::Quit;
+
+    if (key == ' ') {
+      panicAllNotesOff();
+      updateDisplay(elapsed, totalTicks);
+      return Action::Continue;
+    }
+
+    if (lower == 'c') {
+      promptChannelSelect();
+      updateDisplay(elapsed, totalTicks);
+      return Action::Continue;
+    }
+
+    if (lower == 's') {
+      promptCC19();
+      updateDisplay(elapsed, totalTicks);
+      return Action::Continue;
+    }
+
+    updateDisplay(elapsed, totalTicks);
+    return Action::Continue;
+  }
+
+  /** The currently selected SongID (as an int, for use as setupId). */
+  int currentSetupId() const {
+    if (songIdx_ >= 0 && songIdx_ < static_cast<int>(songIds_.size()))
+      return songIds_[songIdx_].id;
+    return app_.setupId;
+  }
+
+private:
+  FluidsyXApp& app_;
+  const SongGroupIndex& index_;
+
+  std::vector<SongId> songIds_;    /**< sorted SongIDs */
+  int songIdx_ = 0;               /**< index into songIds_ */
+  int activeChannel_ = -1;        /**< -1 = all channels */
+
+  /* ── helpers ── */
+
+  void panicAllNotesOff() {
+    for (int c = 0; c < 16; ++c)
+      fluid_synth_all_notes_off(app_.synth.get(), c);
+  }
+
+  /** Handle an escape sequence (arrow keys). */
+  Action handleEscapeSequence(unsigned int elapsed, unsigned int totalTicks) {
+    int next1 = readKey();
+    if (next1 != '[') {
+      updateDisplay(elapsed, totalTicks);
+      return Action::Continue;
+    }
+    int next2 = readKey();
+    switch (next2) {
+    case 'A': /* Up – volume up */
+      app_.volume = std::clamp(app_.volume + 0.1f, 0.f, 2.f);
+      fluid_synth_set_gain(app_.synth.get(), app_.volume);
+      break;
+    case 'B': /* Down – volume down */
+      app_.volume = std::clamp(app_.volume - 0.1f, 0.f, 2.f);
+      fluid_synth_set_gain(app_.synth.get(), app_.volume);
+      break;
+    case 'D': /* Left – previous SongID */
+      if (songIdx_ > 0) {
+        --songIdx_;
+        updateDisplay(elapsed, totalTicks);
+        return Action::ChangeSong;
+      }
+      break;
+    case 'C': /* Right – next SongID */
+      if (songIdx_ + 1 < static_cast<int>(songIds_.size())) {
+        ++songIdx_;
+        updateDisplay(elapsed, totalTicks);
+        return Action::ChangeSong;
+      }
+      break;
+    default:
+      break;
+    }
+    updateDisplay(elapsed, totalTicks);
+    return Action::Continue;
+  }
+
+  /** Read a line of text in raw mode (echoing chars, supporting backspace).
+   *  Returns the entered string, or std::nullopt if ESC was pressed. */
+  std::optional<std::string> readLineRaw() {
+    std::string buf;
+    for (;;) {
+      if (!g_running.load())
+        return std::nullopt;
+      int k = readKey();
+      if (k < 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        continue;
+      }
+      if (k == 27)            /* ESC – cancel */
+        return std::nullopt;
+      if (k == '\r' || k == '\n')  /* Enter – confirm */
+        return buf;
+      if (k == 127 || k == 8) { /* Backspace */
+        if (!buf.empty()) {
+          buf.pop_back();
+          fmt::print("\b \b");
+          fflush(stdout);
+        }
+        continue;
+      }
+      if (k >= 32 && k < 127) {
+        buf.push_back(static_cast<char>(k));
+        fmt::print("{}", static_cast<char>(k));
+        fflush(stdout);
+      }
+    }
+  }
+
+  /** Prompt user to select a MIDI channel (-1 = all, 0-15). */
+  void promptChannelSelect() {
+    fmt::print("\r                                                                                \r");
+    fmt::print("  Channel (-1=all, 0-15): ");
+    fflush(stdout);
+
+    auto input = readLineRaw();
+    if (!input) return;  /* ESC pressed */
+
+    char* end = nullptr;
+    long val = strtol(input->c_str(), &end, 10);
+    if (end == input->c_str() || *end != '\0' || val < -1 || val > 15) {
+      fmt::print("  [invalid]\n");
+      return;
+    }
+    activeChannel_ = static_cast<int>(val);
+  }
+
+  /** Prompt user to enter a CC19 value (0-127) and send it. */
+  void promptCC19() {
+    fmt::print("\r                                                                                \r");
+    fmt::print("  CC19 value (0-127): ");
+    fflush(stdout);
+
+    auto input = readLineRaw();
+    if (!input) return;  /* ESC pressed */
+
+    char* end = nullptr;
+    long val = strtol(input->c_str(), &end, 10);
+    if (end == input->c_str() || *end != '\0' || val < 0 || val > 127) {
+      fmt::print("  [invalid]\n");
+      return;
+    }
+
+    int ccVal = static_cast<int>(val);
+    if (activeChannel_ < 0) {
+      /* All channels */
+      for (int c = 0; c < 16; ++c)
+        fluid_synth_cc(app_.synth.get(), c, 19, ccVal);
+    } else {
+      fluid_synth_cc(app_.synth.get(), activeChannel_, 19, ccVal);
+    }
+  }
+
+  /** Redraw the status line (non-verbose mode only). */
+  void updateDisplay(unsigned int elapsed, unsigned int totalTicks) {
+    if (app_.verbose) return;
+
+    /* Format channel display */
+    std::string chStr = (activeChannel_ < 0) ? "all" : std::to_string(activeChannel_);
+
+    int volumePct = static_cast<int>(std::round(app_.volume * 100));
+
+    fmt::print("\r                                                                                \r"
+               "  tick {}/{} | Song {} | VOL {}% | CH {}",
+               elapsed, totalTicks,
+               currentSetupId(), volumePct, chStr);
+    fflush(stdout);
+  }
+};
+
+/* ═══════════════════ Song playback loop ═══════════════════ */
+
 void FluidsyXApp::songLoop(const SongGroupIndex& index) {
   /* Store a reference to the SongGroupIndex so that timer callbacks can
    * resolve note events through the page→keymap/layer→SoundMacro chain. */
   activeSongGroup = &index;
 
-  /* Reset per-channel ADSR mappings from any previous playback */
-  for (auto& m : channelAdsrMap)
-    m = {};
-
-  /* Apply the MIDI setup for the selected song to FluidSynth channels */
-  std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
-      index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
-
-  auto setupIt = sortEntries.find(setupId);
-  if (setupIt != sortEntries.end()) {
-    const auto& midiSetup = setupIt->second;
-
-    // Init all CCs to their default "cold" values
-    initCCDefault(inpColdMIDIDefaults);
-
-    for (int ch = 0; ch < 16; ++ch) {
-      channelPrograms[ch] = midiSetup[ch].programNo;
-      fluid_synth_program_change(synth.get(), ch, midiSetup[ch].programNo);
-      fluid_synth_cc(synth.get(), ch, 7, midiSetup[ch].volume);
-      fluid_synth_cc(synth.get(), ch, 10, midiSetup[ch].panning);
-      fluid_synth_cc(synth.get(), ch, 91, midiSetup[ch].reverb);
-      fluid_synth_cc(synth.get(), ch, 93, midiSetup[ch].chorus);
-    }
-  }
-
-  /* Schedule all song events on the FluidSynth sequencer */
-  if (!selectedSong) {
-    fmt::print(stderr, "fluidsyX: no song data to play\n");
-    return;
-  }
-
-  double totalTicks = scheduleSongEvents(selectedSong->m_data.get(),
-                                         selectedSong->m_size);
-  if (totalTicks <= 0.0) {
-    fmt::print(stderr, "fluidsyX: no events to play\n");
-    return;
-  }
-
-  /* Wait for playback to finish.
-   * The sequencer is already dispatching events in real-time via the
-   * audio driver thread.  We just monitor progress until the last
-   * scheduled tick has been reached, plus a short tail for release
-   * envelopes to ring out. */
-  fmt::print("fluidsyX: playing song (setup {}, {} ticks) — press Q or Ctrl-C to stop\n",
-         setupId, static_cast<unsigned int>(totalTicks));
-
   enableRawMode();
 
-  unsigned int startTick = fluid_sequencer_get_tick(sequencer.get());
-  unsigned int endTick = startTick + static_cast<unsigned int>(totalTicks);
-  /* Add a tail in sequencer ticks (at current time-scale rate).
-   * Use the current scale to compute ~2 seconds worth of ticks. */
-  double curScale = fluid_sequencer_get_time_scale(sequencer.get());
-  unsigned int tailTicks = static_cast<unsigned int>(curScale * 2.0);
-  unsigned int tailEnd = endTick + tailTicks;
+  SongConsoleUI ui(*this, index);
+  bool firstRun = true;
 
   while (g_running.load()) {
-    unsigned int now = fluid_sequencer_get_tick(sequencer.get());
+    /* (Re)initialise per-channel state for each song */
+    for (auto& m : channelAdsrMap)
+      m = {};
 
-    /* Check for user input (Q to quit, space for panic) */
-    int key = readKey();
-    if (key >= 0) {
-      int ch = tolower(key);
-      if (ch == 'q')
-        break;
-      if (ch == ' ') {
-        for (int c = 0; c < 16; ++c)
-          fluid_synth_all_notes_off(synth.get(), c);
+    /* Apply the MIDI setup for the selected song to FluidSynth channels */
+    setupId = ui.currentSetupId();
+    std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
+        index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
+
+    auto setupIt = sortEntries.find(setupId);
+    if (setupIt != sortEntries.end()) {
+      const auto& midiSetup = setupIt->second;
+
+      // Init all CCs to their default "cold" values
+      initCCDefault(inpColdMIDIDefaults);
+
+      for (int ch = 0; ch < 16; ++ch) {
+        channelPrograms[ch] = midiSetup[ch].programNo;
+        fluid_synth_program_change(synth.get(), ch, midiSetup[ch].programNo);
+        fluid_synth_cc(synth.get(), ch, 7, midiSetup[ch].volume);
+        fluid_synth_cc(synth.get(), ch, 10, midiSetup[ch].panning);
+        fluid_synth_cc(synth.get(), ch, 91, midiSetup[ch].reverb);
+        fluid_synth_cc(synth.get(), ch, 93, midiSetup[ch].chorus);
       }
     }
 
-    /* Print progress (tick-based) */
-    unsigned int elapsed = (now > startTick) ? (now - startTick) : 0;
-    if(!verbose)
-    {
-      fmt::print("\r  tick {} / {}  ", elapsed,
-            static_cast<unsigned int>(totalTicks));
-    }
-    fflush(stdout);
-
-    if (now >= tailEnd)
+    /* Schedule all song events on the FluidSynth sequencer */
+    if (!selectedSong) {
+      fmt::print(stderr, "fluidsyX: no song data to play\n");
       break;
+    }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    double totalTicks = scheduleSongEvents(selectedSong->m_data.get(),
+                                           selectedSong->m_size);
+    if (totalTicks <= 0.0) {
+      fmt::print(stderr, "fluidsyX: no events to play\n");
+      break;
+    }
+
+    if (firstRun) {
+      fmt::print("fluidsyX: playing song (setup {}, {} ticks)\n"
+                 "  SPACE=panic  LEFT/RIGHT=song  UP/DOWN=vol  C=channel  S=CC19  Q=quit\n",
+                 setupId, static_cast<unsigned int>(totalTicks));
+      firstRun = false;
+    } else {
+      fmt::print("\nfluidsyX: switched to song (setup {}, {} ticks)\n",
+                 setupId, static_cast<unsigned int>(totalTicks));
+    }
+
+    unsigned int startTick = fluid_sequencer_get_tick(sequencer.get());
+    unsigned int endTick = startTick + static_cast<unsigned int>(totalTicks);
+    double curScale = fluid_sequencer_get_time_scale(sequencer.get());
+    unsigned int tailTicks = static_cast<unsigned int>(curScale * 2.0);
+    unsigned int tailEnd = endTick + tailTicks;
+
+    bool songFinished = true;
+    while (g_running.load()) {
+      unsigned int now = fluid_sequencer_get_tick(sequencer.get());
+      unsigned int elapsed = (now > startTick) ? (now - startTick) : 0;
+
+      auto action = ui.poll(elapsed, static_cast<unsigned int>(totalTicks));
+      if (action == SongConsoleUI::Action::Quit) {
+        songFinished = true;
+        g_running.store(false);
+        break;
+      }
+      if (action == SongConsoleUI::Action::ChangeSong) {
+        /* Stop current playback and restart with new song */
+        for (int c = 0; c < 16; ++c)
+          fluid_synth_all_notes_off(synth.get(), c);
+        activeMacros.clear();
+        pendingSngEvents.clear();
+        setupId = ui.currentSetupId();
+        songFinished = false;
+        break;
+      }
+
+      if (now >= tailEnd)
+        break;
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if (songFinished)
+      break;
   }
 
   /* All notes off */
