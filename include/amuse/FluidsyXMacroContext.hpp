@@ -38,7 +38,6 @@ struct MacroExecContext {
    * alone leaves ID=0, which is treated as "not started").
    * Subsequent commands look up the voice by ID via findVoiceById(). */
   unsigned int voiceId = 0;
-  uint8_t allocKey = 60;      /**< MIDI key at voice allocation time */
   uint8_t triggerNote = 60;   /**< Original SNG note (before keymap/layer transpose), used for NoteOff matching */
 
   /* ── Pending SoundMacro commands ──
