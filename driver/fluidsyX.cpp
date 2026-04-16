@@ -1005,11 +1005,6 @@ struct FluidsyXApp {
    *  each generator so the change takes effect on an already-playing voice. */
   void applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx, bool started);
 
-  /** Apply pitch offset (GEN_COARSETUNE + GEN_FINETUNE) to the macro's voice.
-   *  Computes the offset from curNote (MusyX: curNote) relative to allocKey,
-   *  plus the accumulated curDetune in cents. */
-  void applyVoicePitch(MacroExecContext& ctx);
-
   /** Execute an event trap: redirect macro execution to the trap target.
    *  If the trap's macroId matches the current macro, just jump to the step.
    *  If it's a different macro, replace the current macro entirely.
@@ -1745,23 +1740,6 @@ void FluidsyXApp::applyAdsrToVoice(fluid_voice_t* v, MacroExecContext& ctx,
 #endif
 }
 
-void FluidsyXApp::applyVoicePitch(MacroExecContext& ctx) {
-  int offsetCents = (ctx.curNote - ctx.allocKey) * 100 + ctx.curDetune;
-  int coarse = offsetCents / 100;
-  int fine   = offsetCents % 100;
-  fluid_voice_t* v = getActiveVoice(synth.get(), ctx);
-  if (!v)
-  {
-    fmt::print(stderr, "Warning: unable to find active voice for pitch change (key {}, coarse {}, fine {})\n",
-               ctx.curNote, coarse, fine);
-    return;
-  }
-  fluid_voice_gen_set(v, GEN_COARSETUNE, static_cast<float>(coarse));
-  fluid_voice_gen_set(v, GEN_FINETUNE,   static_cast<float>(fine));
-  fluid_voice_update_param(v, GEN_COARSETUNE);
-  fluid_voice_update_param(v, GEN_FINETUNE);
-}
-
 /* ═══════════════════ SoundMacro DoFluid overrides ═══════════════════
  * Each override extracts its logic from the former processMacroCmd() switch.
  * Methods that need app-level state cast ctx.appData to FluidsyXApp*.
@@ -1932,12 +1910,23 @@ unsigned int SoundMacro::CmdGoSub::DoFluid(MacroExecContext& ctx, fluid_voice_t*
   return 0;
 }
 
-unsigned int SoundMacro::CmdSetNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+unsigned int SoundMacro::CmdSetNote::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
   unsigned int delay = 0;
-  ctx.curNote = static_cast<uint8_t>(std::clamp(static_cast<int>(key), 0, 127));
-  ctx.curDetune = detune;
-  app->applyVoicePitch(ctx);
+  if(v)
+  {
+    // Technically not correct to set it directly. MusyX "glides" to the new pitch.
+    fluid_voice_gen_set(v, GEN_COARSETUNE, key - ctx.allocKey);
+    fluid_voice_gen_set(v, GEN_FINETUNE,   detune);
+    fluid_voice_update_param(v, GEN_COARSETUNE);
+    fluid_voice_update_param(v, GEN_FINETUNE);
+  }
+  else
+  {
+    // remember for startSample
+    ctx.curNote = static_cast<uint8_t>(std::clamp(static_cast<int>(key), 0, 127));
+    ctx.curDetune = detune;
+  }
   if (msSwitch)
     delay = ticksOrMs;
   else
@@ -1951,19 +1940,17 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   unsigned int delay = 0;
   if(v)
   {
-    int newKey;
     if (originalKey) {
-      //fluid_voice_gen_set(v, GEN_OVERRIDEROOTKEY, ctx.orgNote);
-      //fluid_voice_gen_set(v, GEN_SCALETUNE, 0);
+      // allocKey should serve as reference
       fluid_voice_gen_set(v, GEN_COARSETUNE, add);
-      //fluid_voice_update_param(v, GEN_OVERRIDEROOTKEY);
-      //fluid_voice_update_param(v, GEN_SCALETUNE);
-      fluid_voice_update_param(v, GEN_COARSETUNE);
     } else {
-      // The intent is: shift the currently playing pitch up/down by add semitones. In SF2, set coarseTune = accumulated offset value.
-      fluid_voice_gen_set(v, GEN_COARSETUNE, add);
-      newKey = static_cast<int>(ctx.curNote) + add;
+      // Current note pitch serves as reference
+      // ctx.curNote + add;
+      fluid_voice_gen_set(v, GEN_COARSETUNE, fluid_voice_gen_get(v, GEN_COARSETUNE) + add);
     }
+    fluid_voice_gen_set(v, GEN_FINETUNE,   detune);
+    fluid_voice_update_param(v, GEN_FINETUNE);
+    fluid_voice_update_param(v, GEN_COARSETUNE);
   }
   else
   {
@@ -1979,22 +1966,7 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   return delay;
 }
 
-unsigned int SoundMacro::CmdLastNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
-  auto* app = static_cast<FluidsyXApp*>(ctx.appData);
-  unsigned int delay = 0;
-  int newKey = static_cast<int>(ctx.orgNote) + add;
-  ctx.curNote = static_cast<uint8_t>(std::clamp(newKey, 0, 127));
-  ctx.curDetune = detune;
-  app->applyVoicePitch(ctx);
-  if (msSwitch)
-    delay = ticksOrMs;
-  else
-    delay = static_cast<unsigned int>(ticksOrMs * 1000.0 / ctx.ticksPerSec);
-  ctx.pc++;
-  return delay;
-}
-
-unsigned int SoundMacro::CmdRndNote::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+unsigned int SoundMacro::CmdRndNote::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
   int lo = noteLo;
   int hi = noteHi;
@@ -2013,12 +1985,23 @@ unsigned int SoundMacro::CmdRndNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   } else {
     ctx.curDetune = detune;
   }
-  app->applyVoicePitch(ctx);
+  if(v)
+  {
+    // Technically not correct to set it directly. MusyX "glides" to the new pitch.
+    fluid_voice_gen_set(v, GEN_COARSETUNE, ctx.curNote - ctx.allocKey);
+    fluid_voice_gen_set(v, GEN_FINETUNE,   detune);
+    fluid_voice_update_param(v, GEN_COARSETUNE);
+    fluid_voice_update_param(v, GEN_FINETUNE);
+  }
+  else
+  {
+    // curDetune and curNote assignment done, nothing do to
+  }
   ctx.pc++;
   return 0;
 }
 
-unsigned int SoundMacro::CmdSetPitch::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
+unsigned int SoundMacro::CmdSetPitch::DoFluid(MacroExecContext& ctx, fluid_voice_t* v) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
   double freq = static_cast<double>(hz) + fine / 65536.0;
   if (freq > 0.0) {
@@ -2028,7 +2011,18 @@ unsigned int SoundMacro::CmdSetPitch::DoFluid(MacroExecContext& ctx, fluid_voice
     double centFrac = (midiNote - noteInt) * 100.0;
     ctx.curNote = static_cast<uint8_t>(noteInt);
     ctx.curDetune = static_cast<int>(std::round(centFrac));
-    app->applyVoicePitch(ctx);
+    if(v)
+    {
+      // Technically not correct to set it directly. MusyX "glides" to the new pitch.
+      fluid_voice_gen_set(v, GEN_COARSETUNE, ctx.curNote - ctx.allocKey);
+      fluid_voice_gen_set(v, GEN_FINETUNE,   ctx.curDetune);
+      fluid_voice_update_param(v, GEN_COARSETUNE);
+      fluid_voice_update_param(v, GEN_FINETUNE);
+    }
+    else
+    {
+      // curNote and curDetune assignment done, nothing do to
+    }
   }
   ctx.pc++;
   return 0;
