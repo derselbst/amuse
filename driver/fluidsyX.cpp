@@ -265,7 +265,7 @@ struct SngTrackHeader {
 /* ── Collected SNG event for scheduling ── */
 
 struct SngEvent {
-  enum Type { NoteOn, NoteOff, CC, Program, PitchBend, Tempo };
+  enum Type { NoteOn, NoteOff, CC, Program, PitchBend, Tempo, WarmReset, AllNotesOff };
   Type     type;
   uint32_t absTick;
   uint8_t  channel;
@@ -448,11 +448,11 @@ static bool parseSngEvents(const unsigned char* sngData, bool bigEndian,
               case 0x79:
                 // calls inpResetMidiCtrl(midi, curSeqId, FALSE) and effectively repopulates all CCs with inpWarmMIDIDefaults
                 // finally invalidates the last Note with inpSetMidiLastNote(ch, set, 0xFF);
-                fmt::print(stderr, "0x79 inpResetMidiCtrl() not yet implemented, channel {}, track {}\n", midiChan, i);
+                outEvents.push_back({SngEvent::WarmReset, evTick, midiChan, 0, 0, 0, 0.0, i});
                 break;
               case 0x7b:
                 // calls KeyOffNotes(), i.e. effectively all notes off
-                fmt::print(stderr, "0x7b KeyOffNotes() not yet implemented, channel {}, track {}\n", midiChan, i);
+                outEvents.push_back({SngEvent::AllNotesOff, evTick, midiChan, 0, 0, 0, 0.0, i});
                 break;
               default:
               {
@@ -950,7 +950,7 @@ struct FluidsyXApp {
   /* Pending SNG events dispatched via timer callbacks.
    * Timer data encodes a negative index into this vector: data = -(1 + idx). */
   struct PendingSngNoteEvent {
-    enum Type { NoteOn, NoteOff, ProgramChange, CC };
+    enum Type { NoteOn, NoteOff, ProgramChange, CC, WarmReset };
     Type     type;
     uint8_t  channel;
     uint16_t note;     /* also: CC number for Type::CC  (uint16 for MusyX extended CC) */
@@ -961,6 +961,7 @@ struct FluidsyXApp {
   /* ── lifecycle helpers ── */
 
   [[nodiscard]] bool initFluidSynth();
+  void initCCDefault(const std::array<uint8_t, 134>& defaults);
   void shutdownFluidSynth();
 
   [[nodiscard]] bool loadMusyXData(const char* path);
@@ -3020,6 +3021,10 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
       }
       break;
     }
+
+    case PendingSngNoteEvent::WarmReset:
+      app->initCCDefault(inpWarmMIDIDefaults);
+      break;
     }
     return;
   }
@@ -3117,6 +3122,7 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
     case SngEvent::NoteOn:
     case SngEvent::NoteOff:
     case SngEvent::CC:
+    case SngEvent::WarmReset:
     case SngEvent::Program: {
       /* Route through timer callback */
       PendingSngNoteEvent::Type t;
@@ -3126,6 +3132,7 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
       case SngEvent::NoteOn:  t = PendingSngNoteEvent::NoteOn; break;
       case SngEvent::NoteOff: t = PendingSngNoteEvent::NoteOff; d2 = 0; break;
       case SngEvent::CC:      t = PendingSngNoteEvent::CC; break;
+      case SngEvent::WarmReset: t = PendingSngNoteEvent::WarmReset; d1 = d2 = 0; break;
       default:                t = PendingSngNoteEvent::ProgramChange; d2 = 0; break;
       }
       size_t idx = pendingSngEvents.size();
@@ -3147,6 +3154,11 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
     case SngEvent::Tempo:
       fluid_event_set_dest(evt.get(), synthSeqId);
       fluid_event_scale(evt.get(), e.tempoScale);
+      fluid_sequencer_send_at(sequencer.get(), evt.get(), schedTick, /*absolute=*/1);
+      break;
+    case SngEvent::AllNotesOff:
+      fluid_event_set_dest(evt.get(), synthSeqId);
+      fluid_event_all_notes_off(evt.get(), e.channel);
       fluid_sequencer_send_at(sequencer.get(), evt.get(), schedTick, /*absolute=*/1);
       break;
     }
@@ -3270,25 +3282,9 @@ double FluidsyXApp::scheduleSongEvents(const uint8_t* sngData, size_t /*sngSize*
 
 /* ═══════════════════ Song playback loop ═══════════════════ */
 
-void FluidsyXApp::songLoop(const SongGroupIndex& index) {
-  /* Store a reference to the SongGroupIndex so that timer callbacks can
-   * resolve note events through the page→keymap/layer→SoundMacro chain. */
-  activeSongGroup = &index;
-
-  /* Reset per-channel ADSR mappings from any previous playback */
-  for (auto& m : channelAdsrMap)
-    m = {};
-
-  /* Apply the MIDI setup for the selected song to FluidSynth channels */
-  std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
-      index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
-
-  auto setupIt = sortEntries.find(setupId);
-  if (setupIt != sortEntries.end()) {
-    const auto& midiSetup = setupIt->second;
-
-    // Init all CCs to their default "cold" values
-    for (int cc = 0; cc < 128; ++cc)
+void FluidsyXApp::initCCDefault(const std::array<uint8_t, 134>& defaults)
+{
+  for (int cc = 0; cc < 128; ++cc)
     {
       // skip CCs that fluidsynth is alergic to, or that are not allowed to modulate either per SF2 spec
       switch(cc)
@@ -3307,17 +3303,38 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
             case 0x06: // DATA_ENTRY_MSB
               continue;
       }
-      if(inpColdMIDIDefaults[cc] == 0xFF)
+      if(defaults[cc] == 0xFF)
       {
         // leave the CC unchanged per MusyX behavior
         continue;
       }
         for (int ch = 0; ch < 16; ++ch) {
         {
-          fluid_synth_cc(synth.get(), ch, cc, inpColdMIDIDefaults[cc]);
+          fluid_synth_cc(synth.get(), ch, cc, defaults[cc]);
         }
       }
     }
+}
+
+void FluidsyXApp::songLoop(const SongGroupIndex& index) {
+  /* Store a reference to the SongGroupIndex so that timer callbacks can
+   * resolve note events through the page→keymap/layer→SoundMacro chain. */
+  activeSongGroup = &index;
+
+  /* Reset per-channel ADSR mappings from any previous playback */
+  for (auto& m : channelAdsrMap)
+    m = {};
+
+  /* Apply the MIDI setup for the selected song to FluidSynth channels */
+  std::map<SongId, std::array<SongGroupIndex::MIDISetup, 16>> sortEntries(
+      index.m_midiSetups.cbegin(), index.m_midiSetups.cend());
+
+  auto setupIt = sortEntries.find(setupId);
+  if (setupIt != sortEntries.end()) {
+    const auto& midiSetup = setupIt->second;
+
+    // Init all CCs to their default "cold" values
+    initCCDefault(inpColdMIDIDefaults);
 
     for (int ch = 0; ch < 16; ++ch) {
       channelPrograms[ch] = midiSetup[ch].programNo;
