@@ -3638,6 +3638,8 @@ void FluidsyXApp::songLoop(const SongGroupIndex& index) {
       }
       if (action == ConsoleUI::Action::ChangeEntry) {
         /* Stop current playback and restart with new song */
+        fluid_sequencer_remove_events(sequencer.get(), -1, -1, -1);
+        adriver.reset(new_fluid_audio_driver(settings.get(), synth.get()));
         for (int c = 0; c < 16; ++c)
           fluid_synth_all_notes_off(synth.get(), c);
         activeMacros.clear();
