@@ -1916,7 +1916,7 @@ unsigned int SoundMacro::CmdSetNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   if(v)
   {
     // Technically not correct to set it directly. MusyX "glides" to the new pitch.
-    fluid_voice_gen_set(v, GEN_COARSETUNE, key - ctx.allocKey);
+    fluid_voice_gen_set(v, GEN_COARSETUNE, key - ctx.orgNote);
     fluid_voice_gen_set(v, GEN_FINETUNE,   detune);
     fluid_voice_update_param(v, GEN_COARSETUNE);
     fluid_voice_update_param(v, GEN_FINETUNE);
@@ -1941,7 +1941,7 @@ unsigned int SoundMacro::CmdAddNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   if(v)
   {
     if (originalKey) {
-      // allocKey should serve as reference
+      // orgNote should serve as reference
       fluid_voice_gen_set(v, GEN_COARSETUNE, add);
     } else {
       // Current note pitch serves as reference
@@ -1988,7 +1988,7 @@ unsigned int SoundMacro::CmdRndNote::DoFluid(MacroExecContext& ctx, fluid_voice_
   if(v)
   {
     // Technically not correct to set it directly. MusyX "glides" to the new pitch.
-    fluid_voice_gen_set(v, GEN_COARSETUNE, ctx.curNote - ctx.allocKey);
+    fluid_voice_gen_set(v, GEN_COARSETUNE, ctx.curNote - ctx.orgNote);
     fluid_voice_gen_set(v, GEN_FINETUNE,   detune);
     fluid_voice_update_param(v, GEN_COARSETUNE);
     fluid_voice_update_param(v, GEN_FINETUNE);
@@ -2014,7 +2014,7 @@ unsigned int SoundMacro::CmdSetPitch::DoFluid(MacroExecContext& ctx, fluid_voice
     if(v)
     {
       // Technically not correct to set it directly. MusyX "glides" to the new pitch.
-      fluid_voice_gen_set(v, GEN_COARSETUNE, ctx.curNote - ctx.allocKey);
+      fluid_voice_gen_set(v, GEN_COARSETUNE, ctx.curNote - ctx.orgNote);
       fluid_voice_gen_set(v, GEN_FINETUNE,   ctx.curDetune);
       fluid_voice_update_param(v, GEN_COARSETUNE);
       fluid_voice_update_param(v, GEN_FINETUNE);
@@ -2155,7 +2155,6 @@ unsigned int SoundMacro::CmdStartSample::DoFluid(MacroExecContext& ctx, fluid_vo
     if (fluid_synth_start(app->synth.get(), id, app->dummyPreset, 0, ctx.channel,
                            ctx.curNote, ctx.midiVel) == FLUID_OK) {
       ctx.voiceId  = id;
-      ctx.allocKey = ctx.curNote;
     } else {
       fmt::print(stderr, "fluidsyX: warning: voice start failed for "
                       "sample {} on ch {} key {}\n",
