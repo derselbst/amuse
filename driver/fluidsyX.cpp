@@ -2177,8 +2177,8 @@ unsigned int SoundMacro::CmdStartSample::DoFluid(MacroExecContext& ctx, fluid_vo
 
 unsigned int SoundMacro::CmdStopSample::DoFluid(MacroExecContext& ctx, fluid_voice_t*) const {
   auto* app = static_cast<FluidsyXApp*>(ctx.appData);
-  app->killVoice(app->synth.get(), ctx);
   fmt::print(stderr, "fluidsyX: OFFing voice ID {} on ch {}\n", ctx.voiceId, ctx.channel);
+  app->killVoice(app->synth.get(), ctx);
   ctx.pc++;
   return 0;
 }
