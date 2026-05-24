@@ -958,7 +958,7 @@ struct FluidsyXApp {
   };
   std::vector<PendingSngNoteEvent> pendingSngEvents;
 
-#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+#if FLUID_VERSION_AT_LEAST(2, 6, 0)
   /** Per-voice callback data, keyed by user-controlled voice ID (ctx.voiceId).
    *  Entries are inserted in dummy_preset_noteon() when a voice is started,
    *  and removed in voiceStateCallback() when the voice finishes. */
@@ -1168,7 +1168,7 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
 
   app->applyAdsrToVoice(voice, ctx, false);
 
-#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+#if FLUID_VERSION_AT_LEAST(2, 6, 0)
   /* Register a voice-state callback so the macro can react to the true
    * noteoff (voice enters release) and voice finish (sample end) events.
    *
@@ -2978,7 +2978,7 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
       return macroId;
     }
   }
-#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+#if FLUID_VERSION_AT_LEAST(2, 6, 0)
   /* Macro completed synchronously without waiting — however the voice (if
    * any) may still be playing.  The voiceCallbacks entry remains valid;
    * the FINISHED callback will erase it when the voice actually stops. */
@@ -3138,7 +3138,7 @@ void FluidsyXApp::scheduleImmediateResume(int macroId) {
   fluid_sequencer_send_now(sequencer.get(), resumeEvt.get());
 }
 
-#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+#if FLUID_VERSION_AT_LEAST(2, 6, 0)
 void FluidsyXApp::voiceStateCallback(fluid_voice_t* /*voice*/,
                                       int reason,
                                       void* data) {
