@@ -1170,7 +1170,19 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
 
 #if FLUID_VERSION_AT_LEAST(2, 5, 4)
   /* Register a voice-state callback so the macro can react to the true
-   * noteoff (voice enters release) and voice finish (sample end) events. */
+   * noteoff (voice enters release) and voice finish (sample end) events.
+   *
+   * Registration is done here, BEFORE fluid_synth_start_voice(), because
+   * this is the only synchronous opportunity: dummy_preset_noteon is called
+   * from within fluid_synth_start() before the voice becomes active in the
+   * DSP loop.  Voice callbacks can only fire from the audio/synthesis thread
+   * during fluid_synth_process(), which cannot run until after
+   * fluid_synth_start_voice() returns.  There is therefore no risk of a
+   * premature callback.
+   *
+   * std::map (tree-based) guarantees that inserting new entries never
+   * invalidates references or pointers to existing entries, so &cbData
+   * remains valid for the lifetime of the entry. */
   {
     int macroId = ctx.selfId;
     unsigned int vid = static_cast<unsigned int>(fluid_voice_get_id(voice));
