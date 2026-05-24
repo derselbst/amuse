@@ -958,6 +958,26 @@ struct FluidsyXApp {
   };
   std::vector<PendingSngNoteEvent> pendingSngEvents;
 
+#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+  /** Per-voice callback data, keyed by user-controlled voice ID (ctx.voiceId).
+   *  Entries are inserted in dummy_preset_noteon() when a voice is started,
+   *  and removed in voiceStateCallback() when the voice finishes. */
+  struct VoiceCallbackData {
+    FluidsyXApp* app;
+    int macroId;
+    unsigned int voiceId; /**< Key in voiceCallbacks — needed for self-removal on FINISHED */
+  };
+  std::map<unsigned int, VoiceCallbackData> voiceCallbacks;
+
+  /** Invoked from the FluidSynth synthesis thread when a voice enters its
+   *  release phase (NOTEOFF) or finishes playing (FINISHED).
+   *  Sets the appropriate received flag and, for indefinite waits only,
+   *  schedules an immediate timer to resume the blocked macro. */
+  static void voiceStateCallback(fluid_voice_t* voice,
+                                  enum fluid_voice_callback_reason reason,
+                                  void* data);
+#endif
+
   /* ── lifecycle helpers ── */
 
   [[nodiscard]] bool initFluidSynth();
@@ -1016,6 +1036,11 @@ struct FluidsyXApp {
   void killVoice(fluid_synth_t* synth, MacroExecContext& ctx);
   /** Kick off the next pending timer step for all active macros */
   void scheduleNextTimerStep();
+
+  /** Helper: schedule an immediate sequencer timer to resume macro \p macroId.
+   *  Called from voiceStateCallback (synthesis thread) and the NoteOff handler
+   *  (sequencer thread) when an indefinite wait condition is satisfied. */
+  void scheduleImmediateResume(int macroId);
 };
 
 /* ═══════════════════ Dummy preset callbacks ═══════════════════ */
@@ -1142,6 +1167,22 @@ static int dummy_preset_noteon(fluid_preset_t* preset, fluid_synth_t* synth,
   }
 
   app->applyAdsrToVoice(voice, ctx, false);
+
+#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+  /* Register a voice-state callback so the macro can react to the true
+   * noteoff (voice enters release) and voice finish (sample end) events. */
+  {
+    int macroId = ctx.selfId;
+    unsigned int vid = static_cast<unsigned int>(fluid_voice_get_id(voice));
+    if (macroId >= 0 && vid != 0) {
+      auto& cbData = app->voiceCallbacks[vid];
+      cbData.app     = app;
+      cbData.macroId = macroId;
+      cbData.voiceId = vid;
+      fluid_voice_set_callback(voice, FluidsyXApp::voiceStateCallback, &cbData);
+    }
+  }
+#endif
 
   fluid_synth_start_voice(synth, voice);
   return FLUID_OK;
@@ -1770,12 +1811,12 @@ unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voic
   if(ticksOrMs != 0)
   {
     // Step 1 – Keyoff pre-check (synthmacros.c:76-86): If the Keyoff flag is set and if a keyoff has already been received and if the sustain pedal is not held: return 0
-    if(v)
-    {
-        if (ctx.waitingKeyoff && ctx.keyoffReceived && !fluid_voice_is_sustained(v) && !fluid_voice_is_sostenuto(v)) {
-        ctx.waitingKeyoff = false;
-        return 0;
-      }
+    // Note: when v==nullptr (voice already released), treat as "not sustained".
+    if (ctx.waitingKeyoff && ctx.keyoffReceived &&
+        (!v || (!fluid_voice_is_sustained(v) && !fluid_voice_is_sostenuto(v)))) {
+      ctx.waitingKeyoff = false;
+      ctx.pc++;
+      return 0;
     }
     // If the Keyoff flag is not set: the "wake on keyoff" flag is cleared (cFlags &= ~4).
     ctx.waitingKeyoff = keyOff;
@@ -1784,6 +1825,7 @@ unsigned int SoundMacro::CmdWaitTicks::DoFluid(MacroExecContext& ctx, fluid_voic
     if (ctx.waitingSampleEnd && ctx.sampleEndReceived) {
       ctx.waitingKeyoff = false;
       ctx.waitingSampleEnd = false;
+      ctx.pc++;
       return 0;
     }
     // If the Sampleend flag is not set: the "wake on sampleend" flag is cleared (cFlags &= ~0x40000).
@@ -2893,6 +2935,11 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
   ctx.appData = this;
   ctx.macStartTime = startTick;
 
+  /* Pre-assign the macroId so that dummy_preset_noteon() can embed it in
+   * the voice callback before the context is inserted into activeMacros. */
+  int macroId = nextMacroId++;
+  ctx.selfId = macroId;
+
   /* Walk through commands that execute instantly (no delay).
    * When a command introduces a delay, schedule a timer event and stop. */
   unsigned int tick = startTick;
@@ -2902,7 +2949,6 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
     if (ctx.inIndefiniteWait) {
       /* Indefinite wait – store context but do NOT schedule a timer.
        * The macro will be resumed by an external event (keyoff, sampleEnd). */
-      int macroId = nextMacroId++;
       activeMacros[macroId] = ctx;
       return macroId;
     }
@@ -2910,7 +2956,6 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
     safetyCounter++;
     if (d > 0 && !ctx.ended) {
       /* Store context in the stable map and schedule a timer callback */
-      int macroId = nextMacroId++;
       activeMacros[macroId] = ctx;
 
       FluidEventPtr tevt(new_fluid_event(), &delete_fluid_event);
@@ -2921,6 +2966,11 @@ int FluidsyXApp::enqueueSoundMacro(const SoundMacro* sm, int step,
       return macroId;
     }
   }
+#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+  /* Macro completed synchronously without waiting — however the voice (if
+   * any) may still be playing.  The voiceCallbacks entry remains valid;
+   * the FINISHED callback will erase it when the voice actually stops. */
+#endif
   return -1;
 }
 
@@ -3067,6 +3117,69 @@ void FluidsyXApp::timerCallback(unsigned int time, fluid_event_t* event,
   if (ctx.ended)
     app->activeMacros.erase(it);
 }
+
+void FluidsyXApp::scheduleImmediateResume(int macroId) {
+  FluidEventPtr resumeEvt(new_fluid_event(), &delete_fluid_event);
+  fluid_event_set_source(resumeEvt.get(), callbackSeqId);
+  fluid_event_set_dest(resumeEvt.get(), callbackSeqId);
+  fluid_event_timer(resumeEvt.get(), reinterpret_cast<void*>(static_cast<intptr_t>(macroId)));
+  fluid_sequencer_send_now(sequencer.get(), resumeEvt.get());
+}
+
+#if FLUID_VERSION_AT_LEAST(2, 5, 4)
+void FluidsyXApp::voiceStateCallback(fluid_voice_t* /*voice*/,
+                                      enum fluid_voice_callback_reason reason,
+                                      void* data) {
+  auto* cbData = static_cast<VoiceCallbackData*>(data);
+  if (!cbData)
+    return;
+  FluidsyXApp* app = cbData->app;
+  int macroId = cbData->macroId;
+  if (!app)
+    return;
+
+  auto it = app->activeMacros.find(macroId);
+
+  switch (reason) {
+  case FLUID_VOICE_CALLBACK_NOTEOFF:
+    /* The voice has entered its true release phase (not sustained/sostenutoed).
+     * Treat this the same as receiving a MIDI NoteOff for the macro. */
+    if (it != app->activeMacros.end()) {
+      MacroExecContext& ctx = it->second;
+      if (!ctx.keyoffReceived) {
+        ctx.keyoffReceived = true;
+        /* Only schedule an immediate resume for indefinite waits; for
+         * timed waits the existing timer will fire and check the flag. */
+        if (ctx.inIndefiniteWait && ctx.waitingKeyoff) {
+          ctx.inIndefiniteWait = false;
+          ctx.waitingKeyoff = false;
+          app->scheduleImmediateResume(macroId);
+        }
+      }
+    }
+    break;
+
+  case FLUID_VOICE_CALLBACK_FINISHED:
+    /* The voice has finished playing and is being removed from the DSP loop.
+     * This is the closest proxy for "sample end" that FluidSynth exposes. */
+    if (it != app->activeMacros.end()) {
+      MacroExecContext& ctx = it->second;
+      if (!ctx.sampleEndReceived) {
+        ctx.sampleEndReceived = true;
+        if (ctx.inIndefiniteWait && ctx.waitingSampleEnd) {
+          ctx.inIndefiniteWait = false;
+          ctx.waitingSampleEnd = false;
+          app->scheduleImmediateResume(macroId);
+        }
+      }
+    }
+    /* Erase the per-voice callback data regardless of whether the macro
+     * is still alive – the voice no longer exists after this callback. */
+    app->voiceCallbacks.erase(cbData->voiceId);
+    break;
+  }
+}
+#endif
 
 /* ═══════════════════ SNG → FluidSynth sequencer scheduling ═══════════════════ */
 

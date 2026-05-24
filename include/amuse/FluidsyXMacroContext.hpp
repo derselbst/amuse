@@ -40,6 +40,11 @@ struct MacroExecContext {
   unsigned int voiceId = 0;
   uint8_t triggerNote = 60;   /**< Original SNG note (before keymap/layer transpose), used for NoteOff matching */
 
+  /** Key of this context in FluidsyXApp::activeMacros.  Pre-assigned in
+   *  enqueueSoundMacro() so that dummy_preset_noteon() can register a voice
+   *  callback carrying the macroId before the context is inserted into the map. */
+  int selfId = -1;
+
   /* ── Pending SoundMacro commands ──
    * Commands executed before CmdStartSample creates the voice are stored
    * here. We cannot allocate the voice earlier (e.g. in FluidsyXApp::enqueueSoundMacro()), because fluidsynth wants to know
