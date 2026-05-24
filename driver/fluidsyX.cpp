@@ -3140,7 +3140,7 @@ void FluidsyXApp::scheduleImmediateResume(int macroId) {
 
 #if FLUID_VERSION_AT_LEAST(2, 5, 4)
 void FluidsyXApp::voiceStateCallback(fluid_voice_t* /*voice*/,
-                                      enum fluid_voice_callback_reason reason,
+                                      int reason,
                                       void* data) {
   auto* cbData = static_cast<VoiceCallbackData*>(data);
   if (!cbData)
