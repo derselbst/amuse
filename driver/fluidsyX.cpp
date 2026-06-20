@@ -1228,7 +1228,7 @@ bool FluidsyXApp::initFluidSynth() {
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
   fluid_settings_setint(settings.get(), "synth.verbose", 0);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
-  fluid_settings_setnum(settings.get(), "synth.reverb.active", 1);
+  fluid_settings_setint(settings.get(), "synth.reverb.active", 1);
   fluid_settings_setstr(settings.get(), "synth.reverb.engine", "lex");
   fluid_settings_setnum(settings.get(), "synth.reverb.level", 0.8);
   fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
