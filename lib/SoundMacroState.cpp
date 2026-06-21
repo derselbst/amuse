@@ -1382,6 +1382,12 @@ bool SoundMacro::CmdSpanSelect::Do(SoundMacroState& st, Voice& vox) const {
                             SoundMacroState::Evaluator::Combine(combine), SoundMacroState::Evaluator::VarType(isVar));
   return false;
 }
+unsigned int SoundMacro::CmdSpanSelect::DoFluid(MacroExecContext& ctx, fluid_voice_t* fvox) const
+{
+  // surround pan is not supported by fluidsynth, implement this to silence spamy log messages
+  ctx.pc++;
+  return 0;
+}
 
 const SoundMacro::CmdIntrospection SoundMacro::CmdDopplerSelect::Introspective = {
     CmdType::Setup,
