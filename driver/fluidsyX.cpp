@@ -973,8 +973,8 @@ struct FluidsyXApp {
    *  release phase (NOTEOFF) or finishes playing (FINISHED).
    *  Sets the appropriate received flag and, for indefinite waits only,
    *  schedules an immediate timer to resume the blocked macro. */
-  static void voiceStateCallback(fluid_voice_t* voice,
-                                  enum fluid_voice_callback_reason reason,
+  static void voiceStateCallback(const fluid_voice_t* voice,
+                                  int reason,
                                   void* data);
 #endif
 
@@ -1226,6 +1226,7 @@ bool FluidsyXApp::initFluidSynth() {
 
   // Processing soundMacros via callback can be too expensive for the default period-size of 64 samples
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
+  fluid_settings_setint(settings.get(), "synth.sample-rate", 48000);
   fluid_settings_setint(settings.get(), "synth.verbose", 0);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
   if(fluid_settings_setint(settings.get(), "synth.limiter.active", 1) == FLUID_OK)
@@ -1238,7 +1239,7 @@ bool FluidsyXApp::initFluidSynth() {
   fluid_settings_setstr(settings.get(), "synth.reverb.engine", "lex");
   fluid_settings_setnum(settings.get(), "synth.reverb.level", 1);
   fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
-  fluid_settings_setnum(settings.get(), "synth.reverb.width", 1);
+  fluid_settings_setnum(settings.get(), "synth.reverb.width", 1.15);
   fluid_settings_setnum(settings.get(), "synth.reverb.damp", 0.25);
   // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
@@ -3147,7 +3148,7 @@ void FluidsyXApp::scheduleImmediateResume(int macroId) {
 }
 
 #if FLUID_VERSION_AT_LEAST(2, 6, 0)
-void FluidsyXApp::voiceStateCallback(fluid_voice_t* /*voice*/,
+void FluidsyXApp::voiceStateCallback(const fluid_voice_t* /*voice*/,
                                       int reason,
                                       void* data) {
   auto* cbData = static_cast<VoiceCallbackData*>(data);
