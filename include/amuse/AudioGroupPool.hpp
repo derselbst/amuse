@@ -759,6 +759,7 @@ struct SoundMacro {
     Value<bool> isVar;
     Value<int8_t> fineScaling;
     bool Do(SoundMacroState& st, Voice& vox) const override;
+    unsigned int DoFluid(MacroExecContext& ctx, fluid_voice_t* fvox) const override;
     CmdOp Isa() const override { return CmdOp::SpanSelect; }
   };
   struct CmdDopplerSelect : ICmd {

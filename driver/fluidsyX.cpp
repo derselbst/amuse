@@ -1228,12 +1228,18 @@ bool FluidsyXApp::initFluidSynth() {
   fluid_settings_setint(settings.get(), "audio.period-size", 256);
   fluid_settings_setint(settings.get(), "synth.verbose", 0);
   fluid_settings_setnum(settings.get(), "synth.gain", 0.9);
+  if(fluid_settings_setint(settings.get(), "synth.limiter.active", 1) == FLUID_OK)
+  {
+    fluid_settings_setnum(settings.get(), "synth.limiter.attack", 10);
+    fluid_settings_setnum(settings.get(), "synth.limiter.hold", 15);
+    fluid_settings_setnum(settings.get(), "synth.limiter.release", 40);
+  }
   fluid_settings_setint(settings.get(), "synth.reverb.active", 1);
   fluid_settings_setstr(settings.get(), "synth.reverb.engine", "lex");
-  fluid_settings_setnum(settings.get(), "synth.reverb.level", 0.8);
+  fluid_settings_setnum(settings.get(), "synth.reverb.level", 1);
   fluid_settings_setnum(settings.get(), "synth.reverb.room-size", 0.7);
-  fluid_settings_setnum(settings.get(), "synth.reverb.width", 2);
-  fluid_settings_setnum(settings.get(), "synth.reverb.damp", 0);
+  fluid_settings_setnum(settings.get(), "synth.reverb.width", 1);
+  fluid_settings_setnum(settings.get(), "synth.reverb.damp", 0.25);
   // Use FluidSynth's linear portamento mode via the portamento-time setting.
   fluid_settings_setstr(settings.get(), "synth.portamento-time", "linear");
 
@@ -1495,7 +1501,7 @@ bool FluidsyXApp::buildMusyXSoundFont() {
      * carry per-sample sub-semitone tuning; fine-tuning is applied at the
      * SoundMacro command level via SetNote/AddNote/LastNote/RndNote detune
      * fields (±99 cents) and SetPitch (absolute Hz).  Those detune values
-     * are sent to FluidSynth as pitch bend events at playback time.
+     * are sent to FluidSynth as sample fine tune at playback time.
      * SF2 allows ±100 cents fine-tune per sample, but MusyX has no
      * equivalent stored metadata. */
     fluid_sample_set_pitch(flSamp, ds.rootKey, 0);
